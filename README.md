@@ -60,13 +60,23 @@ flutter run              # 実機 / エミュレータ
 
 APK は `build/app/outputs/flutter-apk/app-debug.apk` に出力される。
 
-### 実機で確認すべきこと（step 5 以降で実施）
+### 実機で確認すべきこと（**未実施**）
 
-1. 画面 OFF・ロック中に指定時刻に鳴る（full-screen intent で鳴動画面が前面に出る）
-2. 鳴動中にアプリをスワイプで殺しても音が続く（foreground service）
-3. 起床確認をクリアすると止まる。それ以外の経路（通知スワイプ・通知ボタン・戻るボタン）では止まらない
-4. 再起動後に鳴動中セッションへ復帰する／60分超なら失敗として自動確定される
-5. 端末のバッテリー最適化を無効化しないと鳴らない機種がある（dontkillmyapp.com 参照）
+初回起動時に通知権限とアラーム権限（「アラームとリマインダー」）の許可を求める。
+両方許可した上で、次の 5 項目を確認する。
+
+1. **画面 OFF・ロック中に指定時刻に鳴る。** full-screen intent で鳴動画面がロック画面の上に出ること。
+   `flutter run` した状態で 2 分後のアラームを設定し、画面を消して待つ。
+2. **鳴動中にアプリをスワイプで殺しても音が続く。** 鳴っている最中にタスク一覧からアプリを消し、
+   音が止まらないこと（foreground service）。通知をタップして鳴動画面に戻れること。
+3. **「解除」以外では止まらない。** 通知をスワイプしても、戻るボタンでもホームボタンでも音が止まらず、
+   起床確認をクリアしたときだけ止まること。通知に停止ボタンとスヌーズが出ていないこと。
+4. **再起動後の復帰。** 鳴動中にアプリを殺して開き直すと鳴動画面に戻ること。
+   端末の日時を 60 分以上進めてから開き直すと、失敗として自動確定されリザルトが出ること。
+5. **損失が予定時刻から数えられていること。** 通知を無視して 3 分後にアプリを開き、
+   すでに 3 分ぶん燃えていること（開いた瞬間から 0 ではない）。
+
+補足：メーカーによってはバッテリー最適化を無効にしないと鳴らない（dontkillmyapp.com 参照）。
 
 ## 音源
 
@@ -84,13 +94,15 @@ lib/
     ojisan.dart          成長セリフ
     reward.dart          ご褒美トークン付与
     schedule.dart        nextFireTime
+    wake_check.dart      長押し進捗・計算問題生成・入力文
+    format.dart          曜日・時刻・覚悟の表示整形
   data/                  drift スキーマ、mappers、repositories、providers
   services/
     alarm_service.dart   alarm パッケージのラッパー（予約・鳴動・復帰）
     session_service.dart セッションの開始と確定（ウォレット／おじさんの更新）
-    alarm_settings_builder.dart  純粋関数：Alarm → AlarmSettings
+    alarm_settings_builder.dart  純粋関数：Alarm → AlarmSettings、予約判断
   features/              alarms / ringing / result / wallet / settings
-test/                    domain・data・services のテスト
+test/                    domain・data・services・features のテスト
 ```
 
 ## 実装状況
@@ -98,35 +110,42 @@ test/                    domain・data・services のテスト
 - [x] step 1 プロジェクト生成、依存追加、router と空画面、テーマ基盤
 - [x] step 2 domain 層（モデル＋純粋ロジック）と単体テスト
 - [x] step 3 永続化（repositories）
-- [x] step 4 アラームサービスと権限まわり（**実機確認は未実施**）
+- [x] step 4 アラームサービスと権限まわり
+- [x] step 5 Ringing / Result / 起床確認 3 種
+- [x] step 6 Home / AlarmEdit / Wallet / Settings（テーマ交換）
+- [x] step 7 README
 
-### TODO（step 5〜7）
+**残っているのは実機確認だけ**（下記「実機で確認すべきこと」の 5 項目）。エミュレータ／実機が
+接続された環境では未実行のため、鳴動そのものは一度も検証できていない。
 
-**step 5 — Ringing / Result / 起床確認**
+### テストの構成
 
-- [ ] Ringing 画面：時刻、毎秒再描画の損失カウンタ（値は分単位）、おじさん、起床確認 UI
-- [ ] 起床確認 3 種：longPress（5秒、離したらリセット）／ math（2桁＋2桁を3問連続）／ typing（12文字前後の日本語文を完全一致、コピー不可）
-- [ ] 解除で `SessionService.dismiss` → `AlarmService.stopRinging` → Result へ
-- [ ] Result 画面：成功／失敗、損失、獲得トークン、`ojisanLine(totalOversleeps)`
-- [ ] ウィジェットテスト：Ringing の longPress 解除
+| ファイル | 内容 |
+|---|---|
+| `test/domain/` | 損失計算・成功失敗判定・復旧・成長セリフ・トークン・次回鳴動時刻・起床確認・表示整形 |
+| `test/data/` | 5 リポジトリ（インメモリ DB ＋ モック preferences） |
+| `test/services/` | `buildAlarmSettings` / `platformAlarmId` / `scheduleActionFor` / セッション確定と復旧 |
+| `test/features/` | 鳴動〜解除〜リザルトの通し、AlarmEdit 保存 → Home 反映、ウォレット、テーマ交換 |
+| `test/app/` | テーマ切替と永続化 |
 
-**step 6 — Wallet / Settings / テーマ交換**
+## 既知の制約
 
-- [ ] Home：アラーム一覧（時刻・曜日・覚悟の rate/cap・ON/OFF）、上部にコイン／トークン残高、＋で追加
-- [ ] AlarmEdit：時刻ピッカー、曜日、起床確認種類、覚悟トグル → rate（1/10/50/100/500 とカスタム）と cap。`cap > coins` で警告（保存は可能）
-- [ ] Wallet：残高、開発用チャージ（+1,000コイン）、履歴（日時・結果・損失）
-- [ ] Settings：テーマ交換（100 トークン）と `unlockedThemeIds` によるロック表示
-- [ ] ウィジェットテスト：AlarmEdit の保存 → Home に反映
-
-**step 7 — 仕上げ**
-
-- [ ] 実機確認（上記5項目）と結果の記載
-- [ ] 既知の制約の追記
-
-### 既知の未解決点
-
-- `judgeStatus` は仕様どおり `loss == 0` を成功としているため、**残高 0 で寝坊しても「起床成功」になる**。
-  仕様 3 章の明文に従っているが、体験としては要検討。
-- 復旧の安全弁は覚悟なしのアラームでも `failed` として確定する（仕様 3 章の明文どおり）。累計寝坊回数が増える。
+- **実機・エミュレータでの動作確認が未実施。** アラームが実際に鳴ること、ロック画面に出ること、
+  アプリを殺しても鳴り続けることは、いずれもコード上の設定と `alarm` パッケージのドキュメントに
+  基づくものであり、観測されていない。
+- **`alarm` パッケージが旧来の Kotlin Gradle Plugin を適用している。** ビルド時に Flutter が
+  「将来のバージョンではビルドが失敗する」と警告する。現在の Flutter 3.47.1 ではビルド成功。
+  パッケージ側の Built-in Kotlin 対応待ち。
+- **メーカー独自の省電力設定。** Samsung / Xiaomi / OPPO などではバッテリー最適化を無効にしないと
+  鳴らないことがある（dontkillmyapp.com）。アプリ内での案内は未実装。
+- **`USE_FULL_SCREEN_INTENT` は Google Play の審査対象。** 目覚まし用途としての正当性説明が必要。
 - 鳴動中の再スケジュールは行わない（`Alarm.set` が鳴動中のアラームを置き換えてしまうため）。
-  繰り返しアラームの再武装は解除時（`AlarmService.stopRinging`）と起動時（`rescheduleAll`）に行う。
+  起動時の `rescheduleAll` は `Alarm.isRinging` を見て鳴動中のものを飛ばし、繰り返しアラームの
+  再武装は解除時（`AlarmService.stopRinging`）に行う。
+- 通知アイコンは指定していないため、アプリアイコンが使われる（`alarm` パッケージのフォールバック）。
+- ローカライズ基盤（arb）は未導入。文言は日本語のハードコード。
+
+## 今後（Phase 1 以降、本 MVP のスコープ外）
+
+カード人質（Stripe 等の Web 決済）、アプリ内課金、緊急連絡先への寝坊通知、SNS 共有、
+キャラクター選択、顔認証・歩数による起床確認、iOS 対応。企画書 6 章を参照。
