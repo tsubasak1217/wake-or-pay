@@ -74,8 +74,12 @@ lossAt(now, session):
 
 - `coinsAtFire`：鳴動時点の残高。残高より多く燃やさない
 - 起床確認クリア時刻を `dismissedAt` として `loss = lossAt(dismissedAt)` を確定し、`Wallet.coins -= loss`、`OjisanState.totalEarned += loss`
-- **成功／失敗の判定**：`loss == 0` なら success、`loss > 0` なら failed（1分以内に解除できれば成功）
+- **成功／失敗の判定**：損失額ではなく**経過時間**で判定する。`elapsedMinutes == 0`（鳴動開始から60秒未満で起床確認をクリア）なら success、それ以外は failed。残高0・上限0・rate 0 で損失が出なくても、寝坊は寝坊
+- **鳴動開始時刻 `firedAt` はアラームの予定時刻**（プラットフォームから渡される `dateTime`）を使う。アプリを開いた時刻ではない。通知を無視して後からアプリを開いても、損失は予定時刻から数える
+- **おじさんの累計寝坊回数 `totalOversleeps` は、覚悟モードのセッション（`kakugoSnapshot != null`）が failed になった時だけ増える**。通常アラームの失敗は履歴には残るがおじさんは儲からないので数えない。`totalEarned` は loss の合計
+- ご褒美トークンは success の時だけ付与
 - **上限や残高に達してもアラームは止めない**。損失表示が止まるだけ
+- **起動時の再スケジュールは、鳴動中のアラームを上書きしない**（プラットフォーム側で鳴動中かを確認してスキップする）
 - **アプリが殺された／再起動した場合の復旧**：`status == ringing` のセッションが残っていれば、起動時に鳴動画面へ復帰する。ただし `firedAt` から 60 分以上経過していれば、`loss = lossAt(firedAt + 60min)` で failed として自動確定し、リザルトを表示する（無限に鳴り続けない安全弁）
 
 ## 4. 起床確認
