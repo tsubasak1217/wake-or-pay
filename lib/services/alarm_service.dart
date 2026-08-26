@@ -40,8 +40,11 @@ class AlarmService {
     _ref.onDispose(() => _ringingSub?.cancel());
 
     await requestPermissions();
-    await rescheduleAll();
+    // Recovery first: it settles sessions the safety valve wrote off and
+    // switches their one-shot alarms back off, which the reschedule pass would
+    // otherwise arm again for tomorrow.
     await resumePendingSession();
+    await rescheduleAll();
   }
 
   /// Notifications and exact alarms. Without the latter Android 12+ may delay
@@ -88,15 +91,22 @@ class AlarmService {
     }
   }
 
-  /// Stops the platform alarm once the wake check has been cleared, then
-  /// re-arms a repeating alarm for its next day.
-  Future<void> stopRinging(domain.Alarm alarm) async {
+  /// Stops the platform alarm once the wake check has been cleared.
+  Future<void> stopRinging(domain.Alarm alarm) => _afterRing(alarm);
+
+  /// What happens to an alarm once one of its rings is over, however it ended —
+  /// cleared by the user, or written off by the 60 minute safety valve. One
+  /// rule, so the dismiss path and the recovery path cannot drift apart.
+  Future<void> _afterRing(domain.Alarm alarm) async {
     await cancel(alarm);
     _handled.remove(alarm.id);
-    if (alarm.repeatDays.isNotEmpty && alarm.enabled) {
-      await schedule(alarm);
-    } else {
+
+    if (alarm.repeatDays.isEmpty) {
+      // A one-shot has done its job. Switching it off is also what stops the
+      // next reschedule pass from arming it again for tomorrow.
       await _ref.read(alarmRepositoryProvider).setEnabled(alarm.id, false);
+    } else {
+      await schedule(alarm);
     }
   }
 
@@ -134,6 +144,15 @@ class AlarmService {
     final outcome = await _ref
         .read(sessionServiceProvider)
         .recoverPending(now ?? DateTime.now());
+
+    final alarms = _ref.read(alarmRepositoryProvider);
+    for (final session in outcome.settled) {
+      // Never touch the alarm behind a ring that is still live, even if an
+      // older session of the same alarm was just written off.
+      if (session.alarmId == outcome.resumed?.alarmId) continue;
+      final alarm = await alarms.getById(session.alarmId);
+      if (alarm != null) await _afterRing(alarm);
+    }
 
     if (outcome.resumed != null) {
       _handled.add(outcome.resumed!.alarmId);
