@@ -56,3 +56,11 @@ final ojisanProvider = StreamProvider<OjisanState>(
 final sessionHistoryProvider = StreamProvider<List<AlarmSession>>(
   (ref) => ref.watch(alarmSessionRepositoryProvider).watchRecent(),
 );
+
+final sessionByIdProvider = FutureProvider.family<AlarmSession?, String>(
+  (ref, id) => ref.watch(alarmSessionRepositoryProvider).getById(id),
+);
+
+final alarmByIdProvider = FutureProvider.family<Alarm?, String>(
+  (ref, id) => ref.watch(alarmRepositoryProvider).getById(id),
+);
