@@ -19,10 +19,7 @@ class AppTheme {
   final int price;
 
   ThemeData get themeData => ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: brightness,
-    ),
+    colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: brightness),
     useMaterial3: true,
   );
 }

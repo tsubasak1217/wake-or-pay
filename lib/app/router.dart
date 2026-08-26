@@ -65,4 +65,3 @@ GoRouter createAppRouter() => GoRouter(
     ),
   ],
 );
-
