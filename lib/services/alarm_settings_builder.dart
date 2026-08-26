@@ -14,6 +14,21 @@ int platformAlarmId(String alarmId) {
   return alarmId.hashCode & 0x7fffffff;
 }
 
+enum ScheduleAction { schedule, cancel, skipRinging }
+
+/// What to do with one alarm during a (re)schedule pass. Pure.
+///
+/// Ringing wins over everything: the platform alarm must not be touched while
+/// it is ringing — not even to cancel a disabled one — because `Alarm.set`
+/// replaces an alarm with the same id and `Alarm.stop` silences it.
+ScheduleAction scheduleActionFor({
+  required bool enabled,
+  required bool isRinging,
+}) {
+  if (isRinging) return ScheduleAction.skipRinging;
+  return enabled ? ScheduleAction.schedule : ScheduleAction.cancel;
+}
+
 /// Builds the plugin's settings for one ring of [alarm] at [fireAt]. Pure, so
 /// the scheduling decisions can be tested without the platform.
 ///

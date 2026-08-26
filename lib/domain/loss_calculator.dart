@@ -22,20 +22,19 @@ int lossAt(DateTime now, AlarmSession session) {
   return math.max(0, math.min(raw, math.min(kakugo.cap, session.coinsAtFire)));
 }
 
-/// Woken up within the first minute = success. Anything that cost coins is a
-/// failure, however small.
-SessionStatus judgeStatus(int loss) =>
-    loss == 0 ? SessionStatus.success : SessionStatus.failed;
+/// Judged on time, never on money: cleared inside the first minute is a
+/// success, later is oversleeping — even when it cost nothing because the
+/// wallet was empty, the cap was 0, or there was no pledge at all.
+SessionStatus judgeStatus(Duration elapsed) =>
+    elapsed.inMinutes <= 0 ? SessionStatus.success : SessionStatus.failed;
 
 /// Settles [session] because the user cleared the wake check at [dismissedAt].
-AlarmSession finalizeSession(AlarmSession session, DateTime dismissedAt) {
-  final loss = lossAt(dismissedAt, session);
-  return session.copyWith(
-    dismissedAt: dismissedAt,
-    loss: loss,
-    status: judgeStatus(loss),
-  );
-}
+AlarmSession finalizeSession(AlarmSession session, DateTime dismissedAt) =>
+    session.copyWith(
+      dismissedAt: dismissedAt,
+      loss: lossAt(dismissedAt, session),
+      status: judgeStatus(dismissedAt.difference(session.firedAt)),
+    );
 
 /// Settles a session that was left ringing when the app died.
 ///
@@ -49,9 +48,5 @@ AlarmSession recoverSession(AlarmSession session, DateTime now) {
   final deadline = session.firedAt.add(recoveryDeadline);
   if (now.isBefore(deadline)) return session;
 
-  return session.copyWith(
-    dismissedAt: deadline,
-    loss: lossAt(deadline, session),
-    status: SessionStatus.failed,
-  );
+  return finalizeSession(session, deadline);
 }

@@ -71,10 +71,22 @@ void main() {
   });
 
   group('judgeStatus', () {
-    test('zero loss is success, anything else is failure', () {
-      expect(judgeStatus(0), SessionStatus.success);
-      expect(judgeStatus(1), SessionStatus.failed);
-      expect(judgeStatus(9999), SessionStatus.failed);
+    test('under one minute is success', () {
+      expect(judgeStatus(Duration.zero), SessionStatus.success);
+      expect(judgeStatus(const Duration(seconds: 59)), SessionStatus.success);
+      expect(
+        judgeStatus(const Duration(seconds: 59, milliseconds: 999)),
+        SessionStatus.success,
+      );
+    });
+
+    test('one minute or more is failure', () {
+      expect(judgeStatus(const Duration(seconds: 60)), SessionStatus.failed);
+      expect(judgeStatus(const Duration(hours: 3)), SessionStatus.failed);
+    });
+
+    test('a clock that went backwards is not punished', () {
+      expect(judgeStatus(const Duration(minutes: -5)), SessionStatus.success);
     });
   });
 
@@ -92,10 +104,39 @@ void main() {
       expect(s.status, SessionStatus.failed);
     });
 
-    test('a plain alarm is always a success', () {
-      final s = finalizeSession(session(kakugo: null), at(minutes: 30));
+    test('a plain alarm dismissed at 59s is a success', () {
+      final s = finalizeSession(session(kakugo: null), at(seconds: 59));
       expect(s.loss, 0);
       expect(s.status, SessionStatus.success);
+    });
+
+    test('a plain alarm dismissed at 60s is a failure that costs nothing', () {
+      final s = finalizeSession(session(kakugo: null), at(seconds: 60));
+      expect(s.loss, 0);
+      expect(s.status, SessionStatus.failed);
+    });
+
+    test('an empty wallet still oversleeps: failed, loss 0', () {
+      final s = finalizeSession(session(coinsAtFire: 0), at(minutes: 5));
+      expect(s.loss, 0);
+      expect(s.status, SessionStatus.failed);
+    });
+
+    test('cap 0 and rate 0 also oversleep', () {
+      expect(
+        finalizeSession(
+          session(kakugo: const Kakugo(ratePerMinute: 500, cap: 0)),
+          at(minutes: 5),
+        ).status,
+        SessionStatus.failed,
+      );
+      expect(
+        finalizeSession(
+          session(kakugo: const Kakugo(ratePerMinute: 0, cap: 5000)),
+          at(minutes: 5),
+        ).status,
+        SessionStatus.failed,
+      );
     });
   });
 

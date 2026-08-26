@@ -63,12 +63,16 @@ class SessionService {
       if (settled.loss > 0) {
         await _wallet.update((w) => w.copyWith(coins: w.coins - settled.loss));
       }
-      await _ojisan.update(
-        (o) => o.copyWith(
-          totalOversleeps: o.totalOversleeps + 1,
-          totalEarned: o.totalEarned + settled.loss,
-        ),
-      );
+      // A plain alarm's failure belongs in the history, but the ojisan made
+      // nothing off it, so it does not count towards his growth.
+      if (settled.kakugoSnapshot != null) {
+        await _ojisan.update(
+          (o) => o.copyWith(
+            totalOversleeps: o.totalOversleeps + 1,
+            totalEarned: o.totalEarned + settled.loss,
+          ),
+        );
+      }
     } else {
       final reward = rewardTokens(settled.kakugoSnapshot);
       await _wallet.update((w) => w.copyWith(tokens: w.tokens + reward));

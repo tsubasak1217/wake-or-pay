@@ -25,6 +25,30 @@ void main() {
     });
   });
 
+  group('scheduleActionFor', () {
+    test('an enabled alarm is scheduled, a disabled one cancelled', () {
+      expect(
+        scheduleActionFor(enabled: true, isRinging: false),
+        ScheduleAction.schedule,
+      );
+      expect(
+        scheduleActionFor(enabled: false, isRinging: false),
+        ScheduleAction.cancel,
+      );
+    });
+
+    test('a ringing alarm is never touched, enabled or not', () {
+      expect(
+        scheduleActionFor(enabled: true, isRinging: true),
+        ScheduleAction.skipRinging,
+      );
+      expect(
+        scheduleActionFor(enabled: false, isRinging: true),
+        ScheduleAction.skipRinging,
+      );
+    });
+  });
+
   group('buildAlarmSettings', () {
     const alarm = Alarm(
       id: '17',

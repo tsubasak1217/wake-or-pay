@@ -94,6 +94,56 @@ void main() {
     );
   });
 
+  test('an empty wallet still counts as an oversleep for the ojisan', () async {
+    final s = await setUpService(coins: 0);
+    final session = await s.service.start(alarm: alarm, firedAt: firedAt);
+
+    final settled = await s.service.dismiss(
+      session,
+      firedAt.add(const Duration(minutes: 5)),
+    );
+
+    expect(settled.status, SessionStatus.failed);
+    expect(settled.loss, 0);
+    expect((await s.wallet.read()).coins, 0);
+    expect(
+      await s.ojisan.read(),
+      const OjisanState(totalOversleeps: 1, totalEarned: 0),
+    );
+  });
+
+  test('a plain alarm failure does not grow the ojisan', () async {
+    final s = await setUpService();
+    const plain = Alarm(id: 'a2', hour: 7, minute: 0);
+    final session = await s.service.start(alarm: plain, firedAt: firedAt);
+
+    final settled = await s.service.dismiss(
+      session,
+      firedAt.add(const Duration(minutes: 30)),
+    );
+
+    expect(settled.status, SessionStatus.failed);
+    expect(await s.ojisan.read(), const OjisanState());
+    // Recorded in the history all the same.
+    expect((await s.sessions.getRecent()).single.status, SessionStatus.failed);
+    // A failure pays no tokens.
+    expect((await s.wallet.read()).tokens, 0);
+  });
+
+  test('a plain alarm cleared in time still pays the base tokens', () async {
+    final s = await setUpService();
+    const plain = Alarm(id: 'a2', hour: 7, minute: 0);
+    final session = await s.service.start(alarm: plain, firedAt: firedAt);
+
+    final settled = await s.service.dismiss(
+      session,
+      firedAt.add(const Duration(seconds: 59)),
+    );
+
+    expect(settled.status, SessionStatus.success);
+    expect((await s.wallet.read()).tokens, 10);
+  });
+
   test('settling twice charges once', () async {
     final s = await setUpService();
     final session = await s.service.start(alarm: alarm, firedAt: firedAt);

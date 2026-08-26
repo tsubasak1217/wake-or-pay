@@ -58,13 +58,25 @@ class AlarmService {
   }
 
   /// Schedules [alarm] for its next occurrence, or cancels it when disabled.
+  ///
+  /// A ringing alarm is left strictly alone: `Alarm.set` replaces an alarm with
+  /// the same id, so the startup reschedule would otherwise silence a ring the
+  /// user is standing in front of and re-arm it for tomorrow.
   Future<void> schedule(domain.Alarm alarm, {DateTime? from}) async {
-    if (!alarm.enabled) {
-      await cancel(alarm);
-      return;
+    final action = scheduleActionFor(
+      enabled: alarm.enabled,
+      isRinging: await pkg.Alarm.isRinging(platformAlarmId(alarm.id)),
+    );
+
+    switch (action) {
+      case ScheduleAction.skipRinging:
+        return;
+      case ScheduleAction.cancel:
+        await cancel(alarm);
+      case ScheduleAction.schedule:
+        final fireAt = nextFireTime(alarm, from ?? DateTime.now());
+        await pkg.Alarm.set(alarmSettings: buildAlarmSettings(alarm, fireAt));
     }
-    final fireAt = nextFireTime(alarm, from ?? DateTime.now());
-    await pkg.Alarm.set(alarmSettings: buildAlarmSettings(alarm, fireAt));
   }
 
   Future<void> cancel(domain.Alarm alarm) =>
@@ -105,11 +117,13 @@ class AlarmService {
     // start a second one.
     final sessions = _ref.read(alarmSessionRepositoryProvider);
     final existing = await sessions.getRinging();
+    // firedAt is the *scheduled* time, not now: ignoring the notification for
+    // ten minutes must already have cost ten minutes' worth.
     final session = existing != null && existing.alarmId == alarmId
         ? existing
         : await _ref
               .read(sessionServiceProvider)
-              .start(alarm: alarm, firedAt: DateTime.now());
+              .start(alarm: alarm, firedAt: settings.dateTime);
 
     _goRinging(session.id);
   }
