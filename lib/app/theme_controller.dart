@@ -1,19 +1,37 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/providers.dart';
+import '../domain/models.dart';
 import 'theme.dart';
 
-/// Currently selected theme id. Persisted by [SettingsRepository] once the
-/// data layer is wired in; overridden in tests.
-final themeIdProvider = NotifierProvider<ThemeIdController, String>(
-  ThemeIdController.new,
+/// Persisted settings, kept in memory so the theme can be read synchronously
+/// while painting.
+final settingsProvider = NotifierProvider<SettingsController, Settings>(
+  SettingsController.new,
 );
 
-class ThemeIdController extends Notifier<String> {
+class SettingsController extends Notifier<Settings> {
   @override
-  String build() => AppThemes.defaultThemeId;
+  Settings build() => ref.watch(settingsRepositoryProvider).read();
 
-  void select(String id) => state = AppThemes.byId(id).id;
+  Future<void> selectTheme(String id) async {
+    state = await ref
+        .read(settingsRepositoryProvider)
+        .update((s) => s.copyWith(themeId: AppThemes.byId(id).id));
+  }
+
+  Future<void> unlockTheme(String id) async {
+    state = await ref
+        .read(settingsRepositoryProvider)
+        .update(
+          (s) => s.copyWith(unlockedThemeIds: {...s.unlockedThemeIds, id}),
+        );
+  }
 }
+
+final themeIdProvider = Provider<String>(
+  (ref) => ref.watch(settingsProvider).themeId,
+);
 
 final currentThemeProvider = Provider<AppTheme>(
   (ref) => AppThemes.byId(ref.watch(themeIdProvider)),

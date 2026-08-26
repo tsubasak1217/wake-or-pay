@@ -20,7 +20,8 @@ class SettingsScreen extends ConsumerWidget {
           ),
           for (final theme in AppThemes.all)
             ListTile(
-              onTap: () => ref.read(themeIdProvider.notifier).select(theme.id),
+              onTap: () =>
+                  ref.read(settingsProvider.notifier).selectTheme(theme.id),
               leading: CircleAvatar(backgroundColor: theme.seed),
               title: Text(theme.name),
               subtitle: Text(theme.description),

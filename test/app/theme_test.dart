@@ -2,13 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/app/theme.dart';
+import 'package:wake_or_pay/app/theme_controller.dart';
+import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/main.dart';
+
+import '../helpers.dart';
+
+Future<void> pumpApp(WidgetTester tester) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: await testOverrides(),
+      child: const WakeOrPayApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('starts on Home and can reach settings', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: WakeOrPayApp()));
-    await tester.pumpAndSettle();
-
+    await pumpApp(tester);
     expect(find.text('覚悟の目覚まし'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
@@ -17,8 +29,7 @@ void main() {
   });
 
   testWidgets('selecting a theme recolors the app', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: WakeOrPayApp()));
-    await tester.pumpAndSettle();
+    await pumpApp(tester);
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
 
@@ -31,6 +42,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(brightness(), AppThemes.sunrise.brightness);
+  });
+
+  test('the chosen theme survives a restart', () async {
+    final first = await testContainer();
+    await first
+        .read(settingsProvider.notifier)
+        .selectTheme(AppThemes.forest.id);
+
+    // A fresh container reading the same store, i.e. a relaunch.
+    final second = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(
+          first.read(sharedPreferencesProvider),
+        ),
+      ],
+    );
+    addTearDown(second.dispose);
+    expect(second.read(currentThemeProvider).id, AppThemes.forest.id);
   });
 
   test('every theme id resolves, unknown falls back to the default', () {
