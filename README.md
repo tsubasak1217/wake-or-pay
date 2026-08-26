@@ -47,7 +47,8 @@ dart run build_runner build
 
 ## ビルドと実行
 
-前提: Flutter stable / Android SDK / JDK 17（Android Studio 同梱の jbr で可）。
+前提: Flutter stable / Android SDK / JDK 17 以降（Android Studio 同梱の jbr で可。
+検証時の jbr は OpenJDK 25.0.2 で、ビルド・テストとも問題なく通っている）。
 
 ```powershell
 $env:Path = "C:\Users\k023g\dev\flutter\bin;$env:Path"
