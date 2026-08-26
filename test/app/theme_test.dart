@@ -8,10 +8,16 @@ import 'package:wake_or_pay/main.dart';
 
 import '../helpers.dart';
 
-Future<void> pumpApp(WidgetTester tester) async {
+Future<void> pumpApp(
+  WidgetTester tester, {
+  Map<String, Object> prefs = const {},
+}) async {
+  // UncontrolledProviderScope, so the container outlives the widget tree and
+  // drift's stream teardown does not leave a timer pending inside the test.
+  final container = await testContainer(prefs: prefs);
   await tester.pumpWidget(
-    ProviderScope(
-      overrides: await testOverrides(),
+    UncontrolledProviderScope(
+      container: container,
       child: const WakeOrPayApp(),
     ),
   );
@@ -28,8 +34,16 @@ void main() {
     expect(find.text('設定'), findsOneWidget);
   });
 
-  testWidgets('selecting a theme recolors the app', (tester) async {
-    await pumpApp(tester);
+  testWidgets('selecting an unlocked theme recolors the app', (tester) async {
+    await pumpApp(
+      tester,
+      prefs: {
+        'settings.unlockedThemeIds': [
+          AppThemes.defaultThemeId,
+          AppThemes.sunrise.id,
+        ],
+      },
+    );
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
 
