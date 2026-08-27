@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/theme_controller.dart';
 import '../../domain/models.dart';
 import '../../services/voice_recorder.dart';
+import '../settings/user_name_screen.dart';
 import 'contact_book_screen.dart';
 import 'edit_sub_screens.dart';
 import 'widgets/settings_island.dart';
@@ -209,9 +211,16 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
 
   String get _triggerLabel => _trigger == 0 ? '猶予後すぐ' : '猶予後 $_trigger分';
 
+  /// The example both previews are drawn against: a fixed 07:00, so the text
+  /// does not move under the user while they read it.
+  static final _previewAt = DateTime(2026, 1, 1, 7);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // The subject of the default sentence. Watched, so coming back from the
+    // editor redraws the row and both previews.
+    final userName = ref.watch(settingsProvider).userName;
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -231,6 +240,14 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
             SettingsIsland(
               title: '寝坊時の連絡設定',
               children: [
+                // Above 連絡先 on purpose: the message is about this person and
+                // is sent to that one, and reading the rows in order says so.
+                SettingRow(
+                  key: const ValueKey('contactUserNameRow'),
+                  label: 'あなたの名前',
+                  value: userName.isEmpty ? '未設定' : userName,
+                  onTap: () => pushUserNameSubScreen(context),
+                ),
                 SettingRow(
                   key: const ValueKey('contactPickRow'),
                   label: '連絡先',
@@ -272,8 +289,20 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                 ),
               ],
             ),
-            if (_emailEnabled && _hasEmail) _mailIsland(theme),
-            if (_phoneEnabled && _hasPhone) _phoneIsland(theme),
+            if (userName.trim().isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 24),
+                child: Text(
+                  'あなたの名前が未設定です。デフォルト文面では'
+                  '「$oversleepUserNameFallback」と表示されます。',
+                  key: const ValueKey('contactUserNameWarning'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            if (_emailEnabled && _hasEmail) _mailIsland(theme, userName),
+            if (_phoneEnabled && _hasPhone) _phoneIsland(theme, userName),
             if (_hasContact)
               Align(
                 alignment: Alignment.centerLeft,
@@ -296,7 +325,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     );
   }
 
-  Widget _mailIsland(ThemeData theme) => SettingsIsland(
+  Widget _mailIsland(ThemeData theme, String userName) => SettingsIsland(
     title: 'メール設定',
     children: [
       _ModeTile(
@@ -330,7 +359,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Text(
-            '例：${defaultOversleepMailMessage(name: _hasContact ? _name : '田中太郎', at: DateTime(2026, 1, 1, 7))}',
+            '例：${defaultOversleepMailMessage(userName: userName, at: _previewAt)}',
             key: const ValueKey('contactMailPreview'),
             style: theme.textTheme.bodySmall,
           ),
@@ -338,7 +367,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     ],
   );
 
-  Widget _phoneIsland(ThemeData theme) {
+  Widget _phoneIsland(ThemeData theme, String userName) {
     final hasRecording = _recordingPath != null;
     return SettingsIsland(
       title: '電話設定',
@@ -428,7 +457,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Text(
-              '読み上げる文：${defaultOversleepVoiceScript(name: _hasContact ? _name : '田中太郎', at: DateTime(2026, 1, 1, 7))}',
+              '読み上げる文：${defaultOversleepVoiceScript(userName: userName, at: _previewAt)}',
               key: const ValueKey('contactVoicePreview'),
               style: theme.textTheme.bodySmall,
             ),

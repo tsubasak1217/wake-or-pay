@@ -29,10 +29,14 @@ abstract class OversleepNotifier {
 /// believe a call was placed when it was not would be worse than not having
 /// the feature at all.
 class LoggingOversleepNotifier implements OversleepNotifier {
-  LoggingOversleepNotifier(this._events, this._notifications);
+  LoggingOversleepNotifier(this._events, this._notifications, this._userName);
 
   final ContactEventRepository _events;
   final AppNotifier _notifications;
+
+  /// Read at trigger time rather than held, so renaming yourself takes effect
+  /// on alarms that were written before the rename.
+  final String Function() _userName;
 
   @override
   Future<ContactEvent?> notify({
@@ -48,7 +52,7 @@ class LoggingOversleepNotifier implements OversleepNotifier {
       channel: channelFor(contact),
       // The alarm's own time, not the trigger time: that is what the message
       // is about.
-      detail: detailFor(contact, session.firedAt),
+      detail: detailFor(contact, session.firedAt, userName: _userName()),
     );
     await _events.save(event);
 
@@ -88,14 +92,21 @@ ContactChannel channelFor(OversleepContact contact) {
 /// Nothing is actually sent, so this string is the entire evidence that the
 /// app decided to send it. It names each route and its mode by the same words
 /// the editor uses.
-String? detailFor(OversleepContact contact, DateTime at) {
-  final call = callContentFor(contact, at);
+///
+/// [userName] is the app's user — the subject of the default sentence, not the
+/// contact it is sent to.
+String? detailFor(
+  OversleepContact contact,
+  DateTime at, {
+  required String userName,
+}) {
+  final call = callContentFor(contact, at, userName: userName);
   final parts = [
     if (contact.willPhone)
       call.recordingPath != null ? '電話（カスタム録音）' : '電話（自動音声）：${call.script}',
     if (contact.willEmail)
       '${contact.mailMode == MailMode.custom ? 'メール（カスタムメッセージ）' : 'メール（デフォルト）'}'
-          '：${mailBodyFor(contact, at)}',
+          '：${mailBodyFor(contact, at, userName: userName)}',
   ];
   return parts.isEmpty ? null : parts.join(' / ');
 }
@@ -131,6 +142,9 @@ final oversleepNotifierProvider = Provider<OversleepNotifier>(
   (ref) => LoggingOversleepNotifier(
     ref.watch(contactEventRepositoryProvider),
     ref.watch(appNotifierProvider),
+    // read, not watch: the name is wanted at the moment of firing, and a
+    // rename should not tear this provider down mid-session.
+    () => ref.read(settingsRepositoryProvider).read().userName,
   ),
 );
 

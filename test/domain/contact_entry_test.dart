@@ -144,18 +144,55 @@ void main() {
       expect(live.willPhone, isTrue);
     });
 
-    test('the default message names the person and the alarm time', () {
+    test('the default message names the app user and the alarm time', () {
       expect(
         defaultOversleepMailMessage(
-          name: '田中太郎',
+          userName: '田中太郎',
           at: DateTime(2026, 8, 27, 7, 5),
         ),
-        '田中太郎 さんは 07:05 のアラームを解除できていません。寝坊しています。',
+        '【Wake or Pay】田中太郎 さんは 07:05 のアラームを解除できていません。寝坊しています。',
       );
       expect(
-        defaultOversleepVoiceScript(name: '母', at: DateTime(2026, 8, 27, 6)),
-        '母 さんは 06:00 のアラームを解除できていません。寝坊しています。',
+        defaultOversleepVoiceScript(
+          userName: '山田花子',
+          at: DateTime(2026, 8, 27, 6),
+        ),
+        '山田花子 さんは 06:00 のアラームを解除できていません。寝坊しています。',
+        reason: 'the voice does not read the subject tag out loud',
       );
+    });
+
+    test('with no user name the subject is the generic one', () {
+      final at = DateTime(2026, 8, 27, 7, 5);
+      expect(oversleepSubjectName(''), oversleepUserNameFallback);
+      expect(oversleepSubjectName('   '), oversleepUserNameFallback);
+      expect(oversleepSubjectName(' 田中太郎 '), '田中太郎');
+
+      expect(
+        defaultOversleepMailMessage(userName: '', at: at),
+        '【Wake or Pay】$oversleepUserNameFallback さんは 07:05 の'
+        'アラームを解除できていません。寝坊しています。',
+      );
+      expect(
+        defaultOversleepVoiceScript(userName: '  ', at: at),
+        '$oversleepUserNameFallback さんは 07:05 のアラームを解除できていません。寝坊しています。',
+      );
+    });
+
+    test('the default message never names the contact it is sent to', () {
+      final at = DateTime(2026, 8, 27, 7);
+      const contact = OversleepContact(name: '田中太郎', email: 'a@b.c');
+      for (final userName in ['山田花子', '']) {
+        expect(
+          mailBodyFor(contact, at, userName: userName),
+          isNot(contains('田中太郎')),
+          reason: 'Tanaka receives the mail; it is not about Tanaka',
+        );
+        expect(
+          callContentFor(contact, at, userName: userName).script,
+          isNot(contains('田中太郎')),
+        );
+      }
     });
 
     test('the custom words win only when there are any', () {
@@ -166,8 +203,8 @@ void main() {
         mailMessage: '   ',
       );
       expect(
-        mailBodyFor(blank, at),
-        defaultOversleepMailMessage(name: 'x', at: at),
+        mailBodyFor(blank, at, userName: 'u'),
+        defaultOversleepMailMessage(userName: 'u', at: at),
         reason: 'an empty custom message is not a message',
       );
       expect(
@@ -178,12 +215,17 @@ void main() {
             mailMessage: 'おきて',
           ),
           at,
+          userName: 'u',
         ),
         'おきて',
       );
       expect(
-        mailBodyFor(const OversleepContact(name: 'x', mailMessage: 'おきて'), at),
-        defaultOversleepMailMessage(name: 'x', at: at),
+        mailBodyFor(
+          const OversleepContact(name: 'x', mailMessage: 'おきて'),
+          at,
+          userName: 'u',
+        ),
+        defaultOversleepMailMessage(userName: 'u', at: at),
         reason: 'デフォルト mode ignores the stored custom text',
       );
     });
@@ -195,12 +237,15 @@ void main() {
         phoneMode: PhoneMode.custom,
         recordingPath: '/tmp/a.m4a',
       );
-      expect(callContentFor(custom, at).recordingPath, '/tmp/a.m4a');
-      expect(callContentFor(custom, at).script, isNull);
+      expect(
+        callContentFor(custom, at, userName: 'u').recordingPath,
+        '/tmp/a.m4a',
+      );
+      expect(callContentFor(custom, at, userName: 'u').script, isNull);
 
       const auto = OversleepContact(name: 'x', recordingPath: '/tmp/a.m4a');
-      expect(callContentFor(auto, at).recordingPath, isNull);
-      expect(callContentFor(auto, at).script, isNotNull);
+      expect(callContentFor(auto, at, userName: 'u').recordingPath, isNull);
+      expect(callContentFor(auto, at, userName: 'u').script, isNotNull);
     });
   });
 }

@@ -26,10 +26,18 @@ final firedAt = DateTime(2026, 8, 27, 7);
 DateTime at({int minutes = 0, int seconds = 0}) =>
     firedAt.add(Duration(minutes: minutes, seconds: seconds));
 
+/// The app's own user: the subject of every default sentence below. Deliberately
+/// not the contact's name, which is who the message goes *to*.
+const userName = '山田花子';
+
 Future<({ProviderContainer container, AlarmSession session})> ringing(
-  Alarm alarm,
-) async {
-  final container = await testContainer(extra: [fakeAlarmServiceOverride()]);
+  Alarm alarm, {
+  String user = userName,
+}) async {
+  final container = await testContainer(
+    prefs: {if (user.isNotEmpty) 'settings.userName': user},
+    extra: [fakeAlarmServiceOverride()],
+  );
   await container.read(alarmRepositoryProvider).save(alarm);
   await container
       .read(walletRepositoryProvider)
@@ -84,9 +92,10 @@ void main() {
         );
         expect(
           event.detail,
-          '電話（自動音声）：田中太郎 さんは 07:00 のアラームを解除できていません。寝坊しています。',
+          '電話（自動音声）：山田花子 さんは 07:00 のアラームを解除できていません。寝坊しています。',
           reason:
-              'the route, the mode, and the words — filled at the alarm time',
+              'the route, the mode, and the words — the app user is the '
+              'subject, 田中太郎 is only who hears it',
         );
 
         final stored = await r.container
@@ -216,7 +225,7 @@ void main() {
       );
       expect(channelsFor(both), [ContactChannel.phone, ContactChannel.email]);
       expect(
-        detailFor(both, DateTime(2026, 8, 27, 6, 5)),
+        detailFor(both, DateTime(2026, 8, 27, 6, 5), userName: userName),
         '電話（カスタム録音） / メール（カスタムメッセージ）：おきて',
       );
     });
@@ -228,20 +237,33 @@ void main() {
         emailEnabled: true,
       );
       expect(
-        detailFor(auto, DateTime(2026, 8, 27, 6, 5)),
-        'メール（デフォルト）：母 さんは 06:05 のアラームを解除できていません。寝坊しています。',
+        detailFor(auto, DateTime(2026, 8, 27, 6, 5), userName: userName),
+        'メール（デフォルト）：【Wake or Pay】山田花子 さんは 06:05 の'
+        'アラームを解除できていません。寝坊しています。',
+        reason: '母 is the one being told, not the one oversleeping',
+      );
+      expect(
+        detailFor(auto, DateTime(2026, 8, 27, 6, 5), userName: ''),
+        'メール（デフォルト）：【Wake or Pay】$oversleepUserNameFallback さんは 06:05 の'
+        'アラームを解除できていません。寝坊しています。',
+        reason: 'no name set still must not fall back to the contact',
       );
     });
 
     test('a contact with no route switched on records nothing sent', () async {
       expect(
-        detailFor(const OversleepContact(name: 'x'), DateTime(2026, 8, 27)),
+        detailFor(
+          const OversleepContact(name: 'x'),
+          DateTime(2026, 8, 27),
+          userName: userName,
+        ),
         isNull,
       );
       expect(
         detailFor(
           const OversleepContact(name: 'x', phone: '090-0000-0000'),
           DateTime(2026, 8, 27),
+          userName: userName,
         ),
         isNull,
         reason: 'a number with its toggle off goes nowhere',

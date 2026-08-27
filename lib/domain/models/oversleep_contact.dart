@@ -26,25 +26,45 @@ String _hhmm(DateTime t) =>
     '${t.hour.toString().padLeft(2, '0')}:'
     '${t.minute.toString().padLeft(2, '0')}';
 
+/// Who the message is about when the user has not told the app their name.
+///
+/// The message goes *to* the contact, so falling back to the contact's own
+/// name would address them about themselves. A generic subject is wrong-ish;
+/// naming the recipient is simply wrong.
+const oversleepUserNameFallback = 'Wake or Pay の利用者';
+
+/// The name the default message puts in the subject position: the app's user,
+/// or [oversleepUserNameFallback] when they have not set one. Pure.
+String oversleepSubjectName(String userName) {
+  final trimmed = userName.trim();
+  return trimmed.isEmpty ? oversleepUserNameFallback : trimmed;
+}
+
 /// The sentence sent when the user has not written one of their own. Pure.
 ///
-/// [name] and [at] are filled in at trigger time, not at edit time, so the
-/// stored contact never holds a stale time. The app has no name for its *own*
-/// user, so the one name it can put in the sentence is the contact's.
-String defaultOversleepMessage({required String name, required DateTime at}) =>
-    '$name さんは ${_hhmm(at)} のアラームを解除できていません。寝坊しています。';
+/// The subject is the **app's user** — the one who is oversleeping — not the
+/// contact, who is the one being told. [at] is filled in at trigger time, not
+/// at edit time, so the stored contact never holds a stale time.
+String defaultOversleepMessage({
+  required String userName,
+  required DateTime at,
+}) =>
+    '${oversleepSubjectName(userName)} さんは ${_hhmm(at)} の'
+    'アラームを解除できていません。寝坊しています。';
 
-/// The default mail body. Same sentence as the voice: one message, two routes.
+/// The default mail body. The same sentence as the voice, under a subject tag
+/// so it is recognisable in an inbox.
 String defaultOversleepMailMessage({
-  required String name,
+  required String userName,
   required DateTime at,
-}) => defaultOversleepMessage(name: name, at: at);
+}) => '【Wake or Pay】${defaultOversleepMessage(userName: userName, at: at)}';
 
-/// The script the automated voice reads when there is no recording.
+/// The script the automated voice reads when there is no recording. No tag: a
+/// spoken 「【Wake or Pay】」 is noise.
 String defaultOversleepVoiceScript({
-  required String name,
+  required String userName,
   required DateTime at,
-}) => defaultOversleepMessage(name: name, at: at);
+}) => defaultOversleepMessage(userName: userName, at: at);
 
 /// One person to tell about one alarm's oversleeping, per spec 5 as revised.
 ///
@@ -250,26 +270,34 @@ T? _byName<T extends Enum>(List<T> values, String? name) {
 }
 
 /// The body of the mail that would go out at [at]. Pure.
-String mailBodyFor(OversleepContact contact, DateTime at) {
+///
+/// [userName] is only reached for by the default body; a custom one is the
+/// user's own words and is used exactly as written.
+String mailBodyFor(
+  OversleepContact contact,
+  DateTime at, {
+  required String userName,
+}) {
   final custom = contact.mailMessage?.trim() ?? '';
   return contact.mailMode == MailMode.custom && custom.isNotEmpty
       ? custom
-      : defaultOversleepMailMessage(name: contact.name, at: at);
+      : defaultOversleepMailMessage(userName: userName, at: at);
 }
 
 /// What the call would play: the recording's path under
 /// [PhoneMode.custom], and otherwise the script the voice reads. Pure.
 ({String? recordingPath, String? script}) callContentFor(
   OversleepContact contact,
-  DateTime at,
-) {
+  DateTime at, {
+  required String userName,
+}) {
   final path = contact.recordingPath?.trim() ?? '';
   if (contact.phoneMode == PhoneMode.custom && path.isNotEmpty) {
     return (recordingPath: path, script: null);
   }
   return (
     recordingPath: null,
-    script: defaultOversleepVoiceScript(name: contact.name, at: at),
+    script: defaultOversleepVoiceScript(userName: userName, at: at),
   );
 }
 

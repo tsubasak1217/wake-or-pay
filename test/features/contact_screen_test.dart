@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wake_or_pay/app/theme_controller.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/main.dart';
@@ -176,6 +177,9 @@ Future<Alarm> save(WidgetTester tester, ProviderContainer container) async {
 String statusText(WidgetTester tester) => tester
     .widget<Text>(find.byKey(const ValueKey('contactRecordingStatus')))
     .data!;
+
+String previewText(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(ValueKey(key))).data!;
 
 void main() {
   setUp(() {
@@ -474,5 +478,89 @@ void main() {
     await scrollTo(tester, find.text('寝坊時連絡先'));
     expect(find.text('なし'), findsOneWidget);
     expect((await save(tester, container)).contact, isNull);
+  });
+
+  testWidgets('the previews name the app user, never the contact', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      expect(find.text('あなたの名前'), findsOneWidget);
+      expect(find.text('未設定'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('contactUserNameWarning')),
+        findsOneWidget,
+        reason: 'an unset name changes what goes out, so it is said out loud',
+      );
+
+      await pick(tester, '田中太郎');
+      for (final key in const ['contactMailPreview', 'contactVoicePreview']) {
+        final preview = previewText(tester, key);
+        expect(
+          preview,
+          contains(oversleepUserNameFallback),
+          reason: '$key with no name set',
+        );
+        expect(
+          preview,
+          isNot(contains('田中太郎')),
+          reason: '$key must not address the recipient about themselves',
+        );
+      }
+
+      // The same editor the 設定 screen opens.
+      await tester.tap(find.byKey(const ValueKey('contactUserNameRow')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('userNameField')),
+        ' 山田花子 ',
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(
+        container.read(settingsProvider).userName,
+        '山田花子',
+        reason: 'stored trimmed',
+      );
+      expect(find.text('未設定'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('contactUserNameWarning')),
+        findsNothing,
+      );
+      expect(
+        previewText(tester, 'contactMailPreview'),
+        '例：【Wake or Pay】山田花子 さんは 07:00 のアラームを解除できていません。寝坊しています。',
+      );
+      expect(
+        previewText(tester, 'contactVoicePreview'),
+        '読み上げる文：山田花子 さんは 07:00 のアラームを解除できていません。寝坊しています。',
+      );
+    });
+  });
+
+  testWidgets('設定 opens the same name editor', (tester) async {
+    final container = await openNewAlarm(tester);
+    // Out of the new-alarm editor and over to the 設定 tab.
+    await save(tester, container);
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('settingsUserNameRow')), findsOneWidget);
+    expect(find.text('未設定'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('settingsUserNameRow')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('userNameField')),
+      '山田花子',
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(container.read(settingsProvider).userName, '山田花子');
+    expect(find.text('山田花子'), findsOneWidget);
   });
 }
