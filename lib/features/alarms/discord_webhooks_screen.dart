@@ -54,31 +54,51 @@ class _DiscordWebhooksSubScreenState
           error: (e, _) => Center(child: Text('$e')),
           data: (data) => data.isEmpty
               ? const _EmptyList()
-              : ListView.separated(
-                  itemCount: data.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final webhook = data[i];
-                    // Tapping the row toggles; the long press is how the 共有先
-                    // itself is changed. Two jobs, two gestures — the same
-                    // split the 連絡帳 uses. The long press lives on a wrapper
-                    // because SwitchListTile has no slot for one, and the tap
-                    // still reaches the tile underneath.
-                    return GestureDetector(
-                      key: ValueKey('webhook-${webhook.id}'),
-                      onLongPress: () => _showActions(context, ref, webhook),
-                      child: SwitchListTile(
-                        value: _selected.contains(webhook.id),
-                        onChanged: (on) => setState(
-                          () => on
-                              ? _selected.add(webhook.id)
-                              : _selected.remove(webhook.id),
-                        ),
-                        title: Text(webhook.displayName),
-                        subtitle: const Text('Discord Webhook'),
+              : Column(
+                  children: [
+                    // The long press hides three things a user would otherwise
+                    // never find, and テスト送信 is the one that matters most:
+                    // a wrong URL is only ever discovered at 6am otherwise.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: Text(
+                        'タップでこのアラームの共有先を選びます。'
+                        '長押しすると テスト送信 / 編集 / 削除 ができます。',
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    );
-                  },
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: data.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final webhook = data[i];
+                          // Tapping the row toggles; the long press is how the
+                          // 共有先 itself is changed. Two jobs, two gestures —
+                          // the same split the 連絡帳 uses. The long press
+                          // lives on a wrapper because SwitchListTile has no
+                          // slot for one, and the tap still reaches the tile
+                          // underneath.
+                          return GestureDetector(
+                            key: ValueKey('webhook-${webhook.id}'),
+                            onLongPress: () =>
+                                _showActions(context, ref, webhook),
+                            child: SwitchListTile(
+                              value: _selected.contains(webhook.id),
+                              onChanged: (on) => setState(
+                                () => on
+                                    ? _selected.add(webhook.id)
+                                    : _selected.remove(webhook.id),
+                              ),
+                              title: Text(webhook.displayName),
+                              subtitle: const Text('Discord Webhook'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
         ),
         floatingActionButton: FloatingActionButton(
@@ -116,6 +136,15 @@ void _showActions(BuildContext context, WidgetRef ref, DiscordWebhook webhook) =
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              key: const ValueKey('webhookTestSend'),
+              leading: const Icon(Icons.send_outlined),
+              title: const Text('テスト送信'),
+              onTap: () {
+                Navigator.of(sheet).pop();
+                unawaited(_testSend(context, ref, webhook));
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('編集'),
               onTap: () {
@@ -135,6 +164,32 @@ void _showActions(BuildContext context, WidgetRef ref, DiscordWebhook webhook) =
         ),
       ),
     );
+
+/// The whole body of a テスト送信. No attachment, nothing about oversleeping:
+/// this is the user checking their URL, not the alarm firing.
+const discordTestSendMessage = 'Wake or Pay のテスト送信です';
+
+/// Posts one line to one 共有先, right now, and says what happened.
+///
+/// The point of the feature is that a wrong URL is otherwise discovered at
+/// 6am, by nothing arriving in a channel nobody is looking at. So the failure
+/// is reported as specifically as the sender knows it — 「失敗（HTTP 404）」 tells
+/// the user their webhook was deleted, which 「失敗」 alone never would.
+Future<void> _testSend(
+  BuildContext context,
+  WidgetRef ref,
+  DiscordWebhook webhook,
+) async {
+  // Taken before the await: the sheet is gone by the time the post answers,
+  // and this context may be too.
+  final messenger = ScaffoldMessenger.of(context);
+  final result = await ref
+      .read(discordWebhookSenderProvider)
+      .post(url: webhook.url, content: discordTestSendMessage);
+  messenger.showSnackBar(
+    SnackBar(content: Text(result.ok ? 'テスト送信しました' : result.label)),
+  );
+}
 
 Future<void> _confirmDelete(
   BuildContext context,

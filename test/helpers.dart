@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wake_or_pay/data/database.dart';
 import 'package:wake_or_pay/data/providers.dart';
+import 'package:wake_or_pay/domain/discord_post.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
@@ -176,20 +177,48 @@ class FakeVoicePlayer implements VoicePlayer {
 /// actually posted to a webhook would post into somebody's real channel. This
 /// answers from a table instead, and remembers what was asked for.
 class FakeHttpClient extends http.BaseClient {
-  FakeHttpClient({this.responses = const {}, this.throws = false});
+  FakeHttpClient({
+    this.responses = const {},
+    this.throws = false,
+    this.postStatus = 204,
+  });
 
-  /// URL → the body to answer with. A URL that is not in here answers 404.
+  /// URL → the body to answer a **GET** with. A URL that is not in here
+  /// answers 404. Only the name lookup reads this.
   final Map<String, String> responses;
 
   /// True makes every request throw, which is what being offline looks like.
   final bool throws;
 
+  /// What a **POST** answers with. Discord's own webhook answer is a 204 with
+  /// no body; a revoked webhook is a 404.
+  final int postStatus;
+
   final requested = <String>[];
+
+  /// Every POST, with its multipart body already decoded — the fields as
+  /// Discord would have parsed them, and the filenames of the parts.
+  final posted = <FakePost>[];
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final url = request.url.toString();
     requested.add(url);
+    if (request.method == 'POST') {
+      posted.add(
+        FakePost(
+          url: url,
+          fields: request is http.MultipartRequest
+              ? Map.of(request.fields)
+              : const {},
+          filenames: request is http.MultipartRequest
+              ? [for (final f in request.files) f.filename ?? '']
+              : const [],
+        ),
+      );
+      if (throws) throw const SocketException('offline');
+      return http.StreamedResponse(const Stream.empty(), postStatus);
+    }
     if (throws) throw const SocketException('offline');
     final body = responses[url];
     return http.StreamedResponse(
@@ -203,5 +232,45 @@ class FakeHttpClient extends http.BaseClient {
   }
 }
 
+/// One POST as [FakeHttpClient] saw it.
+class FakePost {
+  FakePost({required this.url, required this.fields, required this.filenames});
+
+  final String url;
+  final Map<String, String> fields;
+  final List<String> filenames;
+
+  /// The `content` Discord would have posted, dug back out of `payload_json`.
+  String get content =>
+      (jsonDecode(fields['payload_json'] ?? '{}') as Map)['content'] as String? ??
+      '';
+}
+
 Override fakeHttpClientOverride(FakeHttpClient client) =>
     httpClientProvider.overrideWithValue(client);
+
+/// A sender that posts nowhere and remembers everything it was asked to post.
+///
+/// [failFor] keys a canned result by webhook URL, so a test can make one 共有先
+/// refuse while the other one works — which is the case that matters, because
+/// a dead webhook must never stop a live one.
+class FakeDiscordWebhookSender implements DiscordWebhookSender {
+  FakeDiscordWebhookSender({this.failFor = const {}});
+
+  final Map<String, DiscordPostResult> failFor;
+
+  final posts = <({String url, String content, String? recordingPath})>[];
+
+  @override
+  Future<DiscordPostResult> post({
+    required String url,
+    required String content,
+    String? recordingPath,
+  }) async {
+    posts.add((url: url, content: content, recordingPath: recordingPath));
+    return failFor[url] ?? const DiscordPostResult.success(204);
+  }
+}
+
+Override fakeDiscordSenderOverride(FakeDiscordWebhookSender sender) =>
+    discordWebhookSenderProvider.overrideWithValue(sender);

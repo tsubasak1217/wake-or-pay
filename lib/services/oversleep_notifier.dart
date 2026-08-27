@@ -2,10 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/providers.dart';
 import '../data/repositories/contact_event_repository.dart';
+import '../domain/discord_post.dart';
 import '../domain/models.dart';
 import '../domain/oversleep_contact_rules.dart';
 import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
+import 'discord_sender.dart';
 
 /// How the app tells someone that an alarm was slept through.
 ///
@@ -26,21 +28,38 @@ abstract class OversleepNotifier {
   });
 }
 
-/// The implementation this phase ships: **nothing is sent**.
+/// The implementation this phase ships: **Discord is really sent**, the rest
+/// is still only recorded.
 ///
-/// It writes the trigger into `contact_events` and posts a notification that
-/// says, in as many words, that no message actually went out. Letting the user
-/// believe a call was placed when it was not would be worse than not having
-/// the feature at all.
-class LoggingOversleepNotifier implements OversleepNotifier {
-  LoggingOversleepNotifier(this._events, this._notifications, this._userName);
+/// The split is C3's whole shape. A webhook is an HTTPS POST the phone can
+/// make on its own, so it goes out for real; a phone call, an SMS and a mail
+/// need permissions and an SMTP account that stage D brings, so they stay a
+/// row in the log. What must never happen is the app claiming either one of
+/// those is the other — see [contactSentNotificationText].
+class OversleepDispatchNotifier implements OversleepNotifier {
+  OversleepDispatchNotifier(
+    this._events,
+    this._notifications,
+    this._sender, {
+    required this.userName,
+    required this.discordUserId,
+    required this.webhooks,
+  });
 
   final ContactEventRepository _events;
   final AppNotifier _notifications;
+  final DiscordWebhookSender _sender;
 
-  /// Read at trigger time rather than held, so renaming yourself takes effect
-  /// on alarms that were written before the rename.
-  final String Function() _userName;
+  /// Read at trigger time rather than held, so renaming yourself — or filling
+  /// the Discord ID in last night — takes effect on alarms that were written
+  /// before it.
+  final String Function() userName;
+  final String Function() discordUserId;
+
+  /// The app-wide 共有先 table, also read at trigger time: an alarm stores ids
+  /// and there is deliberately no foreign key behind them, so an id whose row
+  /// has since been deleted is simply skipped here.
+  final Future<List<DiscordWebhook>> Function() webhooks;
 
   @override
   Future<ContactEvent?> notify({
@@ -67,18 +86,80 @@ class LoggingOversleepNotifier implements OversleepNotifier {
         session.firedAt,
         contact: contact,
         share: share,
-        userName: _userName(),
+        userName: userName(),
       ),
     );
+    // Written **before** anything is posted, per spec 11.7: the once-per-
+    // session guard reads these rows, so a relaunch mid-post must find the
+    // session already marked as fired rather than send a second round.
     await _events.save(event);
 
-    final text = contactSentNotificationText(target);
+    final results = await _postToShareTargets(
+      session: session,
+      at: at,
+      share: share,
+    );
+
+    final text = contactSentNotificationText(
+      target,
+      discordSent: results.where((r) => r.ok).length,
+      discordFailed: results.where((r) => !r.ok).length,
+      otherRoutes: channelsFor(
+        contact: contact,
+      ).any((c) => c != ContactChannel.discord),
+    );
     await _notifications.show(
       id: contactNotificationId(platformAlarmId(session.alarmId)),
       title: text.title,
       body: text.body,
     );
     return event;
+  }
+
+  /// Posts to every live 共有先 on [share] and files one row for each.
+  ///
+  /// One row per webhook rather than one for the lot: 「2件中1件が失敗」 is
+  /// useless without saying *which*, and the whole reason to keep a log of a
+  /// morning nobody was awake for is to be able to read afterwards which room
+  /// actually heard about it.
+  Future<List<DiscordPostResult>> _postToShareTargets({
+    required AlarmSession session,
+    required DateTime at,
+    OversleepShare? share,
+  }) async {
+    if (share == null || !share.isUsable) return const [];
+    final known = await webhooks();
+    final content = discordOversleepContent(
+      discordUserId: discordUserId(),
+      userName: userName(),
+      message: oversleepShareBodyFor(share, session.firedAt),
+    );
+
+    final results = <DiscordPostResult>[];
+    for (final webhook in known.where((w) => share.webhookIds.contains(w.id))) {
+      final result = await _sender.post(
+        url: webhook.url,
+        content: content,
+        recordingPath: share.recordingPath,
+      );
+      results.add(result);
+      await _events.save(
+        ContactEvent(
+          // The webhook's id is on the end because the primary key is this
+          // string: two 共有先 firing in the same millisecond of the same
+          // session would otherwise be one row overwriting the other, and the
+          // failure would look exactly like a post that never happened.
+          id: 'contact-${at.millisecondsSinceEpoch}-${session.id}'
+              '-discord-${webhook.id}',
+          sessionId: session.id,
+          firedAt: at,
+          contactName: webhook.displayName,
+          channel: ContactChannel.discord,
+          detail: result.label,
+        ),
+      );
+    }
+    return results;
   }
 }
 
@@ -112,9 +193,11 @@ ContactChannel channelFor(OversleepContact? contact, OversleepShare? share) {
 /// What would have been sent, on which route, in which mode — kept so the
 /// history can show it. Pure.
 ///
-/// Nothing is actually sent, so this string is the entire evidence that the
-/// app decided to send it. It names each route and its mode by the same words
-/// the editor uses.
+/// For the personal routes, which stage D still owes, this string is the
+/// entire evidence that the app decided to send anything at all; for the
+/// Discord half it is the body that really went out, and the per-webhook rows
+/// beside it say whether each 共有先 took it. It names each route and its mode
+/// by the same words the editor uses.
 ///
 /// [userName] is the app's user — the subject of the default sentence, not the
 /// contact it is sent to.
@@ -195,12 +278,18 @@ class ContactDispatcher {
 typedef ContactBookReader = Future<List<ContactEntry>> Function();
 
 final oversleepNotifierProvider = Provider<OversleepNotifier>(
-  (ref) => LoggingOversleepNotifier(
+  (ref) => OversleepDispatchNotifier(
     ref.watch(contactEventRepositoryProvider),
     ref.watch(appNotifierProvider),
-    // read, not watch: the name is wanted at the moment of firing, and a
+    ref.watch(discordWebhookSenderProvider),
+    // read, not watch: the profile is wanted at the moment of firing, and a
     // rename should not tear this provider down mid-session.
-    () => ref.read(profileRepositoryProvider).read().userName,
+    userName: () => ref.read(profileRepositoryProvider).read().userName,
+    discordUserId: () => ref.read(profileRepositoryProvider).read()
+        .discordUserId,
+    // The table, not the cached list: this runs once, at the trigger, and the
+    // stream may not have delivered yet on a screen that was just launched.
+    webhooks: () => ref.read(discordWebhookRepositoryProvider).getAll(),
   ),
 );
 

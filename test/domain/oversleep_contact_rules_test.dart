@@ -387,10 +387,34 @@ void main() {
       );
     });
 
-    test('the notification admits that nothing was sent', () {
-      final text = contactSentNotificationText(target);
-      expect(text.title, '田中太郎 さんへの連絡');
-      expect(text.body, '田中太郎 さんへの連絡が送信されました（開発中：実際には送信していません）');
+    test('the notification says what each half actually did', () {
+      expect(contactSentNotificationText(target).title, '田中太郎 さんへの連絡');
+
+      expect(
+        contactSentNotificationText(target, otherRoutes: true).body,
+        '電話・SMS・メールは開発中で、記録だけが残ります',
+        reason: 'a call nobody placed must never read as one that was',
+      );
+      expect(
+        contactSentNotificationText(target, discordSent: 2).body,
+        'Discord 2件に投稿しました',
+        reason: 'and a post that really went out must not deny itself',
+      );
+      expect(
+        contactSentNotificationText(
+          target,
+          discordSent: 1,
+          discordFailed: 1,
+          otherRoutes: true,
+        ).body,
+        'Discord 1件に投稿しました。Discord 1件は送信できませんでした。'
+        '電話・SMS・メールは開発中で、記録だけが残ります',
+      );
+      expect(
+        contactSentNotificationText(target).body,
+        '田中太郎 さんへの連絡を記録しました',
+        reason: 'no route left — every 共有先 on it had been deleted',
+      );
     });
   });
 

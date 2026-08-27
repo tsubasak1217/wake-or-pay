@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
+import 'package:wake_or_pay/domain/discord_post.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/oversleep_notifier.dart';
@@ -42,14 +43,48 @@ DateTime at({int minutes = 0, int seconds = 0}) =>
 /// not the contact's name, which is who the message goes *to*.
 const userName = '山田花子';
 
+/// The two 共有先 the shares above point at, so a post has somewhere to go.
+///
+/// An alarm stores ids with no foreign key behind them, so a test that does
+/// not seed these is testing the dangling-id case, not the delivery one.
+Future<void> seedWebhooks(ProviderContainer container) async {
+  final repo = container.read(discordWebhookRepositoryProvider);
+  await repo.save(
+    DiscordWebhook(
+      id: 'w1',
+      url: 'https://discord.com/api/webhooks/1/aaa',
+      displayName: 'みんなのサーバー/#一般',
+      createdAt: DateTime(2026),
+    ),
+  );
+  await repo.save(
+    DiscordWebhook(
+      id: 'w2',
+      url: 'https://discord.com/api/webhooks/2/bbb',
+      displayName: '寝坊部/#通報',
+      createdAt: DateTime(2026, 1, 2),
+    ),
+  );
+}
+
+late FakeDiscordWebhookSender sender;
+
 Future<({ProviderContainer container, AlarmSession session})> ringing(
   Alarm alarm, {
   String user = userName,
+  String discordUserId = '',
+  Map<String, DiscordPostResult> failFor = const {},
+  bool webhooks = true,
 }) async {
+  sender = FakeDiscordWebhookSender(failFor: failFor);
   final container = await testContainer(
-    prefs: {if (user.isNotEmpty) 'profile.userName': user},
-    extra: [fakeAlarmServiceOverride()],
+    prefs: {
+      if (user.isNotEmpty) 'profile.userName': user,
+      if (discordUserId.isNotEmpty) 'profile.discordUserId': discordUserId,
+    },
+    extra: [fakeAlarmServiceOverride(), fakeDiscordSenderOverride(sender)],
   );
+  if (webhooks) await seedWebhooks(container);
   await container.read(alarmRepositoryProvider).save(alarm);
   await container
       .read(walletRepositoryProvider)
@@ -114,7 +149,12 @@ void main() {
         expect(stored.single, event);
 
         final posted = notifierOf(r.container).posted.single;
-        expect(posted.body, '田中太郎 さんへの連絡が送信されました（開発中：実際には送信していません）');
+        expect(
+          posted.body,
+          '電話・SMS・メールは開発中で、記録だけが残ります',
+          reason: 'the call really was not placed, and it says so',
+        );
+        expect(sender.posts, isEmpty, reason: 'no share on this alarm');
       },
     );
 
@@ -174,8 +214,10 @@ void main() {
       );
       expect(
         notifierOf(r.container).posted.single.body,
-        'Discord 2件への連絡が送信されました（開発中：実際には送信していません）',
+        'Discord 2件に投稿しました',
+        reason: 'this half really did go out, so it must not claim otherwise',
       );
+      expect(sender.posts, hasLength(2));
 
       // And still exactly once, on the share half as on the personal one.
       for (final minute in const [12, 60]) {
@@ -189,8 +231,14 @@ void main() {
         );
       }
       expect(
+        sender.posts,
+        hasLength(2),
+        reason: 'the once-per-session rule guards the posting too',
+      );
+      expect(
         await r.container.read(contactEventRepositoryProvider).getRecent(),
-        hasLength(1),
+        hasLength(3),
+        reason: 'the summary row, plus one row per 共有先 posted to',
       );
     });
 
@@ -258,6 +306,150 @@ void main() {
           .read(contactDispatcherProvider)
           .fireIfDue(alarm: fromBook, session: r.session, now: at(minutes: 11));
       expect(event!.contactName, '新しい名前 さん');
+    });
+  });
+
+  group('Discord の実送信', () {
+    /// Every row this session filed under Discord, oldest 共有先 first.
+    Future<List<ContactEvent>> discordRows(ProviderContainer c) async =>
+        (await c.read(contactEventRepositoryProvider).getRecent())
+            .where((e) => e.channel == ContactChannel.discord)
+            .where((e) => e.id.contains('-discord-'))
+            .toList()
+          ..sort((a, b) => a.id.compareTo(b.id));
+
+    test('one post and one row per 共有先', () async {
+      final r = await ringing(shareOnly, discordUserId: '123456789');
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: shareOnly, session: r.session, now: at(minutes: 11));
+
+      expect(sender.posts.map((p) => p.url), [
+        'https://discord.com/api/webhooks/1/aaa',
+        'https://discord.com/api/webhooks/2/bbb',
+      ]);
+      expect(
+        sender.posts.first.content,
+        '<@123456789> が寝坊をしています！\n> 07:00 のアラームを解除できていません。',
+        reason: 'the ID is read from the profile at the moment of firing',
+      );
+      expect(sender.posts.first.recordingPath, isNull);
+
+      final rows = await discordRows(r.container);
+      expect(rows.map((e) => e.contactName), ['みんなのサーバー/#一般', '寝坊部/#通報']);
+      expect(rows.map((e) => e.detail), ['成功', '成功']);
+      expect(
+        rows.map((e) => e.id).toSet(),
+        hasLength(2),
+        reason: 'two 共有先 in the same millisecond must not be one row',
+      );
+      expect(rows.every((e) => e.sessionId == r.session.id), isTrue);
+    });
+
+    test('no Discord ID falls back to the profile name', () async {
+      final r = await ringing(shareOnly);
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: shareOnly, session: r.session, now: at(minutes: 11));
+
+      expect(
+        sender.posts.first.content,
+        startsWith('山田花子 が寝坊をしています！'),
+      );
+    });
+
+    test('a failing 共有先 is recorded and does not stop the other', () async {
+      final r = await ringing(
+        shareOnly,
+        failFor: const {
+          'https://discord.com/api/webhooks/1/aaa': DiscordPostResult(
+            ok: false,
+            statusCode: 404,
+          ),
+        },
+      );
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: shareOnly, session: r.session, now: at(minutes: 11));
+
+      expect(
+        sender.posts,
+        hasLength(2),
+        reason: 'a revoked webhook must not silence the room that still works',
+      );
+      final rows = await discordRows(r.container);
+      expect(rows.map((e) => e.detail), ['失敗（HTTP 404）', '成功']);
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'Discord 1件に投稿しました。Discord 1件は送信できませんでした',
+      );
+    });
+
+    test('the recording is handed to the sender when there is one', () async {
+      const withRecording = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+        share: OversleepShare(
+          webhookIds: {'w1'},
+          recordingPath: '/tmp/a1-recording.m4a',
+        ),
+        oversleepTriggerMinutes: 10,
+      );
+      final r = await ringing(withRecording);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(
+            alarm: withRecording,
+            session: r.session,
+            now: at(minutes: 11),
+          );
+
+      expect(sender.posts.single.recordingPath, '/tmp/a1-recording.m4a');
+    });
+
+    test('an id whose 共有先 was deleted is skipped, not posted', () async {
+      final r = await ringing(shareOnly, webhooks: false);
+
+      final event = await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: shareOnly, session: r.session, now: at(minutes: 11));
+
+      expect(event, isNotNull, reason: 'the session still fired');
+      expect(sender.posts, isEmpty);
+      expect(await discordRows(r.container), isEmpty);
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'Discord 2件への連絡を記録しました',
+        reason: 'nothing went out, and nothing claims it did',
+      );
+    });
+
+    test('both halves: Discord went, the personal routes did not', () async {
+      const both = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+        contact: contact,
+        share: OversleepShare(webhookIds: {'w1'}),
+        oversleepTriggerMinutes: 10,
+      );
+      final r = await ringing(both);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: both, session: r.session, now: at(minutes: 11));
+
+      expect(sender.posts, hasLength(1));
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'Discord 1件に投稿しました。電話・SMS・メールは開発中で、記録だけが残ります',
+      );
     });
   });
 

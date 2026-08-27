@@ -335,6 +335,55 @@ void main() {
     );
   });
 
+  testWidgets('テスト送信 posts one line to that 共有先 and says so', (tester) async {
+    final http = FakeHttpClient();
+    await openNewAlarm(tester, http: http);
+
+    await inWebhookList(tester, () async {
+      expect(
+        find.textContaining('長押しすると テスト送信'),
+        findsOneWidget,
+        reason: 'a gesture nobody is told about is a feature nobody has',
+      );
+
+      await tester.longPress(find.byKey(const ValueKey('webhook-w2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('webhookTestSend')));
+      await tester.pumpAndSettle();
+
+      expect(http.posted, hasLength(1));
+      expect(
+        http.posted.single.url,
+        'https://discord.com/api/webhooks/2/bbb',
+        reason: 'the row that was long-pressed, not the first one',
+      );
+      expect(http.posted.single.content, 'Wake or Pay のテスト送信です');
+      expect(
+        http.posted.single.filenames,
+        isEmpty,
+        reason: 'a URL check attaches nothing',
+      );
+      expect(find.text('テスト送信しました'), findsOneWidget);
+    });
+  });
+
+  testWidgets('a テスト送信 that fails says which failure it was', (tester) async {
+    // 404: the webhook was deleted in Discord — the exact case this feature
+    // exists to catch before 6am does.
+    final http = FakeHttpClient(postStatus: 404);
+    await openNewAlarm(tester, http: http);
+
+    await inWebhookList(tester, () async {
+      await tester.longPress(find.byKey(const ValueKey('webhook-w1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('webhookTestSend')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('失敗（HTTP 404）'), findsOneWidget);
+      expect(find.text('テスト送信しました'), findsNothing);
+    });
+  });
+
   testWidgets('a long press deletes a 共有先 after asking', (tester) async {
     final container = await openNewAlarm(tester);
 

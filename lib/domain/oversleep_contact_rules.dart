@@ -217,7 +217,28 @@ String contactSpeechText(
 
 /// The notification posted when the contact fires, per spec 5. Pure.
 ///
-/// It says out loud that nothing was actually sent. Letting a user believe a
-/// message went out when it did not would be worse than not having the feature.
-({String title, String body}) contactSentNotificationText(String target) =>
-    (title: '$targetへの連絡', body: '$targetへの連絡が送信されました（開発中：実際には送信していません）');
+/// It says, route by route, what actually happened. Since C3 the Discord half
+/// **is really sent** and the personal half still is not, so a single sentence
+/// can no longer be true of both: 「実際には送信していません」 would now be a lie about
+/// a post that went into somebody's channel, and dropping the caveat would be
+/// a lie about a phone call nobody placed. Each half says its own piece.
+///
+/// [discordSent] and [discordFailed] count 共有先 posted to and 共有先 that
+/// refused; [otherRoutes] is whether the alarm also had a phone / SMS / mail
+/// route, all of which are still stage D and only recorded.
+({String title, String body}) contactSentNotificationText(
+  String target, {
+  int discordSent = 0,
+  int discordFailed = 0,
+  bool otherRoutes = false,
+}) {
+  final parts = [
+    if (discordSent > 0) 'Discord $discordSent件に投稿しました',
+    if (discordFailed > 0) 'Discord $discordFailed件は送信できませんでした',
+    if (otherRoutes) '電話・SMS・メールは開発中で、記録だけが残ります',
+  ];
+  return (
+    title: '$targetへの連絡',
+    body: parts.isEmpty ? '$targetへの連絡を記録しました' : parts.join('。'),
+  );
+}

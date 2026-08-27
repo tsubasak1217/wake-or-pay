@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../domain/discord_post.dart';
 import '../domain/models.dart';
 
 /// The one HTTP client the app talks to the network through.
@@ -60,4 +62,83 @@ class DiscordSender {
 
 final discordSenderProvider = Provider(
   (ref) => DiscordSender(ref.watch(httpClientProvider)),
+);
+
+/// How long a post is allowed to take.
+///
+/// Longer than [discordLookupTimeout] because this one carries a 30 second
+/// recording up a phone's uplink, and nobody is waiting at a text field for
+/// it. Still bounded: the ringing screen calls this, and a webhook that never
+/// answers must not leave the dispatcher hanging until the user gives up.
+const discordPostTimeout = Duration(seconds: 30);
+
+/// Posting an overslept alarm to one 共有先.
+///
+/// An interface because stage D fires the same posts from a background
+/// isolate, and because every test in this app must be able to hand in
+/// something that does not reach the network: a webhook URL is somebody's live
+/// Discord channel.
+abstract class DiscordWebhookSender {
+  /// Never throws. See [DiscordPostResult].
+  Future<DiscordPostResult> post({
+    required String url,
+    required String content,
+    String? recordingPath,
+  });
+}
+
+/// The real one, over [httpClientProvider].
+class HttpDiscordWebhookSender implements DiscordWebhookSender {
+  const HttpDiscordWebhookSender(this._client);
+
+  final http.Client _client;
+
+  /// Every failure is a value, never a throw.
+  ///
+  /// This runs at the moment the alarm has already been slept through, from
+  /// the ringing screen's dispatcher. A webhook that was revoked last week, a
+  /// phone in a tunnel, a recording file that vanished — none of them may take
+  /// down the screen, the loss clock, or the *other* webhook in the same list.
+  @override
+  Future<DiscordPostResult> post({
+    required String url,
+    required String content,
+    String? recordingPath,
+  }) async {
+    try {
+      final plan = buildDiscordPost(
+        content: content,
+        recordingPath: recordingPath,
+        fileExists: (path) => File(path).existsSync(),
+      );
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse(normalizeDiscordWebhookUrl(url)),
+      )..fields.addAll(plan.fields);
+      final file = plan.file;
+      if (file != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            file.field,
+            file.path,
+            filename: file.filename,
+          ),
+        );
+      }
+      final streamed = await _client.send(request).timeout(discordPostTimeout);
+      // Drained even though nothing here reads it: an unread response body
+      // holds the connection open.
+      final response = await http.Response.fromStream(streamed);
+      final code = response.statusCode;
+      return code >= 200 && code < 300
+          ? DiscordPostResult.success(code)
+          : DiscordPostResult(ok: false, statusCode: code);
+    } on Object catch (e) {
+      return DiscordPostResult(ok: false, error: '$e');
+    }
+  }
+}
+
+final discordWebhookSenderProvider = Provider<DiscordWebhookSender>(
+  (ref) => HttpDiscordWebhookSender(ref.watch(httpClientProvider)),
 );

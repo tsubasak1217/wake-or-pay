@@ -65,6 +65,10 @@ Future<({ProviderContainer container, RecordingSpeaker speaker})> openRinging(
     extra: [
       fakeAlarmServiceOverride(),
       speakerProvider.overrideWithValue(speaker),
+      // Nothing on this screen has a 共有先 on it, but the dispatcher it drives
+      // is the one that really posts to Discord now, and no test of it may be
+      // one webhook URL away from somebody's live channel.
+      fakeDiscordSenderOverride(FakeDiscordWebhookSender()),
     ],
   );
   await container.read(alarmRepositoryProvider).save(alarm);
@@ -188,7 +192,7 @@ void main() {
     final posted = notifierOf(r.container).posted;
     expect(
       posted.map((p) => p.body),
-      contains('$targetへの連絡が送信されました（開発中：実際には送信していません）'),
+      contains('電話・SMS・メールは開発中で、記録だけが残ります'),
     );
 
     // Ticking on does not send a second one.
