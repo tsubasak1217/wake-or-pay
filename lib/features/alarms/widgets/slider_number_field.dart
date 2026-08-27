@@ -31,7 +31,9 @@ class SliderNumberField extends StatefulWidget {
   final int max;
   final ValueChanged<int> onChanged;
 
-  /// Shown after the field, e.g. `分` or `コイン`.
+  /// Shown beside the field, e.g. `分` or `コイン/分`. Deliberately *not* the
+  /// field's `suffixText`: a long unit wraps inside the input and pushes the
+  /// number out of sight, which is exactly what a numeric field must never do.
   final String? suffix;
   final String? semanticLabel;
 
@@ -108,7 +110,7 @@ class _SliderNumberFieldState extends State<SliderNumberField> {
         ),
         const SizedBox(width: 12),
         SizedBox(
-          width: 88,
+          width: 96,
           child: TextField(
             key: const ValueKey('sliderNumberInput'),
             controller: _controller,
@@ -116,14 +118,17 @@ class _SliderNumberFieldState extends State<SliderNumberField> {
             keyboardType: TextInputType.number,
             textAlign: TextAlign.end,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               isDense: true,
-              border: const OutlineInputBorder(),
-              suffixText: widget.suffix,
+              border: OutlineInputBorder(),
             ),
             onChanged: _onTextChanged,
           ),
         ),
+        if (widget.suffix != null) ...[
+          const SizedBox(width: 8),
+          Text(widget.suffix!, style: Theme.of(context).textTheme.bodyMedium),
+        ],
       ],
     );
   }
