@@ -451,9 +451,11 @@ class _KakugoIsland extends ConsumerWidget {
 
   final Alarm seed;
 
-  static const background = Color(0xFF160B0C);
-  static const danger = Color(0xFFFF5252);
-  static const onDanger = Color(0xFFFFEBEE);
+  // The one 覚悟 palette, shared with the alarm list's row for the same alarm
+  // so the two never disagree about what danger looks like.
+  static const background = kakugoBackground;
+  static const danger = kakugoDanger;
+  static const onDanger = kakugoOnDanger;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

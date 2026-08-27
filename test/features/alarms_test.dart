@@ -108,7 +108,11 @@ void main() {
     // Back on Home, showing the new alarm.
     expect(find.text('07:00'), findsOneWidget);
     expect(find.text('月・金 ・ 計算（3問）'), findsOneWidget);
-    expect(find.text('500 コイン/分 ・ 最大 1000'), findsOneWidget);
+    // The 覚悟 row is its own thing now: the badge from the gauge, the rate,
+    // and the worst case in the editor's own words on a line of its own.
+    expect(find.text('💀'), findsOneWidget);
+    expect(find.text('500 コイン/分'), findsOneWidget);
+    expect(find.text('寝坊で失う最大金額 1000 コイン'), findsOneWidget);
 
     final saved =
         (await container.read(alarmRepositoryProvider).getAll()).single;

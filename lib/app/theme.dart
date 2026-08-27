@@ -11,6 +11,16 @@ import 'package:flutter/material.dart';
 /// SIL Open Font License 1.1 — see `assets/fonts/LICENSE.md` and `OFL.txt`.
 const appFontFamily = 'MPLUSRounded1c';
 
+/// The palette 覚悟 is drawn in, wherever it appears.
+///
+/// Deliberately outside the selectable themes and identical on all three: a
+/// pledge to burn money is the one thing in the app that must not look like
+/// whatever colour the user picked this week. Red on near-black, everywhere —
+/// the editor's danger island and the alarm list's row for the same alarm.
+const kakugoBackground = Color(0xFF160B0C);
+const kakugoDanger = Color(0xFFFF5252);
+const kakugoOnDanger = Color(0xFFFFEBEE);
+
 /// A selectable colour scheme. `price` is in reward tokens; 0 = free.
 class AppTheme {
   const AppTheme({

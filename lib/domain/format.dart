@@ -41,6 +41,28 @@ String snoozeLabel(Snooze? snooze) => snooze == null
     ? 'オフ'
     : '${snooze.intervalMinutes}分 ・ 最大${snooze.maxCount}回';
 
+/// The rate on its own, for the alarm list. Pure.
+String kakugoRateLabel(int ratePerMinute) => '$ratePerMinute コイン/分';
+
+/// The worst case, in the editor's own words. Pure.
+///
+/// The same sentence as the 覚悟 island's header, because it is the same
+/// number: the list must not make the stake look smaller than the editor did.
+String maxLossLabel(int cap) => '寝坊で失う最大金額 $cap コイン';
+
+/// The badge on a 覚悟 row of the alarm list, by the same thresholds as
+/// [kakugoMood]. Pure.
+///
+/// One glance down a list of alarms should say which of them can hurt, and how
+/// much, before any of the numbers are read.
+String kakugoBadge(int ratePerMinute) {
+  if (ratePerMinute >= 500) return '💀';
+  if (ratePerMinute >= 100) return '🔥';
+  if (ratePerMinute >= 50) return '⚠️';
+  if (ratePerMinute >= 10) return '💦';
+  return '💸';
+}
+
 /// The gauge wording from the concept doc, by rate. Pure.
 String kakugoMood(int ratePerMinute) {
   if (ratePerMinute >= 500) return '💀 寝るな';
