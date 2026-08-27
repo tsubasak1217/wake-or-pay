@@ -41,13 +41,10 @@ class HomeScreen extends ConsumerWidget {
             ? const Center(child: Text('アラームはまだありません'))
             : ListView.separated(
                 itemCount: list.length,
-                // A hairline between two calm rows, and air around a 覚悟 one:
-                // that row is a card with a glow, and a divider drawn against
-                // it reads as a mistake.
-                separatorBuilder: (context, index) =>
-                    list[index].isKakugo || list[index + 1].isKakugo
-                    ? const SizedBox(height: 4)
-                    : const Divider(height: 1),
+                // The same hairline between every pair of rows. A 覚悟 row is
+                // not a card any more — it is the same row in different
+                // colours — so it gets the same separator as the calm ones.
+                separatorBuilder: (context, index) => const Divider(height: 1),
                 itemBuilder: (context, index) => _AlarmTile(alarm: list[index]),
               ),
       ),
@@ -112,59 +109,21 @@ class _AlarmTile extends ConsumerWidget {
       // the row disappears — a deleted alarm that still rings is the one bug
       // this screen must never have.
       onDelete: () => ref.read(alarmControllerProvider).delete(alarm),
-      child: alarm.isKakugo
-          ? _KakugoRow(alarm: alarm, snoozedUntil: snoozedUntil)
-          : _PlainRow(alarm: alarm, snoozedUntil: snoozedUntil),
+      child: _AlarmRow(alarm: alarm, snoozedUntil: snoozedUntil),
     );
   }
 }
 
-/// A row with nothing at stake. Unchanged, and deliberately so: the calm ones
-/// have to stay calm for the loud one to mean anything.
-class _PlainRow extends ConsumerWidget {
-  const _PlainRow({required this.alarm, required this.snoozedUntil});
-
-  final Alarm alarm;
-  final DateTime? snoozedUntil;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    return ListTile(
-      onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
-      title: Text(
-        hhmm(alarm.hour, alarm.minute),
-        style: theme.textTheme.displaySmall?.copyWith(
-          color: alarm.enabled ? null : theme.disabledColor,
-        ),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${repeatDaysLabel(alarm.repeatDays)} ・ ${alarm.wakeCheck.label}',
-          ),
-          const Text('覚悟なし'),
-          if (snoozedUntil != null) _SnoozingLabel(until: snoozedUntil!),
-        ],
-      ),
-      trailing: Switch(
-        value: alarm.enabled,
-        onChanged: (v) =>
-            ref.read(alarmControllerProvider).setEnabled(alarm, v),
-      ),
-    );
-  }
-}
-
-/// A row with money on it.
+/// One row, whatever is at stake.
 ///
-/// Red on near-black, bordered and lit, with the badge from the 覚悟 gauge at
-/// the front and the worst case spelled out in the same words the editor used.
-/// The point of the app is that this alarm does not look like the others, and
-/// a list where every row looks the same is a list that hides the stake.
-class _KakugoRow extends ConsumerWidget {
-  const _KakugoRow({required this.alarm, required this.snoozedUntil});
+/// A 覚悟 alarm and a plain one are the *same* row: same structure, same
+/// spacing, the time in the same place and the switch on the same pixel. What
+/// changes is only the paint — near-black behind it, a red frame and a glow,
+/// red text. An inset card or a badge column of its own would push the content
+/// around, and a list whose rows do not line up is harder to read than one
+/// loud row is worth.
+class _AlarmRow extends ConsumerWidget {
+  const _AlarmRow({required this.alarm, required this.snoozedUntil});
 
   final Alarm alarm;
   final DateTime? snoozedUntil;
@@ -172,7 +131,7 @@ class _KakugoRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final kakugo = alarm.kakugo!;
+    final kakugo = alarm.kakugo;
     // Off means the pledge is not armed tonight; the row still says what it
     // would cost, but it stops shouting about it.
     final on = alarm.enabled;
@@ -185,121 +144,129 @@ class _KakugoRow extends ConsumerWidget {
           )
         : null;
 
+    final badge = kakugo == null
+        ? ''
+        : kakugoBadge(kakugo.ratePerMinute, kakugo.cap);
+
+    final tile = ListTile(
+      onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            hhmm(alarm.hour, alarm.minute),
+            key: const ValueKey('alarmTime'),
+            style: theme.textTheme.displaySmall?.copyWith(
+              color: _timeColor(theme, kakugo != null, on),
+            ),
+          ),
+          // Right beside the time, on the same line, and smaller than it — so
+          // it cannot make the line taller than the row without one.
+          if (badge.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                badge,
+                key: const ValueKey('kakugoBadge'),
+                style: const TextStyle(fontSize: 24),
+              ),
+            ),
+        ],
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            repeatDaysLabel(alarm.repeatDays),
+            key: const ValueKey('alarmRepeat'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: kakugo == null
+                  ? theme.colorScheme.onSurfaceVariant
+                  : kakugoOnDanger.withValues(alpha: 0.75),
+            ),
+          ),
+          Text(
+            _summary(kakugo, contact),
+            key: const ValueKey('alarmSummary'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: kakugo == null
+                  ? theme.colorScheme.onSurfaceVariant
+                  : kakugoDanger,
+            ),
+          ),
+          if (snoozedUntil != null) _SnoozingLabel(until: snoozedUntil!),
+        ],
+      ),
+      trailing: Switch(
+        value: alarm.enabled,
+        onChanged: (v) =>
+            ref.read(alarmControllerProvider).setEnabled(alarm, v),
+      ),
+    );
+
+    if (kakugo == null) return tile;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      // No margin and no padding: the frame is painted *over* the row
+      // (foregroundDecoration), so the border cannot inset the content and
+      // move the time out of line with the row above it.
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
+        color: kakugoBackground,
         boxShadow: [
           BoxShadow(
             color: kakugoDanger.withValues(alpha: on ? 0.32 : 0.10),
             blurRadius: 14,
-            spreadRadius: 1,
           ),
         ],
       ),
-      // The colour and the border go on a Material rather than on the box
-      // above: ListTile paints its background and its ink on the nearest
-      // Material ancestor, and a coloured box in between would hide both.
-      child: Material(
-        color: kakugoBackground,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(
-            color: kakugoDanger.withValues(alpha: on ? 0.95 : 0.45),
-            width: 1.5,
+      foregroundDecoration: BoxDecoration(
+        border: Border.all(
+          color: kakugoDanger.withValues(alpha: on ? 0.95 : 0.45),
+          width: 1.5,
+        ),
+      ),
+      // ListTile paints its ink and its text from the ambient colour scheme,
+      // so the row gets a dark scheme of its own — otherwise the light themes
+      // would draw black text on this black row. The editor's 覚悟 island does
+      // the same.
+      child: Theme(
+        data: theme.copyWith(
+          colorScheme: theme.colorScheme.copyWith(
+            brightness: Brightness.dark,
+            surface: kakugoBackground,
+            onSurface: kakugoOnDanger,
+            onSurfaceVariant: kakugoDanger,
+            error: kakugoDanger,
           ),
         ),
-        // ListTile paints from the ambient colour scheme, so the row gets a
-        // dark scheme of its own — otherwise the light themes would draw black
-        // text on this black card. The editor's 覚悟 island does the same.
-        child: Theme(
-          data: theme.copyWith(
-            colorScheme: theme.colorScheme.copyWith(
-              brightness: Brightness.dark,
-              surface: kakugoBackground,
-              onSurface: kakugoOnDanger,
-              onSurfaceVariant: kakugoDanger,
-              error: kakugoDanger,
-            ),
-          ),
-          child: ListTile(
-            onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
-            leading: Text(
-              kakugoBadge(kakugo.ratePerMinute, kakugo.cap),
-              key: const ValueKey('kakugoBadge'),
-              style: const TextStyle(fontSize: 30),
-            ),
-            title: Text(
-              hhmm(alarm.hour, alarm.minute),
-              style: theme.textTheme.displaySmall?.copyWith(
-                color: on
-                    ? kakugoOnDanger
-                    : kakugoOnDanger.withValues(alpha: 0.4),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${repeatDaysLabel(alarm.repeatDays)} ・ ${alarm.wakeCheck.label}',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: kakugoOnDanger.withValues(alpha: 0.75),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  kakugoRateLabel(kakugo.ratePerMinute),
-                  key: const ValueKey('kakugoRate'),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: kakugoDanger,
-                  ),
-                ),
-                Text(
-                  maxLossLabel(kakugo.cap),
-                  key: const ValueKey('kakugoMaxLoss'),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: kakugoDanger,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (contact != null) _ContactLine(contact: contact),
-                if (snoozedUntil != null) _SnoozingLabel(until: snoozedUntil!),
-              ],
-            ),
-            trailing: Switch(
-              value: alarm.enabled,
-              onChanged: (v) =>
-                  ref.read(alarmControllerProvider).setEnabled(alarm, v),
-            ),
-          ),
-        ),
+        child: Material(color: Colors.transparent, child: tile),
       ),
     );
   }
-}
 
-/// 「📞 ✉ 田中太郎」 — who hears about it, and how.
-class _ContactLine extends StatelessWidget {
-  const _ContactLine({required this.contact});
+  static Color? _timeColor(ThemeData theme, bool kakugo, bool on) {
+    if (kakugo) {
+      return on ? kakugoOnDanger : kakugoOnDanger.withValues(alpha: 0.4);
+    }
+    return on ? null : theme.disabledColor;
+  }
 
-  final OversleepContact contact;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 2),
-    child: Text(
+  /// 「覚悟あり ・ 100 コイン/分 ・ 📞 田中太郎」 — the pledge, the price and who
+  /// hears about it, in that order and only when there is one.
+  ///
+  /// The per-minute price is dropped at 0: a 連絡だけ pledge burns nothing by
+  /// the minute, and 「0 コイン/分」 on a row is noise.
+  static String _summary(Kakugo? kakugo, OversleepContact? contact) => [
+    kakugo == null ? '覚悟なし' : '覚悟あり',
+    if (kakugo != null && kakugo.ratePerMinute > 0)
+      kakugoRateLabel(kakugo.ratePerMinute),
+    if (contact != null)
       [
         if (contact.willPhone) '📞',
         if (contact.willEmail) '✉',
         contact.name,
       ].join(' '),
-      key: const ValueKey('kakugoContact'),
-      style: Theme.of(context).textTheme.bodyMedium
-          ?.copyWith(color: kakugoOnDanger),
-    ),
-  );
+  ].join(' ・ ');
 }
 
 /// 「スヌーズ中 7:05」. The same on both kinds of row: a pending re-ring is a

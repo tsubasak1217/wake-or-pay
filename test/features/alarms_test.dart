@@ -107,12 +107,14 @@ void main() {
 
     // Back on Home, showing the new alarm.
     expect(find.text('07:00'), findsOneWidget);
-    expect(find.text('月・金 ・ 計算（3問）'), findsOneWidget);
-    // The 覚悟 row is its own thing now: the badge from the gauge, the rate,
-    // and the worst case in the editor's own words on a line of its own.
-    expect(find.text('💀'), findsOneWidget);
-    expect(find.text('500 コイン/分'), findsOneWidget);
-    expect(find.text('寝坊で失う最大金額 1000 コイン'), findsOneWidget);
+    expect(find.text('月・金'), findsOneWidget);
+    // The 覚悟 row is the same row in different colours: the badge beside the
+    // time, and one line saying there is a pledge and what it costs. The wake
+    // check and the worst case stay in the editor.
+    expect(find.text('💀'), findsOneWidget, reason: '1000 ÷ 500 = 2分');
+    expect(find.text('覚悟あり ・ 500 コイン/分'), findsOneWidget);
+    expect(find.textContaining('寝坊で失う最大金額'), findsNothing);
+    expect(find.textContaining('計算（3問）'), findsNothing);
 
     final saved =
         (await container.read(alarmRepositoryProvider).getAll()).single;

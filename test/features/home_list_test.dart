@@ -49,6 +49,9 @@ Future<ProviderContainer> pumpHome(
   return container;
 }
 
+String textOf(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+
 void main() {
   setUp(() {
     final view = TestWidgetsFlutterBinding.ensureInitialized()
@@ -76,8 +79,7 @@ void main() {
 
     await pumpHome(tester, alarms: const [plainAlarm]);
     expect(find.byKey(const ValueKey('kakugoBadge')), findsNothing);
-    expect(find.byKey(const ValueKey('kakugoMaxLoss')), findsNothing);
-    expect(find.text('覚悟なし'), findsOneWidget);
+    expect(textOf(tester, 'alarmSummary'), '覚悟なし');
   });
 
   testWidgets('the badge follows the gauge — minutes to the cap', (
@@ -103,20 +105,71 @@ void main() {
     expect(kakugoBadge(1500, 3000), '💀', reason: 'the pure function agrees');
   });
 
-  testWidgets('the rate and the worst case are both on the row', (
+  testWidgets('a 覚悟 row and a plain row are laid out identically', (
     tester,
   ) async {
+    // The 覚悟 row differs in colour, frame and glow — and in nothing that
+    // moves a pixel. Same time position, same switch, same row height.
+    await pumpHome(tester, alarms: const [plainAlarm]);
+    final plainTime = tester.getTopLeft(find.byKey(const ValueKey('alarmTime')));
+    final plainSwitch = tester.getRect(find.byType(Switch));
+    final plainRow = tester.getRect(find.byType(SwipeToDelete));
+
     await pumpHome(tester, alarms: const [kakugoAlarm]);
-    expect(find.text('500 コイン/分'), findsOneWidget);
-    expect(find.text('寝坊で失う最大金額 3000 コイン'), findsOneWidget);
-    expect(find.text('06:30'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('alarmTime'))),
+      plainTime,
+      reason: 'the time does not move for a pledge',
+    );
+    expect(tester.getRect(find.byType(Switch)), plainSwitch);
+    expect(tester.getRect(find.byType(SwipeToDelete)), plainRow);
   });
 
-  testWidgets('the contact is named, with the routes it would use', (
+  testWidgets('three lines: the time, the repeat, and what is at stake', (
     tester,
   ) async {
-    await pumpHome(tester, alarms: const [kakugoAlarm]);
-    expect(find.text('📞 ✉ 田中太郎'), findsOneWidget);
+    await pumpHome(
+      tester,
+      alarms: [
+        kakugoAlarm.copyWith(repeatDays: const {1, 2, 3, 4, 5}),
+        plainAlarm,
+      ],
+    );
+
+    expect(find.text('06:30'), findsOneWidget);
+    expect(find.text('平日'), findsOneWidget);
+    expect(find.text('覚悟あり ・ 500 コイン/分 ・ 📞 ✉ 田中太郎'), findsOneWidget);
+
+    expect(find.text('08:15'), findsOneWidget);
+    expect(find.text('一回限り'), findsOneWidget);
+    expect(find.text('覚悟なし'), findsOneWidget);
+
+    // The wake check and the worst case live in the editor now: the list says
+    // when it rings, whether it can hurt, and who hears about it.
+    expect(find.textContaining('寝坊で失う最大金額'), findsNothing);
+    expect(find.textContaining('ノーマル'), findsNothing);
+    expect(find.textContaining('計算'), findsNothing);
+  });
+
+  testWidgets('a 0 コイン/分 pledge is a badge-less, price-less 覚悟あり row', (
+    tester,
+  ) async {
+    await pumpHome(
+      tester,
+      alarms: [
+        kakugoAlarm.copyWith(
+          kakugo: const Kakugo(ratePerMinute: 0, cap: 3000),
+        ),
+      ],
+    );
+
+    expect(find.byKey(const ValueKey('kakugoBadge')), findsNothing);
+    expect(find.textContaining('コイン/分'), findsNothing);
+    expect(
+      textOf(tester, 'alarmSummary'),
+      '覚悟あり ・ 📞 ✉ 田中太郎',
+      reason: 'the pledge is the phone call',
+    );
   });
 
   testWidgets('the contact name is the one the 連絡帳 has now', (tester) async {
@@ -133,13 +186,13 @@ void main() {
       ],
     );
     // Renamed, and the address was dropped, so the mail route goes with it.
-    expect(find.text('📞 田中太郎（部長）'), findsOneWidget);
+    expect(textOf(tester, 'alarmSummary'), endsWith('・ 📞 田中太郎（部長）'));
     expect(find.textContaining('✉'), findsNothing);
   });
 
-  testWidgets('no contact, no line', (tester) async {
+  testWidgets('no contact, no name on the row', (tester) async {
     await pumpHome(tester, alarms: [kakugoAlarm.copyWith(clearContact: true)]);
-    expect(find.byKey(const ValueKey('kakugoContact')), findsNothing);
+    expect(textOf(tester, 'alarmSummary'), '覚悟あり ・ 500 コイン/分');
     expect(find.byKey(const ValueKey('kakugoBadge')), findsOneWidget);
   });
 
@@ -187,6 +240,6 @@ void main() {
     expect(saved.enabled, isFalse);
     // Still a 覚悟 row, still saying what it would cost — just not armed.
     expect(find.byKey(const ValueKey('kakugoBadge')), findsOneWidget);
-    expect(find.text('寝坊で失う最大金額 3000 コイン'), findsOneWidget);
+    expect(textOf(tester, 'alarmSummary'), startsWith('覚悟あり ・ 500 コイン/分'));
   });
 }
