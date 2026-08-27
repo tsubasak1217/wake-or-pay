@@ -9,6 +9,8 @@ AlarmSession session({
   int coinsAtFire = 100000,
   SessionStatus status = SessionStatus.ringing,
   int graceMinutes = 1,
+  List<DateTime> snoozes = const [],
+  DateTime? currentRingAt,
 }) => AlarmSession(
   id: 's1',
   alarmId: 'a1',
@@ -17,6 +19,8 @@ AlarmSession session({
   coinsAtFire: coinsAtFire,
   status: status,
   graceMinutes: graceMinutes,
+  snoozes: snoozes,
+  currentRingAt: currentRingAt,
 );
 
 /// Big enough that the cap never bites, so a test about grace is only about
@@ -250,6 +254,222 @@ void main() {
         ).status,
         SessionStatus.failed,
       );
+    });
+  });
+
+  // Spec 4: the snooze half of the loss. rate 100/min, 50 coins a press, and a
+  // cap far out of reach unless a test is about the cap.
+  group('snooze', () {
+    const continuous = Kakugo(
+      ratePerMinute: 100,
+      cap: 1000000,
+      snoozePenalty: 50,
+    );
+    const resets = Kakugo(
+      ratePerMinute: 100,
+      cap: 1000000,
+      snoozePenalty: 50,
+      snoozeResetsClock: true,
+    );
+
+    List<DateTime> presses(int n) => [
+      for (var i = 0; i < n; i++) at(minutes: 2 + i * 5),
+    ];
+
+    group('規定時刻から加算し続ける', () {
+      test('grace 1: the minute part never notices the snoozes', () {
+        for (final (count, expected) in const [
+          (0, 1000),
+          (1, 1050),
+          (3, 1150),
+        ]) {
+          final s = session(
+            kakugo: continuous,
+            graceMinutes: 1,
+            snoozes: presses(count),
+            // Silent right now, and it makes no difference: the clock runs
+            // from firedAt.
+            currentRingAt: at(minutes: 12),
+          );
+          expect(lossAt(at(minutes: 10), s), expected, reason: '$count presses');
+        }
+      });
+
+      test('grace 5: the same table, five minutes cheaper', () {
+        for (final (count, expected) in const [(0, 600), (1, 650), (3, 750)]) {
+          final s = session(
+            kakugo: continuous,
+            graceMinutes: 5,
+            snoozes: presses(count),
+          );
+          expect(lossAt(at(minutes: 10), s), expected, reason: '$count presses');
+        }
+      });
+
+      test('the penalty lands the instant the button is pressed', () {
+        final s = session(
+          kakugo: continuous,
+          snoozes: presses(1),
+          currentRingAt: at(minutes: 7),
+        );
+        // 7:02:00, still inside nothing much: one billed minute plus one press.
+        expect(lossAt(at(minutes: 2), s), 250);
+      });
+    });
+
+    group('次に鳴る時刻を起点にし直す', () {
+      AlarmSession resetSession({int count = 1, int graceMinutes = 1}) =>
+          session(
+            kakugo: resets,
+            graceMinutes: graceMinutes,
+            snoozes: presses(count),
+            currentRingAt: at(minutes: 7),
+          );
+
+      test('grace 1: silent minutes cost nothing but the press does', () {
+        final s = resetSession();
+        expect(lossAt(at(minutes: 5), s), 50, reason: 'still snoozing');
+        expect(lossAt(at(minutes: 7), s), 50, reason: 're-ring, grace afresh');
+        expect(lossAt(at(minutes: 7, seconds: 59), s), 50);
+        expect(lossAt(at(minutes: 8), s), 150, reason: 'first billed minute');
+        expect(lossAt(at(minutes: 10), s), 350);
+      });
+
+      test('grace 5 applies again from the re-ring', () {
+        final s = resetSession(graceMinutes: 5);
+        expect(lossAt(at(minutes: 11, seconds: 59), s), 50);
+        expect(lossAt(at(minutes: 12), s), 150);
+        expect(lossAt(at(minutes: 15), s), 450);
+      });
+
+      test('0 presses is exactly the old rule', () {
+        final s = session(
+          kakugo: resets,
+          snoozes: const [],
+          // Never snoozed, so currentRingAt is firedAt.
+        );
+        expect(lossAt(at(seconds: 59), s), 0);
+        expect(lossAt(at(minutes: 10), s), 1000);
+      });
+
+      test('3 presses stack while the clock keeps restarting', () {
+        final s = resetSession(count: 3);
+        expect(lossAt(at(minutes: 6), s), 150, reason: 'silent, 3 x 50');
+        expect(lossAt(at(minutes: 10), s), 450, reason: '3 billed min + 150');
+      });
+
+      test('the grace countdown restarts too', () {
+        final s = resetSession();
+        expect(graceRemaining(at(minutes: 7), s), const Duration(minutes: 1));
+        expect(graceRemaining(at(minutes: 8), s), Duration.zero);
+        // Continuous mode never gets a second window.
+        final c = session(
+          kakugo: continuous,
+          snoozes: presses(1),
+          currentRingAt: at(minutes: 7),
+        );
+        expect(graceRemaining(at(minutes: 7), c), Duration.zero);
+      });
+    });
+
+    test('the cap clamps the snooze part too', () {
+      final s = session(
+        kakugo: const Kakugo(ratePerMinute: 100, cap: 100, snoozePenalty: 50),
+        snoozes: presses(3),
+      );
+      expect(lossAt(firedAt, s), 100, reason: '150 of penalty, capped at 100');
+      expect(lossAt(at(minutes: 30), s), 100);
+    });
+
+    test('the balance at fire time clamps it harder still', () {
+      final s = session(
+        kakugo: const Kakugo(ratePerMinute: 100, cap: 1000, snoozePenalty: 50),
+        coinsAtFire: 80,
+        snoozes: presses(3),
+      );
+      expect(lossAt(at(minutes: 30), s), 80);
+    });
+
+    test('a stored penalty outside 0-1000 is clamped on the way out', () {
+      final s = session(
+        kakugo: const Kakugo(
+          ratePerMinute: 1,
+          cap: 1000000,
+          snoozePenalty: 99999,
+        ),
+        snoozes: presses(1),
+      );
+      expect(lossAt(firedAt, s), maxSnoozePenalty);
+    });
+
+    group('judgeStatus', () {
+      test('one press fails the morning however fast the check goes', () {
+        expect(
+          judgeStatus(Duration.zero, graceMinutes: 5, snoozed: true),
+          SessionStatus.failed,
+        );
+        expect(
+          judgeStatus(
+            const Duration(seconds: 1),
+            graceMinutes: 5,
+            snoozed: false,
+          ),
+          SessionStatus.success,
+        );
+      });
+
+      test('snoozed but loss 0 is still failed', () {
+        // A plain alarm: nothing at stake, snoozed once, cleared in 30 seconds.
+        final s = finalizeSession(
+          session(kakugo: null, snoozes: presses(1)),
+          at(seconds: 30),
+        );
+        expect(s.loss, 0);
+        expect(s.status, SessionStatus.failed);
+
+        // And a pledge whose snooze is free: same answer.
+        final free = finalizeSession(
+          session(
+            kakugo: const Kakugo(
+              ratePerMinute: 100,
+              cap: 1000,
+              snoozePenalty: 0,
+              snoozeResetsClock: true,
+            ),
+            snoozes: presses(1),
+            currentRingAt: at(minutes: 7),
+          ),
+          at(minutes: 7, seconds: 30),
+        );
+        expect(free.loss, 0, reason: 'inside the fresh grace window');
+        expect(free.status, SessionStatus.failed);
+      });
+
+      test('finalizing carries the presses into the settled session', () {
+        final s = finalizeSession(
+          session(kakugo: continuous, snoozes: presses(2)),
+          at(minutes: 10),
+        );
+        expect(s.snoozes, hasLength(2));
+        expect(s.loss, 1100);
+        expect(s.status, SessionStatus.failed);
+      });
+    });
+
+    test('the 60 minute valve still measures from firedAt', () {
+      final s = recoverSession(
+        session(
+          kakugo: resets,
+          snoozes: presses(1),
+          currentRingAt: at(minutes: 55),
+        ),
+        at(minutes: 60),
+      );
+      expect(s.status, SessionStatus.failed);
+      expect(s.dismissedAt, at(minutes: 60), reason: 'not pushed out by snooze');
+      // 5 minutes of the current ring bill 5 (the grace minute is the first
+      // billed one), plus one press.
+      expect(s.loss, 550);
     });
   });
 

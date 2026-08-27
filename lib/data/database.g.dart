@@ -1094,6 +1094,30 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _kakugoSnoozePenaltyMeta =
+      const VerificationMeta('kakugoSnoozePenalty');
+  @override
+  late final GeneratedColumn<int> kakugoSnoozePenalty = GeneratedColumn<int>(
+    'kakugo_snooze_penalty',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _kakugoSnoozeResetsClockMeta =
+      const VerificationMeta('kakugoSnoozeResetsClock');
+  @override
+  late final GeneratedColumn<bool> kakugoSnoozeResetsClock =
+      GeneratedColumn<bool>(
+        'kakugo_snooze_resets_clock',
+        aliasedName,
+        true,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("kakugo_snooze_resets_clock" IN (0, 1))',
+        ),
+      );
   static const VerificationMeta _coinsAtFireMeta = const VerificationMeta(
     'coinsAtFire',
   );
@@ -1163,6 +1187,8 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
     kakugoHostage,
     kakugoRatePerMinute,
     kakugoCap,
+    kakugoSnoozePenalty,
+    kakugoSnoozeResetsClock,
     coinsAtFire,
     graceMinutes,
     wakeCheckResolved,
@@ -1247,6 +1273,24 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
       context.handle(
         _kakugoCapMeta,
         kakugoCap.isAcceptableOrUnknown(data['kakugo_cap']!, _kakugoCapMeta),
+      );
+    }
+    if (data.containsKey('kakugo_snooze_penalty')) {
+      context.handle(
+        _kakugoSnoozePenaltyMeta,
+        kakugoSnoozePenalty.isAcceptableOrUnknown(
+          data['kakugo_snooze_penalty']!,
+          _kakugoSnoozePenaltyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('kakugo_snooze_resets_clock')) {
+      context.handle(
+        _kakugoSnoozeResetsClockMeta,
+        kakugoSnoozeResetsClock.isAcceptableOrUnknown(
+          data['kakugo_snooze_resets_clock']!,
+          _kakugoSnoozeResetsClockMeta,
+        ),
       );
     }
     if (data.containsKey('coins_at_fire')) {
@@ -1336,6 +1380,14 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
         DriftSqlType.int,
         data['${effectivePrefix}kakugo_cap'],
       ),
+      kakugoSnoozePenalty: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}kakugo_snooze_penalty'],
+      ),
+      kakugoSnoozeResetsClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}kakugo_snooze_resets_clock'],
+      ),
       coinsAtFire: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}coins_at_fire'],
@@ -1375,6 +1427,13 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
   final String? kakugoHostage;
   final int? kakugoRatePerMinute;
   final int? kakugoCap;
+
+  /// The other half of the frozen pledge, added in v5. v4 stored these two on
+  /// the alarm but not on the session, so a snapshot could not carry them; a
+  /// row written before v5 reads back as "snoozing is free and never stops the
+  /// clock", which is the rule it was written under.
+  final int? kakugoSnoozePenalty;
+  final bool? kakugoSnoozeResetsClock;
   final int coinsAtFire;
 
   /// The grace window frozen at fire time, alongside the pledge and balance.
@@ -1399,6 +1458,8 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     this.kakugoHostage,
     this.kakugoRatePerMinute,
     this.kakugoCap,
+    this.kakugoSnoozePenalty,
+    this.kakugoSnoozeResetsClock,
     required this.coinsAtFire,
     required this.graceMinutes,
     this.wakeCheckResolved,
@@ -1424,6 +1485,14 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     }
     if (!nullToAbsent || kakugoCap != null) {
       map['kakugo_cap'] = Variable<int>(kakugoCap);
+    }
+    if (!nullToAbsent || kakugoSnoozePenalty != null) {
+      map['kakugo_snooze_penalty'] = Variable<int>(kakugoSnoozePenalty);
+    }
+    if (!nullToAbsent || kakugoSnoozeResetsClock != null) {
+      map['kakugo_snooze_resets_clock'] = Variable<bool>(
+        kakugoSnoozeResetsClock,
+      );
     }
     map['coins_at_fire'] = Variable<int>(coinsAtFire);
     map['grace_minutes'] = Variable<int>(graceMinutes);
@@ -1458,6 +1527,12 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       kakugoCap: kakugoCap == null && nullToAbsent
           ? const Value.absent()
           : Value(kakugoCap),
+      kakugoSnoozePenalty: kakugoSnoozePenalty == null && nullToAbsent
+          ? const Value.absent()
+          : Value(kakugoSnoozePenalty),
+      kakugoSnoozeResetsClock: kakugoSnoozeResetsClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(kakugoSnoozeResetsClock),
       coinsAtFire: Value(coinsAtFire),
       graceMinutes: Value(graceMinutes),
       wakeCheckResolved: wakeCheckResolved == null && nullToAbsent
@@ -1489,6 +1564,12 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
         json['kakugoRatePerMinute'],
       ),
       kakugoCap: serializer.fromJson<int?>(json['kakugoCap']),
+      kakugoSnoozePenalty: serializer.fromJson<int?>(
+        json['kakugoSnoozePenalty'],
+      ),
+      kakugoSnoozeResetsClock: serializer.fromJson<bool?>(
+        json['kakugoSnoozeResetsClock'],
+      ),
       coinsAtFire: serializer.fromJson<int>(json['coinsAtFire']),
       graceMinutes: serializer.fromJson<int>(json['graceMinutes']),
       wakeCheckResolved: serializer.fromJson<String?>(
@@ -1511,6 +1592,10 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       'kakugoHostage': serializer.toJson<String?>(kakugoHostage),
       'kakugoRatePerMinute': serializer.toJson<int?>(kakugoRatePerMinute),
       'kakugoCap': serializer.toJson<int?>(kakugoCap),
+      'kakugoSnoozePenalty': serializer.toJson<int?>(kakugoSnoozePenalty),
+      'kakugoSnoozeResetsClock': serializer.toJson<bool?>(
+        kakugoSnoozeResetsClock,
+      ),
       'coinsAtFire': serializer.toJson<int>(coinsAtFire),
       'graceMinutes': serializer.toJson<int>(graceMinutes),
       'wakeCheckResolved': serializer.toJson<String?>(wakeCheckResolved),
@@ -1529,6 +1614,8 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     Value<String?> kakugoHostage = const Value.absent(),
     Value<int?> kakugoRatePerMinute = const Value.absent(),
     Value<int?> kakugoCap = const Value.absent(),
+    Value<int?> kakugoSnoozePenalty = const Value.absent(),
+    Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
     int? coinsAtFire,
     int? graceMinutes,
     Value<String?> wakeCheckResolved = const Value.absent(),
@@ -1550,6 +1637,12 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
         ? kakugoRatePerMinute.value
         : this.kakugoRatePerMinute,
     kakugoCap: kakugoCap.present ? kakugoCap.value : this.kakugoCap,
+    kakugoSnoozePenalty: kakugoSnoozePenalty.present
+        ? kakugoSnoozePenalty.value
+        : this.kakugoSnoozePenalty,
+    kakugoSnoozeResetsClock: kakugoSnoozeResetsClock.present
+        ? kakugoSnoozeResetsClock.value
+        : this.kakugoSnoozeResetsClock,
     coinsAtFire: coinsAtFire ?? this.coinsAtFire,
     graceMinutes: graceMinutes ?? this.graceMinutes,
     wakeCheckResolved: wakeCheckResolved.present
@@ -1577,6 +1670,12 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           ? data.kakugoRatePerMinute.value
           : this.kakugoRatePerMinute,
       kakugoCap: data.kakugoCap.present ? data.kakugoCap.value : this.kakugoCap,
+      kakugoSnoozePenalty: data.kakugoSnoozePenalty.present
+          ? data.kakugoSnoozePenalty.value
+          : this.kakugoSnoozePenalty,
+      kakugoSnoozeResetsClock: data.kakugoSnoozeResetsClock.present
+          ? data.kakugoSnoozeResetsClock.value
+          : this.kakugoSnoozeResetsClock,
       coinsAtFire: data.coinsAtFire.present
           ? data.coinsAtFire.value
           : this.coinsAtFire,
@@ -1605,6 +1704,8 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           ..write('kakugoHostage: $kakugoHostage, ')
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap, ')
+          ..write('kakugoSnoozePenalty: $kakugoSnoozePenalty, ')
+          ..write('kakugoSnoozeResetsClock: $kakugoSnoozeResetsClock, ')
           ..write('coinsAtFire: $coinsAtFire, ')
           ..write('graceMinutes: $graceMinutes, ')
           ..write('wakeCheckResolved: $wakeCheckResolved, ')
@@ -1625,6 +1726,8 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     kakugoHostage,
     kakugoRatePerMinute,
     kakugoCap,
+    kakugoSnoozePenalty,
+    kakugoSnoozeResetsClock,
     coinsAtFire,
     graceMinutes,
     wakeCheckResolved,
@@ -1644,6 +1747,8 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           other.kakugoHostage == this.kakugoHostage &&
           other.kakugoRatePerMinute == this.kakugoRatePerMinute &&
           other.kakugoCap == this.kakugoCap &&
+          other.kakugoSnoozePenalty == this.kakugoSnoozePenalty &&
+          other.kakugoSnoozeResetsClock == this.kakugoSnoozeResetsClock &&
           other.coinsAtFire == this.coinsAtFire &&
           other.graceMinutes == this.graceMinutes &&
           other.wakeCheckResolved == this.wakeCheckResolved &&
@@ -1661,6 +1766,8 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
   final Value<String?> kakugoHostage;
   final Value<int?> kakugoRatePerMinute;
   final Value<int?> kakugoCap;
+  final Value<int?> kakugoSnoozePenalty;
+  final Value<bool?> kakugoSnoozeResetsClock;
   final Value<int> coinsAtFire;
   final Value<int> graceMinutes;
   final Value<String?> wakeCheckResolved;
@@ -1677,6 +1784,8 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     this.kakugoHostage = const Value.absent(),
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
+    this.kakugoSnoozePenalty = const Value.absent(),
+    this.kakugoSnoozeResetsClock = const Value.absent(),
     this.coinsAtFire = const Value.absent(),
     this.graceMinutes = const Value.absent(),
     this.wakeCheckResolved = const Value.absent(),
@@ -1694,6 +1803,8 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     this.kakugoHostage = const Value.absent(),
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
+    this.kakugoSnoozePenalty = const Value.absent(),
+    this.kakugoSnoozeResetsClock = const Value.absent(),
     this.coinsAtFire = const Value.absent(),
     this.graceMinutes = const Value.absent(),
     this.wakeCheckResolved = const Value.absent(),
@@ -1714,6 +1825,8 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     Expression<String>? kakugoHostage,
     Expression<int>? kakugoRatePerMinute,
     Expression<int>? kakugoCap,
+    Expression<int>? kakugoSnoozePenalty,
+    Expression<bool>? kakugoSnoozeResetsClock,
     Expression<int>? coinsAtFire,
     Expression<int>? graceMinutes,
     Expression<String>? wakeCheckResolved,
@@ -1732,6 +1845,10 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
       if (kakugoRatePerMinute != null)
         'kakugo_rate_per_minute': kakugoRatePerMinute,
       if (kakugoCap != null) 'kakugo_cap': kakugoCap,
+      if (kakugoSnoozePenalty != null)
+        'kakugo_snooze_penalty': kakugoSnoozePenalty,
+      if (kakugoSnoozeResetsClock != null)
+        'kakugo_snooze_resets_clock': kakugoSnoozeResetsClock,
       if (coinsAtFire != null) 'coins_at_fire': coinsAtFire,
       if (graceMinutes != null) 'grace_minutes': graceMinutes,
       if (wakeCheckResolved != null) 'wake_check_resolved': wakeCheckResolved,
@@ -1751,6 +1868,8 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     Value<String?>? kakugoHostage,
     Value<int?>? kakugoRatePerMinute,
     Value<int?>? kakugoCap,
+    Value<int?>? kakugoSnoozePenalty,
+    Value<bool?>? kakugoSnoozeResetsClock,
     Value<int>? coinsAtFire,
     Value<int>? graceMinutes,
     Value<String?>? wakeCheckResolved,
@@ -1768,6 +1887,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
       kakugoHostage: kakugoHostage ?? this.kakugoHostage,
       kakugoRatePerMinute: kakugoRatePerMinute ?? this.kakugoRatePerMinute,
       kakugoCap: kakugoCap ?? this.kakugoCap,
+      kakugoSnoozePenalty: kakugoSnoozePenalty ?? this.kakugoSnoozePenalty,
+      kakugoSnoozeResetsClock:
+          kakugoSnoozeResetsClock ?? this.kakugoSnoozeResetsClock,
       coinsAtFire: coinsAtFire ?? this.coinsAtFire,
       graceMinutes: graceMinutes ?? this.graceMinutes,
       wakeCheckResolved: wakeCheckResolved ?? this.wakeCheckResolved,
@@ -1807,6 +1929,14 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     if (kakugoCap.present) {
       map['kakugo_cap'] = Variable<int>(kakugoCap.value);
     }
+    if (kakugoSnoozePenalty.present) {
+      map['kakugo_snooze_penalty'] = Variable<int>(kakugoSnoozePenalty.value);
+    }
+    if (kakugoSnoozeResetsClock.present) {
+      map['kakugo_snooze_resets_clock'] = Variable<bool>(
+        kakugoSnoozeResetsClock.value,
+      );
+    }
     if (coinsAtFire.present) {
       map['coins_at_fire'] = Variable<int>(coinsAtFire.value);
     }
@@ -1840,6 +1970,8 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
           ..write('kakugoHostage: $kakugoHostage, ')
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap, ')
+          ..write('kakugoSnoozePenalty: $kakugoSnoozePenalty, ')
+          ..write('kakugoSnoozeResetsClock: $kakugoSnoozeResetsClock, ')
           ..write('coinsAtFire: $coinsAtFire, ')
           ..write('graceMinutes: $graceMinutes, ')
           ..write('wakeCheckResolved: $wakeCheckResolved, ')
@@ -3844,6 +3976,8 @@ typedef $$AlarmSessionRowsTableCreateCompanionBuilder =
       Value<String?> kakugoHostage,
       Value<int?> kakugoRatePerMinute,
       Value<int?> kakugoCap,
+      Value<int?> kakugoSnoozePenalty,
+      Value<bool?> kakugoSnoozeResetsClock,
       Value<int> coinsAtFire,
       Value<int> graceMinutes,
       Value<String?> wakeCheckResolved,
@@ -3862,6 +3996,8 @@ typedef $$AlarmSessionRowsTableUpdateCompanionBuilder =
       Value<String?> kakugoHostage,
       Value<int?> kakugoRatePerMinute,
       Value<int?> kakugoCap,
+      Value<int?> kakugoSnoozePenalty,
+      Value<bool?> kakugoSnoozeResetsClock,
       Value<int> coinsAtFire,
       Value<int> graceMinutes,
       Value<String?> wakeCheckResolved,
@@ -3921,6 +4057,16 @@ class $$AlarmSessionRowsTableFilterComposer
 
   ColumnFilters<int> get kakugoCap => $composableBuilder(
     column: $table.kakugoCap,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get kakugoSnoozePenalty => $composableBuilder(
+    column: $table.kakugoSnoozePenalty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get kakugoSnoozeResetsClock => $composableBuilder(
+    column: $table.kakugoSnoozeResetsClock,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4004,6 +4150,16 @@ class $$AlarmSessionRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get kakugoSnoozePenalty => $composableBuilder(
+    column: $table.kakugoSnoozePenalty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get kakugoSnoozeResetsClock => $composableBuilder(
+    column: $table.kakugoSnoozeResetsClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get coinsAtFire => $composableBuilder(
     column: $table.coinsAtFire,
     builder: (column) => ColumnOrderings(column),
@@ -4071,6 +4227,16 @@ class $$AlarmSessionRowsTableAnnotationComposer
 
   GeneratedColumn<int> get kakugoCap =>
       $composableBuilder(column: $table.kakugoCap, builder: (column) => column);
+
+  GeneratedColumn<int> get kakugoSnoozePenalty => $composableBuilder(
+    column: $table.kakugoSnoozePenalty,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get kakugoSnoozeResetsClock => $composableBuilder(
+    column: $table.kakugoSnoozeResetsClock,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get coinsAtFire => $composableBuilder(
     column: $table.coinsAtFire,
@@ -4142,6 +4308,8 @@ class $$AlarmSessionRowsTableTableManager
                 Value<String?> kakugoHostage = const Value.absent(),
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
+                Value<int?> kakugoSnoozePenalty = const Value.absent(),
+                Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
                 Value<int> coinsAtFire = const Value.absent(),
                 Value<int> graceMinutes = const Value.absent(),
                 Value<String?> wakeCheckResolved = const Value.absent(),
@@ -4158,6 +4326,8 @@ class $$AlarmSessionRowsTableTableManager
                 kakugoHostage: kakugoHostage,
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
+                kakugoSnoozePenalty: kakugoSnoozePenalty,
+                kakugoSnoozeResetsClock: kakugoSnoozeResetsClock,
                 coinsAtFire: coinsAtFire,
                 graceMinutes: graceMinutes,
                 wakeCheckResolved: wakeCheckResolved,
@@ -4176,6 +4346,8 @@ class $$AlarmSessionRowsTableTableManager
                 Value<String?> kakugoHostage = const Value.absent(),
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
+                Value<int?> kakugoSnoozePenalty = const Value.absent(),
+                Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
                 Value<int> coinsAtFire = const Value.absent(),
                 Value<int> graceMinutes = const Value.absent(),
                 Value<String?> wakeCheckResolved = const Value.absent(),
@@ -4192,6 +4364,8 @@ class $$AlarmSessionRowsTableTableManager
                 kakugoHostage: kakugoHostage,
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
+                kakugoSnoozePenalty: kakugoSnoozePenalty,
+                kakugoSnoozeResetsClock: kakugoSnoozeResetsClock,
                 coinsAtFire: coinsAtFire,
                 graceMinutes: graceMinutes,
                 wakeCheckResolved: wakeCheckResolved,

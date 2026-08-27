@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../domain/models.dart';
@@ -16,7 +18,13 @@ Snooze? _snooze(int? intervalMinutes, int? maxCount) {
   );
 }
 
-Kakugo? _kakugo(String? hostage, int? rate, int? cap) {
+Kakugo? _kakugo(
+  String? hostage,
+  int? rate,
+  int? cap, {
+  int? snoozePenalty,
+  bool? snoozeResetsClock,
+}) {
   if (rate == null || cap == null) return null;
   return Kakugo(
     hostage: HostageType.values.firstWhere(
@@ -25,8 +33,30 @@ Kakugo? _kakugo(String? hostage, int? rate, int? cap) {
     ),
     ratePerMinute: rate,
     cap: cap,
+    // Null is a row from before stage B: snoozing was free and never stopped
+    // the clock, which is exactly what these two defaults mean.
+    snoozePenalty: normalizeSnoozePenalty(snoozePenalty ?? 0),
+    snoozeResetsClock: snoozeResetsClock ?? false,
   );
 }
+
+/// The snooze presses of one session, stored as a JSON list of epoch millis.
+/// Anything unreadable is treated as "never snoozed" rather than crashing a
+/// read — the alternative is an app that cannot open its own history.
+List<DateTime> _parseSnoozes(String? json) {
+  if (json == null || json.isEmpty) return const [];
+  try {
+    return [
+      for (final ms in jsonDecode(json) as List)
+        DateTime.fromMillisecondsSinceEpoch(ms as int),
+    ];
+  } on Object {
+    return const [];
+  }
+}
+
+String _formatSnoozes(List<DateTime> snoozes) =>
+    jsonEncode([for (final t in snoozes) t.millisecondsSinceEpoch]);
 
 extension AlarmRowMapper on AlarmRow {
   Alarm toModel() => Alarm(
@@ -42,7 +72,13 @@ extension AlarmRowMapper on AlarmRow {
     graceMinutes: normalizeGraceMinutes(graceMinutes),
     snooze: _snooze(snoozeIntervalMinutes, snoozeMaxCount),
     soundId: soundId,
-    kakugo: _kakugo(kakugoHostage, kakugoRatePerMinute, kakugoCap),
+    kakugo: _kakugo(
+      kakugoHostage,
+      kakugoRatePerMinute,
+      kakugoCap,
+      snoozePenalty: kakugoSnoozePenalty,
+      snoozeResetsClock: kakugoSnoozeResetsClock,
+    ),
   );
 }
 
@@ -65,6 +101,10 @@ extension AlarmMapper on Alarm {
     kakugoHostage: Value(kakugo?.hostage.name),
     kakugoRatePerMinute: Value(kakugo?.ratePerMinute),
     kakugoCap: Value(kakugo?.cap),
+    kakugoSnoozePenalty: Value(
+      kakugo == null ? null : normalizeSnoozePenalty(kakugo!.snoozePenalty),
+    ),
+    kakugoSnoozeResetsClock: Value(kakugo?.snoozeResetsClock),
   );
 }
 
@@ -81,10 +121,20 @@ extension AlarmSessionRowMapper on AlarmSessionRow {
       orElse: () => SessionStatus.ringing,
     ),
     loss: loss,
-    kakugoSnapshot: _kakugo(kakugoHostage, kakugoRatePerMinute, kakugoCap),
+    kakugoSnapshot: _kakugo(
+      kakugoHostage,
+      kakugoRatePerMinute,
+      kakugoCap,
+      snoozePenalty: kakugoSnoozePenalty,
+      snoozeResetsClock: kakugoSnoozeResetsClock,
+    ),
     coinsAtFire: coinsAtFire,
     graceMinutes: normalizeGraceMinutes(graceMinutes),
     wakeCheckResolved: wakeCheckTypeByName(wakeCheckResolved),
+    snoozes: _parseSnoozes(snoozes),
+    currentRingAt: currentRingAtMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(currentRingAtMs!),
   );
 }
 
@@ -99,8 +149,16 @@ extension AlarmSessionMapper on AlarmSession {
     kakugoHostage: Value(kakugoSnapshot?.hostage.name),
     kakugoRatePerMinute: Value(kakugoSnapshot?.ratePerMinute),
     kakugoCap: Value(kakugoSnapshot?.cap),
+    kakugoSnoozePenalty: Value(
+      kakugoSnapshot == null
+          ? null
+          : normalizeSnoozePenalty(kakugoSnapshot!.snoozePenalty),
+    ),
+    kakugoSnoozeResetsClock: Value(kakugoSnapshot?.snoozeResetsClock),
     coinsAtFire: Value(coinsAtFire),
     graceMinutes: Value(normalizeGraceMinutes(graceMinutes)),
     wakeCheckResolved: Value(wakeCheckResolved?.name),
+    snoozes: Value(_formatSnoozes(snoozes)),
+    currentRingAtMs: Value(currentRingAt.millisecondsSinceEpoch),
   );
 }

@@ -60,6 +60,13 @@ class AlarmSessionRows extends Table {
   TextColumn get kakugoHostage => text().nullable()();
   IntColumn get kakugoRatePerMinute => integer().nullable()();
   IntColumn get kakugoCap => integer().nullable()();
+
+  /// The other half of the frozen pledge, added in v5. v4 stored these two on
+  /// the alarm but not on the session, so a snapshot could not carry them; a
+  /// row written before v5 reads back as "snoozing is free and never stops the
+  /// clock", which is the rule it was written under.
+  IntColumn get kakugoSnoozePenalty => integer().nullable()();
+  BoolColumn get kakugoSnoozeResetsClock => boolean().nullable()();
   IntColumn get coinsAtFire => integer().withDefault(const Constant(0))();
 
   /// The grace window frozen at fire time, alongside the pledge and balance.
@@ -162,7 +169,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(inMemoryExecutor());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   /// v1 → v2 adds the per alarm grace window. Both columns default to 1, which
   /// is the rule every existing row was written under, so no stored session's
@@ -176,6 +183,12 @@ class AppDatabase extends _$AppDatabase {
   /// that stage B of that spec needs no migration of its own. Everything added
   /// is nullable or defaulted to the rule the existing rows were written under:
   /// no snooze, the one bundled sound, no drawn wake check. No stored session's
+  /// loss or outcome changes.
+  ///
+  /// v4 → v5 is the one thing v4 missed: the session's frozen pledge could hold
+  /// the rate and the cap but not the snooze penalty or the clock mode, so a
+  /// ring could not remember the terms it fired under. Both columns are
+  /// nullable and read as the pre-stage-B rule, so again no stored session's
   /// loss or outcome changes.
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -200,6 +213,16 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(alarmSessionRows, alarmSessionRows.snoozes);
         await m.addColumn(alarmSessionRows, alarmSessionRows.currentRingAtMs);
         await m.createTable(contactEventRows);
+      }
+      if (from < 5) {
+        await m.addColumn(
+          alarmSessionRows,
+          alarmSessionRows.kakugoSnoozePenalty,
+        );
+        await m.addColumn(
+          alarmSessionRows,
+          alarmSessionRows.kakugoSnoozeResetsClock,
+        );
       }
     },
   );

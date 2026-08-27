@@ -12,10 +12,14 @@ enum SessionStatus { ringing, success, failed }
 /// what this session costs.
 @immutable
 class AlarmSession {
-  const AlarmSession({
+  // Not const: [currentRingAt] defaults to [firedAt], and an initializing
+  // formal cannot be read from an initializer list. A DateTime is never a
+  // constant expression anyway, so no caller loses anything.
+  // ignore: prefer_const_constructors_in_immutables
+  AlarmSession({
     required this.id,
     required this.alarmId,
-    required this.firedAt,
+    required DateTime firedAt,
     this.dismissedAt,
     this.status = SessionStatus.ringing,
     this.loss = 0,
@@ -23,7 +27,10 @@ class AlarmSession {
     this.coinsAtFire = 0,
     this.graceMinutes = minGraceMinutes,
     this.wakeCheckResolved,
-  });
+    this.snoozes = const [],
+    DateTime? currentRingAt,
+  }) : firedAt = firedAt,
+       currentRingAt = currentRingAt ?? firedAt;
 
   final String id;
   final String alarmId;
@@ -47,7 +54,19 @@ class AlarmSession {
   /// than rolling again for an easier one.
   final WakeCheckType? wakeCheckResolved;
 
+  /// Every time the user pressed snooze during this ring, oldest first. Empty
+  /// is the overwhelmingly common case and the only one a pre-stage-B row can
+  /// read back as.
+  final List<DateTime> snoozes;
+
+  /// When the ring the user is standing in front of *started*: [firedAt] for a
+  /// session that was never snoozed, the re-ring time afterwards. Defaulted
+  /// rather than nullable so no caller has to remember the first-ring case.
+  final DateTime currentRingAt;
+
   bool get isRinging => status == SessionStatus.ringing;
+
+  bool get wasSnoozed => snoozes.isNotEmpty;
 
   AlarmSession copyWith({
     String? id,
@@ -60,6 +79,8 @@ class AlarmSession {
     int? coinsAtFire,
     int? graceMinutes,
     WakeCheckType? wakeCheckResolved,
+    List<DateTime>? snoozes,
+    DateTime? currentRingAt,
   }) => AlarmSession(
     id: id ?? this.id,
     alarmId: alarmId ?? this.alarmId,
@@ -71,6 +92,8 @@ class AlarmSession {
     coinsAtFire: coinsAtFire ?? this.coinsAtFire,
     graceMinutes: graceMinutes ?? this.graceMinutes,
     wakeCheckResolved: wakeCheckResolved ?? this.wakeCheckResolved,
+    snoozes: snoozes ?? this.snoozes,
+    currentRingAt: currentRingAt ?? this.currentRingAt,
   );
 
   Map<String, dynamic> toJson() => {
@@ -84,6 +107,8 @@ class AlarmSession {
     'coinsAtFire': coinsAtFire,
     'graceMinutes': graceMinutes,
     'wakeCheckResolved': wakeCheckResolved?.name,
+    'snoozes': snoozes.map((t) => t.toIso8601String()).toList(),
+    'currentRingAt': currentRingAt.toIso8601String(),
   };
 
   factory AlarmSession.fromJson(Map<String, dynamic> json) => AlarmSession(
@@ -110,6 +135,13 @@ class AlarmSession {
     wakeCheckResolved: wakeCheckTypeByName(
       json['wakeCheckResolved'] as String?,
     ),
+    snoozes: [
+      for (final t in (json['snoozes'] as List? ?? const []))
+        DateTime.parse(t as String),
+    ],
+    currentRingAt: json['currentRingAt'] == null
+        ? null
+        : DateTime.parse(json['currentRingAt'] as String),
   );
 
   @override
@@ -124,7 +156,9 @@ class AlarmSession {
       other.kakugoSnapshot == kakugoSnapshot &&
       other.coinsAtFire == coinsAtFire &&
       other.graceMinutes == graceMinutes &&
-      other.wakeCheckResolved == wakeCheckResolved;
+      other.wakeCheckResolved == wakeCheckResolved &&
+      listEquals(other.snoozes, snoozes) &&
+      other.currentRingAt == currentRingAt;
 
   @override
   int get hashCode => Object.hash(
@@ -138,6 +172,8 @@ class AlarmSession {
     coinsAtFire,
     graceMinutes,
     wakeCheckResolved,
+    Object.hashAll(snoozes),
+    currentRingAt,
   );
 
   @override
