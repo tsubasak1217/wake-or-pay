@@ -6,17 +6,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/models.dart';
 import '../../../services/voice_recorder.dart';
 
-/// The bar the recorder draws itself on: a fixed
-/// [maxContactRecordingDuration] wide, whatever is in it.
+/// The bar the recorder draws itself on.
 ///
-/// Everything on it is measured against that limit rather than against the
-/// recording, so the knob is in the same place for the same number of seconds
-/// whether it is being recorded or played back, and a 5 second recording
-/// visibly is a fifth of a 25 second one.
+/// Two scales, and which one is in force depends on the state:
 ///
-/// [progress] is where the knob sits, 0..1 of the limit. [span] is how much of
-/// the bar the recording occupies — the same thing while recording, and the
-/// finished length once it has stopped.
+/// * **while recording** the bar is [maxContactRecordingDuration] wide, so the
+///   knob crawling towards the right edge is the countdown to the limit;
+/// * **once a recording exists** the bar is that recording wide, so the
+///   waveform spans the full width and the knob reaches the right edge exactly
+///   when playback ends.
+///
+/// The widget itself only ever sees 0..1 — the scale is chosen above it.
+///
+/// [progress] is where the knob sits, 0..1. [span] is how much of the bar the
+/// recording occupies: the elapsed fraction of the limit while recording, and
+/// the whole bar afterwards.
 class RecordingBar extends StatelessWidget {
   const RecordingBar({
     super.key,
@@ -266,19 +270,33 @@ class _ContactRecorderPanelState extends ConsumerState<ContactRecorderPanel> {
     return contactWaveformInterval * samples;
   }
 
-  double get _fraction {
-    if (_recording) return _ratio(_elapsed);
-    if (_playing) return _ratio(_played);
-    return _ratio(_length);
+  /// What the width of the bar means right now: the limit while the recording
+  /// is running, the recording itself once it has stopped.
+  ///
+  /// A finished recording of unknown length — no samples and no measurement,
+  /// which is what a device that reports no amplitudes leaves behind after the
+  /// screen has been closed and reopened — falls back to the limit rather than
+  /// dividing by zero.
+  Duration get _scale {
+    if (_recording) return maxContactRecordingDuration;
+    final length = _length;
+    return length > Duration.zero ? length : maxContactRecordingDuration;
   }
 
-  double get _span => _recording ? _ratio(_elapsed) : _ratio(_length);
+  double get _fraction {
+    if (_recording) return _ratio(_elapsed, _scale);
+    if (_playing) return _ratio(_played, _scale);
+    // Idle with something recorded: the knob rests at the end of it, which on
+    // this scale is the right edge.
+    return _hasRecording ? _ratio(_length, _scale) : 0;
+  }
 
-  static double _ratio(Duration d) =>
-      (d.inMilliseconds / maxContactRecordingDuration.inMilliseconds).clamp(
-        0.0,
-        1.0,
-      );
+  double get _span =>
+      _recording ? _ratio(_elapsed, _scale) : _ratio(_length, _scale);
+
+  static double _ratio(Duration d, Duration of) => of.inMilliseconds == 0
+      ? 0
+      : (d.inMilliseconds / of.inMilliseconds).clamp(0.0, 1.0);
 
   List<double> get _shownWaveform => _recording ? _samples : widget.waveform;
 
@@ -430,13 +448,18 @@ class _ContactRecorderPanelState extends ConsumerState<ContactRecorderPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RecordingBar(
-          progress: _fraction,
-          span: _span,
-          waveform: _shownWaveform,
-          active: _recording,
-        ),
-        const SizedBox(height: 4),
+        // Nothing recorded and nothing being recorded: an empty bar is a
+        // control with nothing to control, so the idle panel is just the
+        // 録音開始 button.
+        if (_recording || _hasRecording) ...[
+          RecordingBar(
+            progress: _fraction,
+            span: _span,
+            waveform: _shownWaveform,
+            active: _recording,
+          ),
+          const SizedBox(height: 4),
+        ],
         Text(
           _status,
           key: const ValueKey('contactRecordingStatus'),

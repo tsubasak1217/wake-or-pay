@@ -75,6 +75,9 @@ String status(WidgetTester tester) => tester
     .widget<Text>(find.byKey(const ValueKey('contactRecordingStatus')))
     .data!;
 
+bool hasBar(WidgetTester tester) =>
+    find.byKey(const ValueKey('recordingBarPainter')).evaluate().isNotEmpty;
+
 RecordingBarPainter painter(WidgetTester tester) =>
     tester
             .widget<CustomPaint>(
@@ -144,16 +147,71 @@ void main() {
   });
 
   group('the panel', () {
-    testWidgets('starts with no recording, the knob at the left', (
-      tester,
-    ) async {
+    testWidgets('starts with no recording and no bar at all', (tester) async {
       await pumpPanel(tester);
       expect(status(tester), '録音なし');
       expect(find.byKey(const ValueKey('contactRecordStart')), findsOneWidget);
       expect(find.byKey(const ValueKey('contactRecordStop')), findsNothing);
       expect(find.byKey(const ValueKey('contactRecordPlay')), findsNothing);
       expect(find.byKey(const ValueKey('contactRecordDelete')), findsNothing);
-      expect(painter(tester).progress, 0);
+      expect(hasBar(tester), isFalse, reason: 'nothing to seek through yet');
+    });
+
+    testWidgets('the bar appears with the first recording and then stays', (
+      tester,
+    ) async {
+      await pumpPanel(tester);
+      expect(hasBar(tester), isFalse);
+
+      await tester.tap(find.byKey(const ValueKey('contactRecordStart')));
+      await tester.pump();
+      expect(hasBar(tester), isTrue, reason: 'it is running towards the limit');
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.tap(find.byKey(const ValueKey('contactRecordStop')));
+      await tester.pumpAndSettle();
+      expect(hasBar(tester), isTrue, reason: 'there is a recording to play');
+    });
+
+    testWidgets('while recording the bar is the 30 second limit', (
+      tester,
+    ) async {
+      await pumpPanel(tester);
+      await tester.tap(find.byKey(const ValueKey('contactRecordStart')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 15));
+
+      expect(painter(tester).progress, closeTo(0.5, 0.01), reason: '15 of 30');
+      expect(painter(tester).span, closeTo(0.5, 0.01));
+    });
+
+    testWidgets('after the stop the bar is the recording, not the limit', (
+      tester,
+    ) async {
+      await pumpPanel(tester);
+      await tester.tap(find.byKey(const ValueKey('contactRecordStart')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 6));
+      await tester.tap(find.byKey(const ValueKey('contactRecordStop')));
+      await tester.pumpAndSettle();
+
+      // 6 of 30 seconds while it ran; the whole bar once it is a recording.
+      expect(painter(tester).span, 1.0, reason: 'the waveform spans the width');
+      expect(painter(tester).progress, 1.0, reason: 'the knob is at the end');
+
+      await tester.tap(find.byKey(const ValueKey('contactRecordPlay')));
+      await tester.pumpAndSettle();
+      player.emitPosition(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(
+        painter(tester).progress,
+        closeTo(0.5, 0.02),
+        reason: 'halfway through a 6 second recording is halfway along',
+      );
+
+      player.emitPosition(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(painter(tester).progress, 1.0, reason: 'the end is the right edge');
     });
 
     testWidgets('録音開始 becomes 停止, and the knob moves while it runs', (
@@ -253,7 +311,8 @@ void main() {
 
       player.emitPosition(const Duration(seconds: 5));
       await tester.pumpAndSettle();
-      expect(painter(tester).progress, closeTo(5 / 30, 0.001));
+      // Half of the 10 second recording, on the recording's own scale.
+      expect(painter(tester).progress, closeTo(0.5, 0.02));
       expect(status(tester), contains('再生中'));
 
       player.finish();
@@ -290,8 +349,7 @@ void main() {
       expect(status(tester), '録音なし');
       expect(find.byKey(const ValueKey('contactRecordStart')), findsOneWidget);
       expect(find.byKey(const ValueKey('contactRecordDelete')), findsNothing);
-      expect(painter(tester).waveform, isEmpty);
-      expect(painter(tester).progress, 0);
+      expect(hasBar(tester), isFalse, reason: 'back to the idle panel');
     });
 
     testWidgets('a refused microphone says so and records nothing', (
