@@ -120,6 +120,7 @@ Future<ProviderContainer> openNewAlarm(
   bool micPermitted = true,
   bool withBook = true,
   bool mailConfigured = false,
+  bool routesPermitted = true,
 }) async {
   recorder = FakeVoiceRecorder(permitted: micPermitted);
   player = FakeVoicePlayer();
@@ -127,6 +128,7 @@ Future<ProviderContainer> openNewAlarm(
     prefs: mailConfigured ? configuredMailPrefs() : const {},
     extra: [
       if (mailConfigured) seededSecretStoreOverride(),
+      routePermissionsOverride(granted: routesPermitted),
       fakeAlarmServiceOverride(),
       voiceRecorderProvider.overrideWithValue(recorder),
       voicePlayerProvider.overrideWithValue(player),
@@ -308,6 +310,44 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
     });
+  });
+
+  testWidgets('SMS asks for SEND_SMS, and a refusal leaves it off', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester, routesPermitted: false);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      await pick(tester, '田中太郎');
+      expect(routeRow(tester, 'SMS').value, isFalse);
+
+      await flip(tester, 'SMS');
+      expect(
+        routeRow(tester, 'SMS').value,
+        isFalse,
+        reason: 'a route that would silently fail at 7am must not be stored on',
+      );
+      expect(find.textContaining('SMS の送信が許可されていない'), findsOneWidget);
+    });
+
+    final saved = await save(tester, container);
+    expect(saved.contact!.smsEnabled, isFalse);
+  });
+
+  testWidgets('SMS goes on once the permission is granted', (tester) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      await pick(tester, '田中太郎');
+      await flip(tester, 'SMS');
+      expect(routeRow(tester, 'SMS').value, isTrue);
+    });
+
+    final saved = await save(tester, container);
+    expect(saved.contact!.smsEnabled, isTrue);
+    expect(saved.contact!.willSms, isTrue);
   });
 
   testWidgets('with メール送信設定 done the toggle comes alive', (tester) async {

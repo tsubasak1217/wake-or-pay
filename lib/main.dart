@@ -10,7 +10,9 @@ import 'data/providers.dart';
 import 'services/alarm_service.dart';
 import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
+import 'services/route_permissions.dart';
 import 'services/secret_store.dart';
+import 'services/sms_sender.dart';
 import 'services/speaker.dart';
 
 Future<void> main() async {
@@ -27,6 +29,11 @@ Future<void> main() async {
       // The SMTP app password. Only the real app reaches the platform
       // keystore; every test keeps the in-memory store.
       flutterSecureStoreOverride(),
+      // Only the real app is allowed to put a message on a radio; every test
+      // keeps the recording sender.
+      platformSmsSenderOverride(),
+      // And only the real app puts a permission dialog on screen.
+      pluginRoutePermissionsOverride(),
     ],
   );
 

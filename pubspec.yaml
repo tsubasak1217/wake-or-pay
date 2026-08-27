@@ -31,6 +31,10 @@ dependencies:
   # 段階D。SMTP 送信と、そのアプリパスワードの保管先。
   mailer: ^7.2.0
   flutter_secure_storage: ^11.0.0
+  android_alarm_manager_plus: ^5.1.1
+  # SMS 送信と電話発信の Android 側。app 内のローカルプラグイン。
+  wop_platform:
+    path: packages/wop_platform
 
 dev_dependencies:
   flutter_test:

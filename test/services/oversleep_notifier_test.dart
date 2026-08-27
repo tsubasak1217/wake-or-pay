@@ -6,6 +6,7 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/oversleep_notifier.dart';
+import 'package:wake_or_pay/services/sms_sender.dart';
 
 import '../helpers.dart';
 
@@ -82,6 +83,7 @@ Future<({ProviderContainer container, AlarmSession session})> ringing(
   bool webhooks = true,
   bool mailConfigured = false,
   SendResult mailResult = const SendResult.success(),
+  SendResult smsResult = const SendResult.success(),
 }) async {
   sender = FakeDiscordWebhookSender(failFor: failFor);
   mails = FakeMailSender(result: mailResult);
@@ -95,6 +97,7 @@ Future<({ProviderContainer container, AlarmSession session})> ringing(
       fakeAlarmServiceOverride(),
       fakeDiscordSenderOverride(sender),
       fakeMailSenderOverride(mails),
+      recordingSmsSenderOverride(RecordingSmsSender(result: smsResult)),
       if (mailConfigured) seededSecretStoreOverride(),
     ],
   );
@@ -572,6 +575,102 @@ void main() {
 
       expect(mails.sent, isEmpty);
       expect(await mailRows(r.container), isEmpty);
+    });
+  });
+
+  group('SMS の実送信', () {
+    const smsContact = OversleepContact(
+      name: '田中太郎',
+      phone: '090-1234-5678',
+      smsEnabled: true,
+    );
+    const texted = Alarm(
+      id: 'a1',
+      hour: 7,
+      minute: 0,
+      kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+      contact: smsContact,
+      oversleepTriggerMinutes: 10,
+    );
+
+    Future<ContactEvent?> smsRow(ProviderContainer c) async =>
+        (await c.read(contactEventRepositoryProvider).getRecent())
+            .where((e) => e.id.endsWith('-sms'))
+            .firstOrNull;
+
+    test('the text really goes out, to the normalised number', () async {
+      final r = await ringing(texted);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: texted, session: r.session, now: at(minutes: 11));
+
+      final sent = smsSenderOf(r.container).sent.single;
+      expect(sent.to, '09012345678', reason: 'the radio wants digits');
+      expect(sent.body, contains(userName));
+      expect(sent.body, contains('07:00'));
+      expect(sent.body, isNot(contains('【Wake or Pay】')));
+
+      expect(notifierOf(r.container).posted.single.body, 'SMSを送信しました');
+      expect((await smsRow(r.container))!.detail, '成功');
+    });
+
+    test('a refused permission is a row and a sentence, never a throw',
+        () async {
+      final r = await ringing(
+        texted,
+        smsResult: const SendResult.failure(SendFailure.permission),
+      );
+
+      final event = await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: texted, session: r.session, now: at(minutes: 11));
+
+      expect(event, isNotNull);
+      expect(notifierOf(r.container).posted.single.body, 'SMSは送信できませんでした');
+      expect((await smsRow(r.container))!.detail, '失敗（権限がありません）');
+    });
+
+    test('SMS goes before メール, and both are reported', () async {
+      const both = OversleepContact(
+        name: '田中太郎',
+        phone: '090-1234-5678',
+        email: 'taro@example.com',
+        smsEnabled: true,
+        emailEnabled: true,
+      );
+      const alarm = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+        contact: both,
+        oversleepTriggerMinutes: 10,
+      );
+      final r = await ringing(alarm, mailConfigured: true);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: alarm, session: r.session, now: at(minutes: 11));
+
+      expect(smsSenderOf(r.container).sent, hasLength(1));
+      expect(mails.sent, hasLength(1));
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'SMS・メールを送信しました',
+        reason: 'the loudest route is named first, as everywhere else',
+      );
+    });
+
+    test('SMS off on the contact texts nobody', () async {
+      final r = await ringing(pledged);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: pledged, session: r.session, now: at(minutes: 11));
+
+      expect(smsSenderOf(r.container).sent, isEmpty);
+      expect(await smsRow(r.container), isNull);
     });
   });
 

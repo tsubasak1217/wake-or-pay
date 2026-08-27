@@ -10,6 +10,7 @@ import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
 import 'discord_sender.dart';
 import 'mail_sender.dart';
+import 'sms_sender.dart';
 
 /// How the app tells someone that an alarm was slept through.
 ///
@@ -30,19 +31,19 @@ abstract class OversleepNotifier {
   });
 }
 
-/// The implementation this phase ships: **Discord and mail are really sent**,
-/// the phone call and the SMS are still only recorded.
+/// The implementation this phase ships: **Discord, mail and SMS are really
+/// sent**; the phone call is still only recorded.
 ///
-/// A webhook is an HTTPS POST and a mail is an SMTP conversation, both of
-/// which the phone can hold on its own; a call and a text need Android
-/// permissions that D2 and D3 bring. What must never happen is the app
-/// claiming either group is the other — see [contactSentNotificationText].
+/// What must never happen is the app claiming either group is the other — see
+/// [contactSentNotificationText], which names the routes that went out, the
+/// ones that failed, and the ones it could not yet perform, separately.
 class OversleepDispatchNotifier implements OversleepNotifier {
   OversleepDispatchNotifier(
     this._events,
     this._notifications,
     this._sender,
-    this._mail, {
+    this._mail,
+    this._sms, {
     required this.userName,
     required this.discordUserId,
     required this.webhooks,
@@ -52,6 +53,7 @@ class OversleepDispatchNotifier implements OversleepNotifier {
   final AppNotifier _notifications;
   final DiscordWebhookSender _sender;
   final MailSender _mail;
+  final SmsSender _sms;
 
   /// Read at trigger time rather than held, so renaming yourself — or filling
   /// the Discord ID in last night — takes effect on alarms that were written
@@ -151,6 +153,22 @@ class OversleepDispatchNotifier implements OversleepNotifier {
   }) async {
     if (contact == null) return const [];
     final runs = <({ContactChannel channel, SendResult result})>[];
+
+    // SMS before mail: a text message makes a phone buzz on a bedside table,
+    // and a mail lands in an inbox somebody opens at nine. The loudest route
+    // available goes first, which is the same order every other list of routes
+    // in this app is written in.
+    if (contact.willSms) {
+      final sms = buildOversleepSms(
+        contact,
+        session.firedAt,
+        userName: userName(),
+      );
+      runs.add((
+        channel: ContactChannel.sms,
+        result: await _sms.send(to: sms.to, body: sms.body),
+      ));
+    }
 
     if (contact.willEmail) {
       // The alarm's own time, not the trigger time: that is what the message
@@ -261,7 +279,6 @@ List<ContactChannel> channelsFor({
 /// is empty the sentence disappears on its own.
 List<ContactChannel> pendingChannelsFor(OversleepContact? contact) => [
   if (contact?.willPhone ?? false) ContactChannel.phone,
-  if (contact?.willSms ?? false) ContactChannel.sms,
 ];
 
 /// The single channel the event row is filed under. Pure.
@@ -368,6 +385,7 @@ final oversleepNotifierProvider = Provider<OversleepNotifier>(
     ref.watch(appNotifierProvider),
     ref.watch(discordWebhookSenderProvider),
     ref.watch(mailSenderProvider),
+    ref.watch(smsSenderProvider),
     // read, not watch: the profile is wanted at the moment of firing, and a
     // rename should not tear this provider down mid-session.
     userName: () => ref.read(profileRepositoryProvider).read().userName,

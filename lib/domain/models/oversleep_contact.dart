@@ -317,6 +317,41 @@ String oversleepSmsBodyFor(
     _customBody(contact) ??
     defaultOversleepSmsMessage(userName: userName, at: at);
 
+/// [raw] as a dialable / textable string. Pure.
+///
+/// People write numbers the way they read them — 090-1234-5678, (03) 1234
+/// 5678, ＋８１… — and both `SmsManager` and `ACTION_CALL` want the digits. A
+/// leading `+` is the one non-digit that carries meaning, so it survives in
+/// its ASCII form; everything else goes, and full-width digits fold onto
+/// ASCII, because a number pasted out of a Japanese page is routinely written
+/// in them.
+///
+/// Nothing here validates. A number that is not a number comes back short or
+/// empty, and the platform is the authority on whether it can be reached.
+String normalizePhoneNumber(String raw) {
+  final buffer = StringBuffer();
+  for (final rune in raw.trim().runes) {
+    if (rune >= 0x30 && rune <= 0x39) {
+      buffer.writeCharCode(rune);
+    } else if (rune >= 0xFF10 && rune <= 0xFF19) {
+      buffer.writeCharCode(rune - 0xFF10 + 0x30);
+    } else if (buffer.isEmpty && (rune == 0x2B || rune == 0xFF0B)) {
+      buffer.write('+');
+    }
+  }
+  return buffer.toString();
+}
+
+/// The whole SMS sent to one contact about one overslept alarm. Pure.
+({String to, String body}) buildOversleepSms(
+  OversleepContact contact,
+  DateTime at, {
+  required String userName,
+}) => (
+  to: normalizePhoneNumber(contact.phone ?? ''),
+  body: oversleepSmsBodyFor(contact, at, userName: userName),
+);
+
 /// How the app reached out — or would have, while delivery is stubbed.
 enum ContactChannel { phone, sms, email, discord, log }
 

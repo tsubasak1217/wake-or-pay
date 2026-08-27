@@ -1,0 +1,26 @@
+name: wop_platform
+description: >-
+  Wake or Pay の Android 側だけの機能（SMS 送信・電話発信とスピーカーフォン）を
+  プラットフォームチャネルで出すだけの、この app 専用パッケージ。
+publish_to: 'none'
+version: 0.0.1
+
+# なぜ app の MainActivity ではなくパッケージなのか：
+# 仕様 11.7 のバックグラウンド発火は android_alarm_manager_plus が作る別の
+# FlutterEngine で走る。そのエンジンに登録されるのは GeneratedPluginRegistrant が
+# 知っているプラグインだけで、MainActivity.configureFlutterEngine で貼った
+# チャネルは届かない。pub のプラグインとして書くと両方のエンジンに登録される。
+environment:
+  sdk: ^3.13.1
+  flutter: '>=3.12.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.wakeorpay.platform
+        pluginClass: WopPlatformPlugin

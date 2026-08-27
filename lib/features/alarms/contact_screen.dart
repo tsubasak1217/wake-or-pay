@@ -6,6 +6,7 @@ import '../../data/providers.dart';
 import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
 import '../../services/mail_settings.dart';
+import '../../services/route_permissions.dart';
 import '../profile/mail_settings_screen.dart';
 import '../profile/profile_overlay.dart';
 import 'contact_book_screen.dart';
@@ -148,6 +149,29 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     _smsEnabled = false;
   });
 
+  /// SMS needs `SEND_SMS`, and spec 11.5 asks for it here — at the moment the
+  /// route is switched on, where the reason for the dialog is on screen — not
+  /// at launch.
+  ///
+  /// A refusal leaves the toggle off and says so. Storing it on anyway would
+  /// put a route in the alarm that silently fails at 7am, which is the one
+  /// outcome this whole feature exists to avoid.
+  Future<void> _setSms(bool on) async {
+    if (!on) {
+      setState(() => _smsEnabled = false);
+      return;
+    }
+    final granted = await ref.read(routePermissionsProvider).requestSms();
+    if (!mounted) return;
+    if (granted) {
+      setState(() => _smsEnabled = true);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('SMS の送信が許可されていないので、SMS は使えません')),
+    );
+  }
+
   /// The example the preview is drawn against: a fixed 07:00, so the text does
   /// not move under the user while they read it.
   static final _previewAt = DateTime(2026, 1, 1, 7);
@@ -246,8 +270,10 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                   label: 'SMS',
                   value: smsOn,
                   enabled: hasPhone,
-                  subtitle: hasPhone ? null : 'この連絡先には電話番号がありません',
-                  onChanged: (v) => setState(() => _smsEnabled = v),
+                  subtitle: hasPhone
+                      ? 'あなたの番号から相手にメッセージを送ります'
+                      : 'この連絡先には電話番号がありません',
+                  onChanged: _setSms,
                 ),
                 // Modelled nowhere and offered nowhere: the row exists so the
                 // list of routes is the whole list, and the note says why it
@@ -293,8 +319,8 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
               ),
             const SizedBox(height: 16),
             Text(
-              'メールと寝坊の共有（Discord）は実際に送信します。'
-              '電話と SMS はまだ送信せず、発火した記録がアプリ内に残るだけです。',
+              'SMS・メールと寝坊の共有（Discord）は実際に送信します。'
+              '電話はまだ発信せず、発火した記録がアプリ内に残るだけです。',
               style: theme.textTheme.bodySmall,
             ),
           ],

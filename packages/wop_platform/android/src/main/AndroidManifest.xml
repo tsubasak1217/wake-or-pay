@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 権限は app 本体のマニフェストで宣言する。段階Cで INTERNET が
+         デバッグ用マニフェストにしか無く、リリースだけ壊れていたのと同じ
+         事故を避けるため、権限の宣言場所は一つに寄せている。 -->
+</manifest>

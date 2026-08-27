@@ -16,7 +16,9 @@ import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
 import 'package:wake_or_pay/services/discord_sender.dart';
 import 'package:wake_or_pay/services/mail_sender.dart';
+import 'package:wake_or_pay/services/route_permissions.dart';
 import 'package:wake_or_pay/services/secret_store.dart';
+import 'package:wake_or_pay/services/sms_sender.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
 
 /// Overrides backing the app with an in-memory database and in-memory
@@ -330,4 +332,20 @@ Override seededSecretStoreOverride({String mailPassword = 'app-password'}) =>
     secretStoreProvider.overrideWithValue(
       InMemorySecretStore()
         ..values[MailSettingsRepository.passwordSecretKey] = mailPassword,
+    );
+
+/// An SMS sender that reaches no radio and remembers what it was asked to
+/// send. The provider's default is already a [RecordingSmsSender]; this reads
+/// it back with a type.
+RecordingSmsSender smsSenderOf(ProviderContainer container) =>
+    container.read(smsSenderProvider) as RecordingSmsSender;
+
+Override recordingSmsSenderOverride(RecordingSmsSender sender) =>
+    smsSenderProvider.overrideWithValue(sender);
+
+/// Permissions that answer [granted] without a platform. The provider's
+/// default already grants; this is for the refusal case.
+Override routePermissionsOverride({bool granted = true}) =>
+    routePermissionsProvider.overrideWithValue(
+      AlwaysGrantRoutePermissions(granted: granted),
     );
