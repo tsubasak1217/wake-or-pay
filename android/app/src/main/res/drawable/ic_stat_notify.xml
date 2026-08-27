@@ -1,0 +1,16 @@
+<!-- The status bar icon for the app's own notifications (snooze, oversleep
+     contact). Android masks small icons to a single colour, so this is a flat
+     white silhouette of an alarm clock with no fill variation. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+  <path
+      android:fillColor="#FFFFFFFF"
+      android:pathData="M12,4c-4.42,0 -8,3.58 -8,8s3.58,8 8,8 8,-3.58 8,-8 -3.58,-8 -8,-8zM12.5,12.2l3.2,1.9 -0.75,1.23L11,12.8L11,7.5h1.5v4.7z"/>
+  <path
+      android:fillColor="#FFFFFFFF"
+      android:pathData="M7.88,1.79L2.72,6.13 1.44,4.6 6.6,0.26zM22.56,4.6l-1.29,1.53 -5.16,-4.34 1.29,-1.53z"/>
+</vector>

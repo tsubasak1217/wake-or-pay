@@ -10,7 +10,9 @@ import '../app/router.dart';
 import '../data/providers.dart';
 import '../domain/models.dart' as domain;
 import '../domain/schedule.dart';
+import '../domain/snooze_rules.dart';
 import 'alarm_settings_builder.dart';
+import 'app_notifier.dart';
 import 'session_service.dart';
 
 final sessionServiceProvider = Provider(
@@ -85,10 +87,76 @@ class AlarmService {
   Future<void> cancel(domain.Alarm alarm) =>
       pkg.Alarm.stop(platformAlarmId(alarm.id));
 
+  /// Arms [alarm] to ring again at [ringAt] — the snooze re-ring.
+  ///
+  /// Same platform id and same payload as the ring it replaces, so the re-ring
+  /// lands in [_handleRing] and finds the session that is already open.
+  Future<void> setRingAt(domain.Alarm alarm, DateTime ringAt) =>
+      pkg.Alarm.set(alarmSettings: buildAlarmSettings(alarm, ringAt));
+
+  /// Alarms with a snoozed session waiting to come back.
+  ///
+  /// The reschedule pass has to skip these: their platform alarm is armed for
+  /// the re-ring, and `Alarm.set` replaces an alarm with the same id, so a
+  /// blind pass would quietly move a 7:05 re-ring to tomorrow morning.
+  Future<Set<String>> _snoozePendingAlarmIds(DateTime now) async {
+    final ringing = await _ref
+        .read(alarmSessionRepositoryProvider)
+        .getRingingAll();
+    return {
+      for (final session in ringing)
+        if (isSnoozePending(session, now)) session.alarmId,
+    };
+  }
+
   Future<void> rescheduleAll({DateTime? from}) async {
+    final now = from ?? DateTime.now();
+    final snoozing = await _snoozePendingAlarmIds(now);
     for (final alarm in await _ref.read(alarmRepositoryProvider).getAll()) {
+      if (snoozing.contains(alarm.id)) continue;
       await schedule(alarm, from: from);
     }
+  }
+
+  /// The user pressed スヌーズ.
+  ///
+  /// Records the press, moves the ring, and hands the screen back to Home. The
+  /// session stays `ringing` throughout: it is the same morning, and it is
+  /// still costing money under the default clock mode.
+  Future<domain.AlarmSession?> snooze(String sessionId, {DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    final sessions = _ref.read(alarmSessionRepositoryProvider);
+
+    final session = await sessions.getById(sessionId);
+    if (session == null || !session.isRinging) return null;
+
+    final alarm = await _ref
+        .read(alarmRepositoryProvider)
+        .getById(session.alarmId);
+    if (alarm == null || !canSnoozeNow(alarm, session)) return null;
+
+    final snoozed = applySnooze(session, at, alarm.snooze!);
+    await sessions.save(snoozed);
+    _ref.invalidate(sessionByIdProvider(sessionId));
+
+    // Silence this ring, then arm the next one. Dropping the id from _handled
+    // is what lets the re-ring through — without it the second ring of the
+    // same alarm would be swallowed as a duplicate.
+    await cancel(alarm);
+    _handled.remove(alarm.id);
+    await setRingAt(alarm, snoozed.currentRingAt);
+
+    final text = snoozeNotificationText(snoozed.currentRingAt);
+    await _ref
+        .read(appNotifierProvider)
+        .show(
+          id: snoozeNotificationId(platformAlarmId(alarm.id)),
+          title: text.title,
+          body: text.body,
+        );
+
+    _ref.read(appRouterProvider).go(AppRoute.home);
+    return snoozed;
   }
 
   /// Stops the platform alarm once the wake check has been cleared.
@@ -100,6 +168,10 @@ class AlarmService {
   Future<void> _afterRing(domain.Alarm alarm) async {
     await cancel(alarm);
     _handled.remove(alarm.id);
+    // Whatever the morning cost, the "snoozing until 7:05" line is now a lie.
+    await _ref
+        .read(appNotifierProvider)
+        .cancel(snoozeNotificationId(platformAlarmId(alarm.id)));
 
     if (alarm.repeatDays.isEmpty) {
       // A one-shot has done its job. Switching it off is also what stops the
@@ -146,12 +218,35 @@ class AlarmService {
         .recoverPending(now ?? DateTime.now());
 
     final alarms = _ref.read(alarmRepositoryProvider);
+    final live = {
+      outcome.resumed?.alarmId,
+      for (final s in outcome.snoozing) s.alarmId,
+    };
+
     for (final session in outcome.settled) {
-      // Never touch the alarm behind a ring that is still live, even if an
-      // older session of the same alarm was just written off.
-      if (session.alarmId == outcome.resumed?.alarmId) continue;
+      // Never touch the alarm behind a ring that is still live — resumed or
+      // snoozed — even if an older session of the same alarm was written off.
+      if (live.contains(session.alarmId)) continue;
       final alarm = await alarms.getById(session.alarmId);
       if (alarm != null) await _afterRing(alarm);
+    }
+
+    // A snooze survives a kill: re-arm the re-ring rather than resuming the
+    // screen. Setting it again is harmless if the platform kept it, and is the
+    // only thing that brings it back if it did not.
+    for (final session in outcome.snoozing) {
+      final alarm = await alarms.getById(session.alarmId);
+      if (alarm == null) continue;
+      _handled.remove(alarm.id);
+      await setRingAt(alarm, session.currentRingAt);
+      final text = snoozeNotificationText(session.currentRingAt);
+      await _ref
+          .read(appNotifierProvider)
+          .show(
+            id: snoozeNotificationId(platformAlarmId(alarm.id)),
+            title: text.title,
+            body: text.body,
+          );
     }
 
     if (outcome.resumed != null) {

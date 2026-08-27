@@ -5,6 +5,7 @@ import 'package:wake_or_pay/data/database.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
+import 'package:wake_or_pay/services/app_notifier.dart';
 
 /// Overrides backing the app with an in-memory database and in-memory
 /// preferences. The database is closed when the owning container is disposed.
@@ -45,6 +46,9 @@ class FakeAlarmService extends AlarmService {
   final scheduled = <String>[];
   final cancelled = <String>[];
 
+  /// Every re-ring armed by a snooze, in order.
+  final rearmed = <({String alarmId, DateTime ringAt})>[];
+
   @override
   Future<void> init() async {}
 
@@ -60,7 +64,17 @@ class FakeAlarmService extends AlarmService {
   Future<void> cancel(Alarm alarm) async {
     cancelled.add(alarm.id);
   }
+
+  @override
+  Future<void> setRingAt(Alarm alarm, DateTime ringAt) async {
+    rearmed.add((alarmId: alarm.id, ringAt: ringAt));
+  }
 }
 
 Override fakeAlarmServiceOverride() =>
     alarmServiceProvider.overrideWith((ref) => FakeAlarmService(ref));
+
+/// The notifications a test's container posted. The provider's default is
+/// already a [RecordingNotifier]; this just reads it back with a type.
+RecordingNotifier notifierOf(ProviderContainer container) =>
+    container.read(appNotifierProvider) as RecordingNotifier;

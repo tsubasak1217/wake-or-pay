@@ -10,13 +10,15 @@ import '../../domain/format.dart';
 import '../../domain/loss_calculator.dart';
 import '../../domain/models.dart';
 import '../../domain/ojisan.dart';
+import '../../domain/snooze_rules.dart';
 import 'ringing_controller.dart';
 import 'wake_checks/long_press_check.dart';
 import 'wake_checks/math_check.dart';
 import 'wake_checks/shake_check.dart';
 import 'wake_checks/typing_check.dart';
 
-/// Full screen, no way back, no snooze. The only control is the wake check.
+/// Full screen, no way back. The wake check is the only way to finish the
+/// morning; スヌーズ, when the alarm allows it, is the way to postpone it.
 class RingingScreen extends ConsumerStatefulWidget {
   const RingingScreen({super.key, required this.sessionId});
 
@@ -57,6 +59,9 @@ class _RingingScreenState extends ConsumerState<RingingScreen> {
   void _dismiss() =>
       unawaited(ref.read(ringingControllerProvider).dismiss(widget.sessionId));
 
+  void _snooze() =>
+      unawaited(ref.read(ringingControllerProvider).snooze(widget.sessionId));
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionByIdProvider(widget.sessionId));
@@ -71,7 +76,12 @@ class _RingingScreenState extends ConsumerState<RingingScreen> {
             error: (e, _) => Center(child: Text('$e')),
             data: (data) => data == null
                 ? const _MissingSession()
-                : _RingingBody(session: data, now: _now, onCleared: _dismiss),
+                : _RingingBody(
+                    session: data,
+                    now: _now,
+                    onCleared: _dismiss,
+                    onSnooze: _snooze,
+                  ),
           ),
         ),
       ),
@@ -105,11 +115,13 @@ class _RingingBody extends ConsumerWidget {
     required this.session,
     required this.now,
     required this.onCleared,
+    required this.onSnooze,
   });
 
   final AlarmSession session;
   final DateTime now;
   final VoidCallback onCleared;
+  final VoidCallback onSnooze;
 
   static String _hhmm(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:'
@@ -179,6 +191,16 @@ class _RingingBody extends ConsumerWidget {
                   onCleared,
                 ),
               ),
+              // Deliberately last, and deliberately a plain text button: the
+              // wake check above is the way out of this screen, and snoozing
+              // is the thing you do instead of getting up.
+              alarm.maybeWhen(
+                data: (data) =>
+                    data != null && canSnoozeNow(data, session)
+                    ? _SnoozeButton(session: session, onSnooze: onSnooze)
+                    : const SizedBox.shrink(),
+                orElse: () => const SizedBox.shrink(),
+              ),
             ],
           ),
         ),
@@ -198,6 +220,28 @@ Widget _wakeCheckFor(WakeCheckType type, VoidCallback onCleared) =>
       // the simplest check rather than a crash.
       WakeCheckType.random => LongPressCheck(onCleared: onCleared),
     };
+
+/// The secondary way off this screen. Under a pledge it has to state the
+/// price — the whole point of kakugo mode is that nothing costs money quietly.
+class _SnoozeButton extends StatelessWidget {
+  const _SnoozeButton({required this.session, required this.onSnooze});
+
+  final AlarmSession session;
+  final VoidCallback onSnooze;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 24),
+    child: TextButton(
+      key: const ValueKey('snoozeButton'),
+      onPressed: onSnooze,
+      style: TextButton.styleFrom(
+        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      child: Text(snoozeButtonLabel(session.kakugoSnapshot)),
+    ),
+  );
+}
 
 /// The countdown shown while the alarm is still free to clear.
 class _GracePanel extends StatelessWidget {

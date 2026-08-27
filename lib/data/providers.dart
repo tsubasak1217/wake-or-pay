@@ -74,6 +74,12 @@ final sessionHistoryProvider = StreamProvider<List<AlarmSession>>(
   (ref) => ref.watch(alarmSessionRepositoryProvider).watchRecent(),
 );
 
+/// Live ringing sessions, snoozed ones included. The alarm list reads this to
+/// mark a row 「スヌーズ中 7:05」.
+final ringingSessionsProvider = StreamProvider<List<AlarmSession>>(
+  (ref) => ref.watch(alarmSessionRepositoryProvider).watchRinging(),
+);
+
 final sessionByIdProvider = FutureProvider.family<AlarmSession?, String>(
   (ref, id) => ref.watch(alarmSessionRepositoryProvider).getById(id),
 );

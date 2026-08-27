@@ -6,6 +6,7 @@ import '../../app/router.dart';
 import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
+import '../../domain/snooze_rules.dart';
 import 'alarm_controller.dart';
 import 'widgets/swipe_to_delete.dart';
 
@@ -82,9 +83,22 @@ class _AlarmTile extends ConsumerWidget {
 
   final Alarm alarm;
 
+  /// The re-ring time of this alarm's snoozed session, if it has one waiting.
+  DateTime? _snoozedUntil(WidgetRef ref) {
+    final now = DateTime.now();
+    for (final session in ref.watch(ringingSessionsProvider).valueOrNull ??
+        const <AlarmSession>[]) {
+      if (session.alarmId == alarm.id && isSnoozePending(session, now)) {
+        return session.currentRingAt;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final snoozedUntil = _snoozedUntil(ref);
     return SwipeToDelete(
       // Goes through the controller, so the platform alarm is cancelled before
       // the row disappears — a deleted alarm that still rings is the one bug
@@ -112,6 +126,15 @@ class _AlarmTile extends ConsumerWidget {
                     )
                   : null,
             ),
+            if (snoozedUntil != null)
+              Text(
+                snoozeUntilLabel(snoozedUntil),
+                key: const ValueKey('snoozedUntil'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
           ],
         ),
         trailing: Switch(

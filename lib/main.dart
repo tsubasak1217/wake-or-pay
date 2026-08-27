@@ -8,13 +8,19 @@ import 'app/router.dart';
 import 'app/theme_controller.dart';
 import 'data/providers.dart';
 import 'services/alarm_service.dart';
+import 'services/app_notifier.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
 
   final container = ProviderContainer(
-    overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    overrides: [
+      sharedPreferencesProvider.overrideWithValue(prefs),
+      // Only the real app reaches the notification plugin; every test keeps
+      // the recording default.
+      localAppNotifierOverride(),
+    ],
   );
 
   runApp(

@@ -44,6 +44,15 @@ class AlarmSessionRepository {
           .map((r) => r.toModel())
           .toList();
 
+  /// Every session the database still calls ringing, live. Includes the ones
+  /// that are snoozed and silent — the alarm list needs those to show
+  /// 「スヌーズ中 7:05」.
+  Stream<List<AlarmSession>> watchRinging() =>
+      (_db.select(_db.alarmSessionRows)
+            ..where((s) => s.status.equals(SessionStatus.ringing.name)))
+          .watch()
+          .map((rows) => rows.map((r) => r.toModel()).toList());
+
   /// History, newest first.
   Future<List<AlarmSession>> getRecent({int limit = 100}) async =>
       (await (_db.select(_db.alarmSessionRows)

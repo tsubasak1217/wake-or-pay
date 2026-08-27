@@ -6,11 +6,16 @@ import '../data/repositories/wallet_repository.dart';
 import '../domain/loss_calculator.dart';
 import '../domain/models.dart';
 import '../domain/reward.dart';
+import '../domain/snooze_rules.dart';
 import '../domain/wake_check.dart';
 
 /// What [SessionService.recoverPending] found at startup.
 class RecoveryOutcome {
-  const RecoveryOutcome({this.resumed, this.settled = const []});
+  const RecoveryOutcome({
+    this.resumed,
+    this.settled = const [],
+    this.snoozing = const [],
+  });
 
   /// A session that is still within the hour and should go back on screen.
   final AlarmSession? resumed;
@@ -18,7 +23,13 @@ class RecoveryOutcome {
   /// Sessions written off by the 60 minute safety valve, newest first.
   final List<AlarmSession> settled;
 
-  bool get isEmpty => resumed == null && settled.isEmpty;
+  /// Sessions that are snoozed and not yet due back. Still ringing, still
+  /// costing money under the default clock mode — but silent, so they do not
+  /// go on screen. Their platform alarm needs re-arming, and nothing else.
+  final List<AlarmSession> snoozing;
+
+  bool get isEmpty =>
+      resumed == null && settled.isEmpty && snoozing.isEmpty;
 }
 
 /// Owns the money side of a ring: opening a session, and settling it exactly
@@ -103,20 +114,32 @@ class SessionService {
 
     AlarmSession? resumed;
     final settled = <AlarmSession>[];
+    final snoozing = <AlarmSession>[];
 
     for (final session in ringing) {
+      // The valve first: an hour past firedAt is written off even if the user
+      // snoozed their way there. Snooze never buys extra time.
       final recovered = recoverSession(session, now);
-      if (recovered.isRinging) {
-        // Keep the newest live one; anything older is superseded.
-        if (resumed == null || session.firedAt.isAfter(resumed.firedAt)) {
-          resumed = recovered;
-        }
-      } else {
+      if (!recovered.isRinging) {
         settled.add(await settle(recovered));
+        continue;
+      }
+      // Silent and not yet due back: leave it exactly where it is.
+      if (isSnoozePending(recovered, now)) {
+        snoozing.add(recovered);
+        continue;
+      }
+      // Keep the newest live one; anything older is superseded.
+      if (resumed == null || session.firedAt.isAfter(resumed.firedAt)) {
+        resumed = recovered;
       }
     }
 
     settled.sort((a, b) => b.firedAt.compareTo(a.firedAt));
-    return RecoveryOutcome(resumed: resumed, settled: settled);
+    return RecoveryOutcome(
+      resumed: resumed,
+      settled: settled,
+      snoozing: snoozing,
+    );
   }
 }

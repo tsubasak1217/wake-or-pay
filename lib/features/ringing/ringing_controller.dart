@@ -33,4 +33,10 @@ class RingingController {
     _ref.invalidate(sessionByIdProvider(sessionId));
     _ref.read(appRouterProvider).go(AppRoute.result(settled.id));
   }
+
+  /// The other way off this screen — and the only one that leaves the morning
+  /// unfinished. The session stays open; [AlarmService.snooze] moves the ring
+  /// and sends the user Home.
+  Future<void> snooze(String sessionId, {DateTime? now}) =>
+      _ref.read(alarmServiceProvider).snooze(sessionId, now: now);
 }
