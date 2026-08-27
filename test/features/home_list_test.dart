@@ -69,9 +69,9 @@ void main() {
     await pumpHome(tester, alarms: const [kakugoAlarm]);
     expect(find.byKey(const ValueKey('kakugoBadge')), findsOneWidget);
     expect(
-      find.text('💀'),
+      find.text('⚠️'),
       findsOneWidget,
-      reason: '500/分 is the top of the gauge',
+      reason: '500/分 against a 3000 cap is 6 minutes',
     );
 
     await pumpHome(tester, alarms: const [plainAlarm]);
@@ -80,14 +80,17 @@ void main() {
     expect(find.text('覚悟なし'), findsOneWidget);
   });
 
-  testWidgets('the badge follows the gauge', (tester) async {
+  testWidgets('the badge follows the gauge — minutes to the cap', (
+    tester,
+  ) async {
+    // cap 3000: how many minutes of oversleeping burn the lot.
     for (final (rate, badge) in const [
-      (1000, '💀'),
-      (500, '💀'),
-      (200, '🔥'),
-      (50, '⚠️'),
-      (10, '💦'),
-      (1, '💸'),
+      (3000, '💀'),
+      (1500, '💀'),
+      (600, '🔥'),
+      (300, '⚠️'),
+      (100, '💦'),
+      (50, '💸'),
     ]) {
       await pumpHome(
         tester,
@@ -97,7 +100,7 @@ void main() {
       );
       expect(find.text(badge), findsOneWidget, reason: '$rate コイン/分');
     }
-    expect(kakugoBadge(500), '💀', reason: 'the pure function agrees');
+    expect(kakugoBadge(1500, 3000), '💀', reason: 'the pure function agrees');
   });
 
   testWidgets('the rate and the worst case are both on the row', (

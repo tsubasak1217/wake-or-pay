@@ -701,6 +701,11 @@ class _RateRow extends ConsumerWidget {
     final rate = ref.watch(
       alarmDraftProvider(seed).select((a) => a.kakugo?.ratePerMinute ?? 0),
     );
+    // The gauge is read from the ratio rate/cap rather than from the rate on
+    // its own, so the sub-screen needs the cap this pledge plays against.
+    final cap = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.kakugo?.cap ?? 0),
+    );
     return SettingRow(
       label: '寝坊ペナルティ',
       value: '$rate コイン/分',
@@ -718,7 +723,7 @@ class _RateRow extends ConsumerWidget {
             children: [
               Center(
                 child: Text(
-                  kakugoMood(value),
+                  kakugoMood(value, cap),
                   key: const ValueKey('kakugoGauge'),
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),

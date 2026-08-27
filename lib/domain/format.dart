@@ -50,27 +50,53 @@ String kakugoRateLabel(int ratePerMinute) => '$ratePerMinute コイン/分';
 /// number: the list must not make the stake look smaller than the editor did.
 String maxLossLabel(int cap) => '寝坊で失う最大金額 $cap コイン';
 
-/// The badge on a 覚悟 row of the alarm list, by the same thresholds as
-/// [kakugoMood]. Pure.
+/// How many minutes of oversleeping it takes to burn the whole pledge. Pure.
 ///
-/// One glance down a list of alarms should say which of them can hurt, and how
-/// much, before any of the numbers are read.
-String kakugoBadge(int ratePerMinute) {
-  if (ratePerMinute >= 500) return '💀';
-  if (ratePerMinute >= 100) return '🔥';
-  if (ratePerMinute >= 50) return '⚠️';
-  if (ratePerMinute >= 10) return '💦';
-  return '💸';
+/// The rate on its own says nothing: 100 コイン/分 against a 200 コイン cap is
+/// over in two minutes, and against a 10000 コイン cap it is a hundred. What
+/// hurts is the ratio, so that is what the badge and the gauge are read from.
+///
+/// A rate of 0 never reaches the cap by the minute — infinity, and every band
+/// below is written to fall through to "no penalty".
+double kakugoMinutesToCap(int ratePerMinute, int cap) =>
+    ratePerMinute <= 0 ? double.infinity : cap / ratePerMinute;
+
+/// -1 = no per-minute penalty at all, then 0 (mildest) … 4 (worst).
+int _kakugoBand(int ratePerMinute, int cap) {
+  final minutes = kakugoMinutesToCap(ratePerMinute, cap);
+  if (minutes <= 2) return 4;
+  if (minutes <= 5) return 3;
+  if (minutes <= 10) return 2;
+  if (minutes <= 30) return 1;
+  return minutes.isFinite ? 0 : -1;
 }
 
-/// The gauge wording from the concept doc, by rate. Pure.
-String kakugoMood(int ratePerMinute) {
-  if (ratePerMinute >= 500) return '💀 寝るな';
-  if (ratePerMinute >= 100) return '😠 絶対に起きろ';
-  if (ratePerMinute >= 50) return '😐 絶対起きる';
-  if (ratePerMinute >= 10) return '🙂 起きなきゃ';
-  return '😴 まあ起きたい';
-}
+/// The badge beside the time on a 覚悟 row of the alarm list. Pure.
+///
+/// One glance down a list of alarms should say which of them can hurt, and how
+/// fast, before any of the numbers are read. Empty when there is no per-minute
+/// penalty — a 連絡だけ pledge wears no badge.
+String kakugoBadge(int ratePerMinute, int cap) =>
+    switch (_kakugoBand(ratePerMinute, cap)) {
+      4 => '💀',
+      3 => '🔥',
+      2 => '⚠️',
+      1 => '💦',
+      0 => '💸',
+      _ => '',
+    };
+
+/// The gauge wording from the concept doc, off the same bands as [kakugoBadge]
+/// so the editor and the list can never disagree. Pure.
+String kakugoMood(int ratePerMinute, int cap) =>
+    switch (_kakugoBand(ratePerMinute, cap)) {
+      4 => '💀 寝るな',
+      3 => '😠 絶対に起きろ',
+      2 => '😐 絶対起きる',
+      1 => '🙂 起きなきゃ',
+      0 => '😴 まあ起きたい',
+      _ => '😌 ペナルティなし',
+    };
 
 /// How a logged contact reads in the history. Pure.
 String contactChannelLabel(ContactChannel channel) => switch (channel) {

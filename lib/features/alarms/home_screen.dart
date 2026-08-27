@@ -226,7 +226,7 @@ class _KakugoRow extends ConsumerWidget {
           child: ListTile(
             onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
             leading: Text(
-              kakugoBadge(kakugo.ratePerMinute),
+              kakugoBadge(kakugo.ratePerMinute, kakugo.cap),
               key: const ValueKey('kakugoBadge'),
               style: const TextStyle(fontSize: 30),
             ),
