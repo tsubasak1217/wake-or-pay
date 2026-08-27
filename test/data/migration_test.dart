@@ -114,6 +114,81 @@ INSERT INTO wallet_rows (id, coins, tokens) VALUES (0, 4300, 120);
 PRAGMA user_version = 2;
 ''';
 
+/// The v3 schema — v2 plus the two garden tables — with an alarm, a settled
+/// session, a wallet and a placed plant. No alarm could be snoozed, every alarm
+/// rang with the one bundled sound, and no session had a drawn wake check.
+const _v3 = '''
+CREATE TABLE alarm_rows (
+  id TEXT NOT NULL,
+  hour INTEGER NOT NULL,
+  minute INTEGER NOT NULL,
+  repeat_days TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK ("enabled" IN (0, 1)),
+  wake_check TEXT NOT NULL,
+  grace_minutes INTEGER NOT NULL DEFAULT 1,
+  kakugo_hostage TEXT NULL,
+  kakugo_rate_per_minute INTEGER NULL,
+  kakugo_cap INTEGER NULL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE alarm_session_rows (
+  id TEXT NOT NULL,
+  alarm_id TEXT NOT NULL,
+  fired_at_ms INTEGER NOT NULL,
+  dismissed_at_ms INTEGER NULL,
+  status TEXT NOT NULL,
+  loss INTEGER NOT NULL DEFAULT 0,
+  kakugo_hostage TEXT NULL,
+  kakugo_rate_per_minute INTEGER NULL,
+  kakugo_cap INTEGER NULL,
+  coins_at_fire INTEGER NOT NULL DEFAULT 0,
+  grace_minutes INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (id)
+);
+CREATE TABLE wallet_rows (
+  id INTEGER NOT NULL,
+  coins INTEGER NOT NULL DEFAULT 0,
+  tokens INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+);
+CREATE TABLE ojisan_rows (
+  id INTEGER NOT NULL,
+  total_oversleeps INTEGER NOT NULL DEFAULT 0,
+  total_earned INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+);
+CREATE TABLE garden_placement_rows (
+  id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  x INTEGER NOT NULL,
+  y INTEGER NOT NULL,
+  placed_at_ms INTEGER NOT NULL,
+  growth_stage INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+);
+CREATE TABLE garden_inventory_rows (
+  item_id TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (item_id)
+);
+INSERT INTO alarm_rows
+  (id, hour, minute, repeat_days, enabled, wake_check, grace_minutes,
+   kakugo_hostage, kakugo_rate_per_minute, kakugo_cap)
+  VALUES ('a1', 6, 30, '1,5', 1, 'math', 3, 'coin', 100, 2000);
+INSERT INTO alarm_session_rows
+  (id, alarm_id, fired_at_ms, dismissed_at_ms, status, loss,
+   kakugo_hostage, kakugo_rate_per_minute, kakugo_cap, coins_at_fire,
+   grace_minutes)
+  VALUES ('s1', 'a1', 1000000, 1420000, 'failed', 700,
+          'coin', 100, 2000, 5000, 3);
+INSERT INTO wallet_rows (id, coins, tokens) VALUES (0, 4300, 120);
+INSERT INTO garden_placement_rows
+  (id, item_id, x, y, placed_at_ms, growth_stage)
+  VALUES ('p1', 'plant_small', 3, 2, 1000000, 2);
+INSERT INTO garden_inventory_rows (item_id, count) VALUES ('deco_pebble', 2);
+PRAGMA user_version = 3;
+''';
+
 void main() {
   test(
     'v1 databases upgrade to v2 with grace 1, changing nothing else',
@@ -204,4 +279,70 @@ void main() {
     expect(granted.inventory.countOf('deco_pebble'), 2);
     expect((await garden.read()).placements, hasLength(1));
   });
+
+  test(
+    'v3 databases upgrade to v4 with no snooze and the bundled sound',
+    () async {
+      final container = await testContainer(
+        extra: [
+          appDatabaseProvider.overrideWith((ref) {
+            final db = AppDatabase(
+              NativeDatabase.memory(setup: (raw) => raw.execute(_v3)),
+            );
+            ref.onDispose(db.close);
+            return db;
+          }),
+        ],
+      );
+
+      // The v3 row reads back under the rules it was written under.
+      final alarm = await container.read(alarmRepositoryProvider).getById('a1');
+      expect(alarm!.snooze, isNull, reason: 'v3 alarms could not be snoozed');
+      expect(alarm.soundId, defaultSoundId, reason: 'the one bundled sound');
+      expect(alarm.graceMinutes, 3);
+      expect(alarm.hour, 6);
+      expect(alarm.minute, 30);
+      expect(alarm.repeatDays, {1, 5});
+      expect(alarm.wakeCheck, WakeCheckType.math);
+      expect(alarm.kakugo, const Kakugo(ratePerMinute: 100, cap: 2000));
+
+      final session = await container
+          .read(alarmSessionRepositoryProvider)
+          .getById('s1');
+      expect(
+        session!.wakeCheckResolved,
+        isNull,
+        reason: 'no draw was ever made',
+      );
+      expect(session.loss, 700, reason: 'a settled loss is never recomputed');
+      expect(session.status, SessionStatus.failed);
+      expect(session.graceMinutes, 3);
+      expect(session.coinsAtFire, 5000);
+
+      // Nothing else the upgrade touched moved either.
+      expect(
+        await container.read(walletRepositoryProvider).read(),
+        const Wallet(coins: 4300, tokens: 120),
+      );
+      final garden = await container.read(gardenRepositoryProvider).read();
+      expect(garden.placements.single.itemId, 'plant_small');
+      expect(garden.inventory.countOf('deco_pebble'), 2);
+
+      // The upgraded database is writable at the new schema.
+      final snoozed = alarm.copyWith(
+        snooze: const Snooze(intervalMinutes: 9, maxCount: 4),
+        soundId: 'siren',
+      );
+      await container.read(alarmRepositoryProvider).save(snoozed);
+      final reread = await container
+          .read(alarmRepositoryProvider)
+          .getById('a1');
+      expect(reread!.snooze, const Snooze(intervalMinutes: 9, maxCount: 4));
+      expect(reread.soundId, 'siren');
+
+      // And the stage B table exists, empty.
+      final db = container.read(appDatabaseProvider);
+      expect(await db.select(db.contactEventRows).get(), isEmpty);
+    },
+  );
 }

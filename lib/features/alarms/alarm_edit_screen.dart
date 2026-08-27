@@ -1,14 +1,17 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
+import '../../domain/sound_library.dart';
 import 'alarm_controller.dart';
 import 'alarm_draft.dart';
+import 'edit_sub_screens.dart';
+import 'sound_screen.dart';
+import 'widgets/settings_island.dart';
 
 class AlarmEditScreen extends ConsumerStatefulWidget {
   const AlarmEditScreen({super.key, this.alarmId});
@@ -31,6 +34,8 @@ class _AlarmEditScreenState extends ConsumerState<AlarmEditScreen> {
   Widget build(BuildContext context) {
     final id = widget.alarmId;
     if (id == null) {
+      // New alarms start without kakugo: nothing is at stake until the user
+      // deliberately puts something there.
       return _AlarmEditForm(
         seed: _seed ??= Alarm(id: AlarmController.newId(), hour: 7, minute: 0),
       );
@@ -65,72 +70,32 @@ class _AlarmEditForm extends ConsumerStatefulWidget {
 }
 
 class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
-  late Set<int> _days;
-  late WakeCheckType _wakeCheck;
-  late int _grace;
-  late bool _kakugoOn;
-  late int _rate;
-  late final TextEditingController _capController;
-  late final TextEditingController _customRateController;
-
   @override
   void initState() {
     super.initState();
     // Holds the draft open for as long as the editor is on screen, without
     // rebuilding anything when it changes. Without a listener the autoDispose
-    // draft would be collected between reads and the wheel's writes lost.
+    // draft would be collected whenever no row happened to be watching.
     ref.listenManual(alarmDraftProvider(widget.seed), (_, _) {});
-
-    final a = widget.existing;
-    _days = {...?a?.repeatDays};
-    _wakeCheck = a?.wakeCheck ?? WakeCheckType.longPress;
-    _grace = normalizeGraceMinutes(a?.graceMinutes ?? minGraceMinutes);
-    _kakugoOn = a?.isKakugo ?? false;
-    _rate = a?.kakugo?.ratePerMinute ?? 100;
-    _capController = TextEditingController(
-      text: (a?.kakugo?.cap ?? 1000).toString(),
-    );
-    _customRateController = TextEditingController(
-      text: Kakugo.ratePresets.contains(_rate) ? '' : _rate.toString(),
-    );
   }
 
-  @override
-  void dispose() {
-    _capController.dispose();
-    _customRateController.dispose();
-    super.dispose();
-  }
-
-  int get _cap => int.tryParse(_capController.text.trim()) ?? 0;
-
-  Alarm _build() {
-    final draft = ref.read(alarmDraftProvider(widget.seed));
-    return Alarm(
-      id: draft.id,
-      hour: draft.hour,
-      minute: draft.minute,
-      repeatDays: _days,
-      enabled: widget.existing?.enabled ?? true,
-      wakeCheck: _wakeCheck,
-      graceMinutes: _grace,
-      kakugo: _kakugoOn ? Kakugo(ratePerMinute: _rate, cap: _cap) : null,
-    );
-  }
+  Alarm get _draft => ref.read(alarmDraftProvider(widget.seed));
 
   Future<void> _save() async {
+    final alarm = _draft;
     final coins = (await ref.read(walletRepositoryProvider).read()).coins;
     if (!mounted) return;
 
     // A warning, never a block: pledging more than you hold is allowed, it
     // simply cannot all burn.
-    if (_kakugoOn && _cap > coins) {
+    final cap = alarm.kakugo?.cap;
+    if (cap != null && cap > coins) {
       final proceed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('残高より上限が大きい'),
           content: Text(
-            '上限 $_cap コインに対して残高は $coins コインです。'
+            '上限 $cap コインに対して残高は $coins コインです。'
             '燃えるのは残高までですが、このまま保存できます。',
           ),
           actions: [
@@ -148,7 +113,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
       if (proceed != true) return;
     }
 
-    await ref.read(alarmControllerProvider).save(_build());
+    await ref.read(alarmControllerProvider).save(alarm);
     if (mounted) context.pop();
   }
 
@@ -162,7 +127,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
   @override
   Widget build(BuildContext context) {
     debugAlarmEditBuildCount++;
-    final theme = Theme.of(context);
+    final seed = widget.seed;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existing == null ? 'アラームを追加' : 'アラームを編集'),
@@ -178,115 +143,473 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
-          TimeWheel(seed: widget.seed),
-          const SizedBox(height: 16),
-          Text('繰り返し', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (var d = 1; d <= 7; d++)
-                FilterChip(
-                  label: Text(weekdayLabel(d)),
-                  selected: _days.contains(d),
-                  onSelected: (on) =>
-                      setState(() => on ? _days.add(d) : _days.remove(d)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(repeatDaysLabel(_days), style: theme.textTheme.bodySmall),
+          TimeWheel(seed: seed),
           const SizedBox(height: 24),
-          Text('起床確認', style: theme.textTheme.titleMedium),
-          for (final type in WakeCheckType.values)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              onTap: () => setState(() => _wakeCheck = type),
-              title: Text(type.label),
-              trailing: _wakeCheck == type ? const Icon(Icons.check) : null,
-            ),
-          const SizedBox(height: 24),
-          Text('起床猶予', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final minutes in graceMinutesOptions)
-                ChoiceChip(
-                  label: Text('$minutes 分'),
-                  selected: _grace == minutes,
-                  onSelected: (_) => setState(() => _grace = minutes),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '鳴り始めから $_grace 分以内に解除できれば起床成功。'
-            '過ぎるとその瞬間から燃え始めます。',
-            style: theme.textTheme.bodySmall,
-          ),
-          const Divider(height: 32),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _kakugoOn,
-            onChanged: (v) => setState(() => _kakugoOn = v),
-            title: const Text('覚悟モード'),
-            subtitle: const Text('寝坊した1分ごとにコインが燃えます'),
-          ),
-          if (_kakugoOn) ...[
-            const SizedBox(height: 8),
-            Text('1分あたり', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final preset in Kakugo.ratePresets)
-                  ChoiceChip(
-                    label: Text('$preset'),
-                    selected: _rate == preset,
-                    onSelected: (_) => setState(() {
-                      _rate = preset;
-                      _customRateController.clear();
-                    }),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _customRateController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'カスタム（コイン/分）',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (v) {
-                final parsed = int.tryParse(v.trim());
-                if (parsed != null) setState(() => _rate = parsed);
-              },
-            ),
-            const SizedBox(height: 8),
-            Text(kakugoMood(_rate), style: theme.textTheme.titleLarge),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _capController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: '1回の最大損失（コイン）',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 8),
-            Text(kakugoLabel(Kakugo(ratePerMinute: _rate, cap: _cap))),
-          ],
+          _BasicIsland(seed: seed),
+          _SnoozeIsland(seed: seed),
+          _KakugoIsland(seed: seed),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _save,
         icon: const Icon(Icons.check),
         label: const Text('保存'),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Islands
+//
+// Every row below is its own widget subscribing to one field of the draft with
+// `select`. That is what keeps the time wheel — which writes the draft on every
+// frame of a drag — from rebuilding any of them.
+// ---------------------------------------------------------------------------
+
+class _BasicIsland extends StatelessWidget {
+  const _BasicIsland({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context) => SettingsIsland(
+    title: '基本設定',
+    children: [
+      _DaysRow(seed: seed),
+      _WakeCheckRow(seed: seed),
+      _SoundRow(seed: seed),
+      _GraceRow(seed: seed),
+      _SnoozeToggleRow(seed: seed),
+      _KakugoToggleRow(seed: seed),
+    ],
+  );
+}
+
+class _DaysRow extends ConsumerWidget {
+  const _DaysRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The label, not the set: `select` compares with `==`, and two equal sets
+    // are not `==` each other, so watching the set itself would rebuild this
+    // row on every write to the draft — including every tick of the wheel.
+    final label = ref.watch(
+      alarmDraftProvider(seed).select((a) => repeatDaysLabel(a.repeatDays)),
+    );
+    return SettingRow(
+      label: '曜日',
+      value: label,
+      onTap: () => pushEditorSubScreen(
+        context,
+        RepeatDaysSubScreen(
+          initial: ref.read(alarmDraftProvider(seed)).repeatDays,
+          onCommit: (days) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update((a) => a.copyWith(repeatDays: days)),
+        ),
+      ),
+    );
+  }
+}
+
+class _WakeCheckRow extends ConsumerWidget {
+  const _WakeCheckRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final wakeCheck = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.wakeCheck),
+    );
+    return SettingRow(
+      label: '起床確認',
+      value: wakeCheck.label,
+      onTap: () => pushEditorSubScreen(
+        context,
+        WakeCheckSubScreen(
+          initial: wakeCheck,
+          onCommit: (type) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update((a) => a.copyWith(wakeCheck: type)),
+        ),
+      ),
+    );
+  }
+}
+
+class _SoundRow extends ConsumerWidget {
+  const _SoundRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final soundId = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.soundId),
+    );
+    return SettingRow(
+      label: 'サウンド',
+      value: soundLabel(soundId),
+      onTap: () => pushEditorSubScreen(
+        context,
+        SoundSubScreen(
+          initial: soundId,
+          onCommit: (id) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update((a) => a.copyWith(soundId: id)),
+        ),
+      ),
+    );
+  }
+}
+
+class _GraceRow extends ConsumerWidget {
+  const _GraceRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final grace = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.graceMinutes),
+    );
+    return SettingRow(
+      label: '起床猶予',
+      value: '$grace分',
+      onTap: () => pushEditorSubScreen(
+        context,
+        NumberSubScreen(
+          title: '起床猶予',
+          initial: grace,
+          min: minGraceMinutes,
+          max: maxGraceMinutes,
+          suffix: '分',
+          description:
+              '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
+              '過ぎるとその瞬間から燃え始めます。',
+          onCommit: (v) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update((a) => a.copyWith(graceMinutes: v)),
+        ),
+      ),
+    );
+  }
+}
+
+class _SnoozeToggleRow extends ConsumerWidget {
+  const _SnoozeToggleRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final on = ref.watch(alarmDraftProvider(seed).select((a) => a.canSnooze));
+    return SettingSwitchRow(
+      label: 'スヌーズ',
+      value: on,
+      subtitle: '無料の標準機能です',
+      onChanged: (v) => ref
+          .read(alarmDraftProvider(seed).notifier)
+          .update(
+            (a) => v
+                ? a.copyWith(snooze: const Snooze())
+                : a.copyWith(clearSnooze: true),
+          ),
+    );
+  }
+}
+
+class _KakugoToggleRow extends ConsumerWidget {
+  const _KakugoToggleRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final on = ref.watch(alarmDraftProvider(seed).select((a) => a.isKakugo));
+    return SettingSwitchRow(
+      label: '覚悟',
+      value: on,
+      subtitle: '寝坊した1分ごとにコインが燃えます',
+      onChanged: (v) => ref
+          .read(alarmDraftProvider(seed).notifier)
+          .update(
+            (a) => v
+                ? a.copyWith(
+                    kakugo:
+                        a.kakugo ?? const Kakugo(ratePerMinute: 100, cap: 1000),
+                  )
+                : a.copyWith(clearKakugo: true),
+          ),
+    );
+  }
+}
+
+class _SnoozeIsland extends ConsumerWidget {
+  const _SnoozeIsland({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final on = ref.watch(alarmDraftProvider(seed).select((a) => a.canSnooze));
+    if (!on) return const SizedBox.shrink();
+    return SettingsIsland(
+      title: 'スヌーズ設定',
+      children: [
+        _SnoozeIntervalRow(seed: seed),
+        _SnoozeCountRow(seed: seed),
+      ],
+    );
+  }
+}
+
+class _SnoozeIntervalRow extends ConsumerWidget {
+  const _SnoozeIntervalRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final minutes = ref.watch(
+      alarmDraftProvider(seed).select(
+        (a) => a.snooze?.intervalMinutes ?? Snooze.defaultIntervalMinutes,
+      ),
+    );
+    return SettingRow(
+      label: '間隔',
+      value: '$minutes分',
+      onTap: () => pushEditorSubScreen(
+        context,
+        NumberSubScreen(
+          title: 'スヌーズの間隔',
+          initial: minutes,
+          min: minSnoozeIntervalMinutes,
+          max: maxSnoozeIntervalMinutes,
+          suffix: '分',
+          description: 'スヌーズを押してから次に鳴るまでの時間です。',
+          onCommit: (v) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update(
+                (a) => a.copyWith(
+                  snooze: (a.snooze ?? const Snooze()).copyWith(
+                    intervalMinutes: v,
+                  ),
+                ),
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SnoozeCountRow extends ConsumerWidget {
+  const _SnoozeCountRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(
+      alarmDraftProvider(seed)
+          .select((a) => a.snooze?.maxCount ?? Snooze.defaultMaxCount),
+    );
+    return SettingRow(
+      label: '上限回数',
+      value: '$count回',
+      onTap: () => pushEditorSubScreen(
+        context,
+        NumberSubScreen(
+          title: 'スヌーズの上限回数',
+          initial: count,
+          min: minSnoozeMaxCount,
+          max: maxSnoozeMaxCount,
+          suffix: '回',
+          description:
+              'この回数までスヌーズできます。0 は無制限ではなく「スヌーズできない」という意味です。'
+              '無制限は用意していません。',
+          onCommit: (v) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update(
+                (a) => a.copyWith(
+                  snooze: (a.snooze ?? const Snooze()).copyWith(maxCount: v),
+                ),
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The danger area. Red on near-black, with the worst case spelled out at the
+/// top: the point of the editor is that nobody switches this on by accident.
+class _KakugoIsland extends ConsumerWidget {
+  const _KakugoIsland({required this.seed});
+
+  final Alarm seed;
+
+  static const background = Color(0xFF160B0C);
+  static const danger = Color(0xFFFF5252);
+  static const onDanger = Color(0xFFFFEBEE);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final on = ref.watch(alarmDraftProvider(seed).select((a) => a.isKakugo));
+    if (!on) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    // ListTile paints from the ambient colour scheme, so the whole island gets
+    // a dark scheme of its own — otherwise the light themes would draw black
+    // text on this black card.
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: theme.colorScheme.copyWith(
+          brightness: Brightness.dark,
+          surface: background,
+          onSurface: onDanger,
+          onSurfaceVariant: danger,
+          error: danger,
+        ),
+        dividerColor: danger.withValues(alpha: 0.3),
+      ),
+      child: SettingsIsland(
+        title: '覚悟の設定',
+        titleColor: theme.colorScheme.error,
+        background: background,
+        borderColor: danger,
+        header: _MaxLossHeader(seed: seed),
+        children: [
+          _RateRow(seed: seed),
+          _CapRow(seed: seed),
+        ],
+      ),
+    );
+  }
+}
+
+class _MaxLossHeader extends ConsumerWidget {
+  const _MaxLossHeader({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cap = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.kakugo?.cap ?? 0),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+      child: Column(
+        children: [
+          Text(
+            '今夜の最大損失',
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(color: _KakugoIsland.onDanger),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$cap コイン',
+            key: const ValueKey('maxLoss'),
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+              color: _KakugoIsland.danger,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RateRow extends ConsumerWidget {
+  const _RateRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rate = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.kakugo?.ratePerMinute ?? 0),
+    );
+    return SettingRow(
+      label: '寝坊ペナルティ',
+      value: '$rate コイン/分',
+      onTap: () => pushEditorSubScreen(
+        context,
+        NumberSubScreen(
+          title: '寝坊ペナルティ',
+          initial: rate,
+          min: minKakugoRate,
+          max: maxKakugoRate,
+          suffix: 'コイン/分',
+          description: '猶予を過ぎたあと、1分ごとに燃えるコインです。',
+          footer: (context, value) => Center(
+            child: Text(
+              kakugoMood(value),
+              key: const ValueKey('kakugoGauge'),
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+          ),
+          onCommit: (v) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update(
+                (a) => a.copyWith(
+                  kakugo:
+                      (a.kakugo ?? const Kakugo(ratePerMinute: 100, cap: 1000))
+                          .copyWith(ratePerMinute: v),
+                ),
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CapRow extends ConsumerWidget {
+  const _CapRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cap = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.kakugo?.cap ?? 0),
+    );
+    final coins = ref.watch(walletProvider).valueOrNull?.coins;
+    return SettingRow(
+      label: '上限金額',
+      value: '$cap コイン',
+      onTap: () => pushEditorSubScreen(
+        context,
+        NumberSubScreen(
+          title: '上限金額',
+          initial: cap,
+          min: minKakugoCap,
+          max: maxKakugoCap,
+          suffix: 'コイン',
+          description: 'このアラーム1回で燃える上限です。実際に燃えるのは鳴動時の残高までです。',
+          footer: (context, value) => coins != null && value > coins
+              ? Text(
+                  '残高 $coins コインを超えています。'
+                  'このまま保存できますが、燃えるのは残高までです。',
+                  key: const ValueKey('capOverBalance'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                )
+              : const SizedBox.shrink(),
+          onCommit: (v) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update(
+                (a) => a.copyWith(
+                  kakugo:
+                      (a.kakugo ?? const Kakugo(ratePerMinute: 100, cap: 1000))
+                          .copyWith(cap: v),
+                ),
+              ),
+        ),
       ),
     );
   }
@@ -300,7 +623,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
 ///
 /// It *writes* the draft's time and never watches it. Watching would rebuild
 /// the picker on every tick of its own wheel — and `initialDateTime` is read
-/// once, so a rebuild would only ever be wasted work. The seeded time is read
+/// once, so the rebuild would only ever be wasted work. The seeded time is read
 /// with `ref.read` for the same reason: it is an initial value, not a
 /// subscription.
 class TimeWheel extends ConsumerWidget {
@@ -340,10 +663,9 @@ class TimeWheel extends ConsumerWidget {
           use24hFormat: true,
           // A fixed date: only the hour and minute of this value are read.
           initialDateTime: DateTime(2026, 1, 1, draft.hour, draft.minute),
-          onDateTimeChanged: (t) =>
-              ref
-                  .read(alarmDraftProvider(seed).notifier)
-                  .setTime(t.hour, t.minute),
+          onDateTimeChanged: (t) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .setTime(t.hour, t.minute),
         ),
       ),
     );

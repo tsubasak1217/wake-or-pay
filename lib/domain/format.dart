@@ -36,6 +36,11 @@ String kakugoLabel(Kakugo? kakugo) => kakugo == null
     ? '覚悟なし'
     : '${kakugo.ratePerMinute} コイン/分 ・ 最大 ${kakugo.cap}';
 
+/// How a snooze rule reads on a row of the editor. Pure.
+String snoozeLabel(Snooze? snooze) => snooze == null
+    ? 'オフ'
+    : '${snooze.intervalMinutes}分 ・ 最大${snooze.maxCount}回';
+
 /// The gauge wording from the concept doc, by rate. Pure.
 String kakugoMood(int ratePerMinute) {
   if (ratePerMinute >= 500) return '💀 寝るな';

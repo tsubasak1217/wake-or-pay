@@ -38,6 +38,36 @@ Future<void> scrollToInEditor(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
+/// Opens the sub-screen behind the row labelled [row], runs [inside], and comes
+/// back — which is when the sub-screen commits.
+Future<void> inSubScreen(
+  WidgetTester tester,
+  String row,
+  Future<void> Function() inside,
+) async {
+  await scrollToInEditor(tester, find.text(row));
+  await tester.tap(find.text(row));
+  await tester.pumpAndSettle();
+  await inside();
+  await tester.pageBack();
+  await tester.pumpAndSettle();
+}
+
+Future<void> toggleInEditor(WidgetTester tester, String label) async {
+  await scrollToInEditor(tester, find.text(label));
+  await tester.tap(find.widgetWithText(SwitchListTile, label));
+  await tester.pumpAndSettle();
+}
+
+/// Types [value] into the one numeric field of a number sub-screen.
+Future<void> enterNumber(WidgetTester tester, String value) async {
+  await tester.enterText(
+    find.byKey(const ValueKey('sliderNumberInput')),
+    value,
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('saving a new alarm makes it appear on Home', (tester) async {
     final container = await pumpHome(tester, coins: 5000);
@@ -47,18 +77,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('アラームを追加'), findsOneWidget);
 
-    // Default 07:00, add Monday and Friday, switch on kakugo at 500/min.
-    await tester.tap(find.widgetWithText(FilterChip, '月'));
-    await tester.tap(find.widgetWithText(FilterChip, '金'));
-    await tester.tap(find.text('計算（3問）'));
-    await scrollToInEditor(tester, find.byType(SwitchListTile));
-    await tester.tap(find.byType(SwitchListTile));
-    await tester.pumpAndSettle();
+    // Default 07:00. Monday and Friday, the maths check, kakugo at 500/min.
+    await inSubScreen(tester, '曜日', () async {
+      await tester.tap(find.widgetWithText(FilterChip, '月'));
+      await tester.tap(find.widgetWithText(FilterChip, '金'));
+      await tester.pumpAndSettle();
+    });
+    expect(find.text('月・金'), findsOneWidget, reason: 'summarised on the row');
 
-    await scrollToInEditor(tester, find.widgetWithText(ChoiceChip, '500'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '500'));
-    await tester.pumpAndSettle();
-    expect(find.text('💀 寝るな'), findsOneWidget);
+    await inSubScreen(tester, '起床確認', () async {
+      await tester.tap(find.text('計算（3問）'));
+      await tester.pumpAndSettle();
+    });
+
+    await toggleInEditor(tester, '覚悟');
+    await inSubScreen(tester, '寝坊ペナルティ', () async {
+      await enterNumber(tester, '500');
+      expect(find.text('💀 寝るな'), findsOneWidget);
+    });
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
@@ -68,12 +104,14 @@ void main() {
     expect(find.text('月・金 ・ 計算（3問）'), findsOneWidget);
     expect(find.text('500 コイン/分 ・ 最大 1000'), findsOneWidget);
 
-    final saved =
-        (await container.read(alarmRepositoryProvider).getAll()).single;
+    final saved = (await container.read(alarmRepositoryProvider).getAll())
+        .single;
     expect(saved.repeatDays, {1, 5});
     expect(saved.wakeCheck, WakeCheckType.math);
     expect(saved.kakugo, const Kakugo(ratePerMinute: 500, cap: 1000));
     expect(saved.enabled, isTrue);
+    expect(saved.snooze, isNull, reason: 'the toggle was never touched');
+    expect(saved.soundId, defaultSoundId);
 
     // Saving also armed the platform alarm.
     final fake = container.read(alarmServiceProvider) as FakeAlarmService;
@@ -107,11 +145,93 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
-    final saved =
-        (await container.read(alarmRepositoryProvider).getAll()).single;
+    final saved = (await container.read(alarmRepositoryProvider).getAll())
+        .single;
     expect(saved.hour, 9);
     expect(saved.minute, 0);
     expect(find.text('09:00'), findsOneWidget, reason: 'shown on Home');
+  });
+
+  testWidgets('a new alarm has no kakugo and no snooze island', (tester) async {
+    await pumpHome(tester, coins: 5000);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    expect(find.text('基本設定'), findsOneWidget);
+    expect(
+      find.text('覚悟の設定'),
+      findsNothing,
+      reason: 'kakugo is off on a new alarm',
+    );
+    expect(find.text('スヌーズ設定'), findsNothing);
+    for (final row in ['曜日', '起床確認', 'サウンド', '起床猶予', 'スヌーズ', '覚悟']) {
+      expect(find.text(row), findsOneWidget, reason: row);
+    }
+  });
+
+  testWidgets(
+    'the kakugo island appears with the toggle and shows the worst case',
+    (tester) async {
+      final container = await pumpHome(tester, coins: 5000);
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+
+      await toggleInEditor(tester, '覚悟');
+      expect(find.text('覚悟の設定'), findsOneWidget);
+      expect(find.text('今夜の最大損失'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('maxLoss'))).data,
+        '1000 コイン',
+        reason: 'the default cap',
+      );
+
+      // The header follows the cap.
+      await inSubScreen(tester, '上限金額', () async {
+        await enterNumber(tester, '2500');
+      });
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('maxLoss'))).data,
+        '2500 コイン',
+      );
+
+      // Switching it back off takes the island with it and clears the pledge.
+      await toggleInEditor(tester, '覚悟');
+      expect(find.text('覚悟の設定'), findsNothing);
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+      expect(
+        (await container.read(alarmRepositoryProvider).getAll()).single.kakugo,
+        isNull,
+      );
+    },
+  );
+
+  testWidgets('the snooze island appears with the toggle and persists', (
+    tester,
+  ) async {
+    final container = await pumpHome(tester, coins: 5000);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    await toggleInEditor(tester, 'スヌーズ');
+    expect(find.text('スヌーズ設定'), findsOneWidget);
+    expect(find.text('5分'), findsOneWidget, reason: 'the default interval');
+    expect(find.text('3回'), findsOneWidget);
+
+    await inSubScreen(tester, '間隔', () async {
+      await enterNumber(tester, '12');
+    });
+    await inSubScreen(tester, '上限回数', () async {
+      await enterNumber(tester, '2');
+    });
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    expect(
+      (await container.read(alarmRepositoryProvider).getAll()).single.snooze,
+      const Snooze(intervalMinutes: 12, maxCount: 2),
+    );
   });
 
   testWidgets('the grace window defaults to one minute and is editable', (
@@ -121,15 +241,13 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
-    await scrollToInEditor(tester, find.widgetWithText(ChoiceChip, '5 分'));
-    final byDefault = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, '1 分'),
-    );
-    expect(byDefault.selected, isTrue, reason: 'today\'s rule, unchanged');
+    expect(find.text('1分'), findsOneWidget, reason: 'today\'s rule, unchanged');
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '5 分'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('鳴り始めから 5 分以内'), findsOneWidget);
+    await inSubScreen(tester, '起床猶予', () async {
+      await enterNumber(tester, '5');
+      expect(find.textContaining('鳴り始めからこの時間以内'), findsOneWidget);
+    });
+    expect(find.text('5分'), findsOneWidget);
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
@@ -147,9 +265,12 @@ void main() {
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
-    await scrollToInEditor(tester, find.byType(SwitchListTile));
-    await tester.tap(find.byType(SwitchListTile));
-    await tester.pumpAndSettle();
+    await toggleInEditor(tester, '覚悟');
+
+    // The sub-screen says so too, before the save ever happens.
+    await inSubScreen(tester, '上限金額', () async {
+      expect(find.byKey(const ValueKey('capOverBalance')), findsOneWidget);
+    });
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
@@ -158,10 +279,7 @@ void main() {
     await tester.tap(find.text('このまま保存'));
     await tester.pumpAndSettle();
 
-    expect(
-      (await container.read(alarmRepositoryProvider).getAll()),
-      hasLength(1),
-    );
+    expect(await container.read(alarmRepositoryProvider).getAll(), hasLength(1));
   });
 
   testWidgets('the warning can be backed out of without saving', (
@@ -171,9 +289,7 @@ void main() {
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
-    await scrollToInEditor(tester, find.byType(SwitchListTile));
-    await tester.tap(find.byType(SwitchListTile));
-    await tester.pumpAndSettle();
+    await toggleInEditor(tester, '覚悟');
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
@@ -203,7 +319,16 @@ void main() {
 
   testWidgets('nothing in the UI sells anything', (tester) async {
     await pumpHome(tester);
-    for (final banned in ['広告', 'スヌーズ', 'プレミアム', 'アップグレード', '課金して']) {
+    // 「スヌーズ」 itself is no longer banned: as of the alarm v2 spec it is a
+    // free standard feature. Selling it in any form still is.
+    for (final banned in [
+      '広告',
+      'プレミアム',
+      'アップグレード',
+      '課金して',
+      'スヌーズを購入',
+      'スヌーズを追加',
+    ]) {
       expect(find.textContaining(banned), findsNothing, reason: banned);
     }
   });

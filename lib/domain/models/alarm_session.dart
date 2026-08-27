@@ -22,6 +22,7 @@ class AlarmSession {
     this.kakugoSnapshot,
     this.coinsAtFire = 0,
     this.graceMinutes = minGraceMinutes,
+    this.wakeCheckResolved,
   });
 
   final String id;
@@ -40,6 +41,12 @@ class AlarmSession {
   /// has no pledge but still has a success window — carries it too.
   final int graceMinutes;
 
+  /// Which wake check this ring actually asks for. Only ever set when the alarm
+  /// chose [WakeCheckType.random]: the draw happens once, when the session
+  /// opens, and is stored so a relaunch mid-ring shows the same check rather
+  /// than rolling again for an easier one.
+  final WakeCheckType? wakeCheckResolved;
+
   bool get isRinging => status == SessionStatus.ringing;
 
   AlarmSession copyWith({
@@ -52,6 +59,7 @@ class AlarmSession {
     Kakugo? kakugoSnapshot,
     int? coinsAtFire,
     int? graceMinutes,
+    WakeCheckType? wakeCheckResolved,
   }) => AlarmSession(
     id: id ?? this.id,
     alarmId: alarmId ?? this.alarmId,
@@ -62,6 +70,7 @@ class AlarmSession {
     kakugoSnapshot: kakugoSnapshot ?? this.kakugoSnapshot,
     coinsAtFire: coinsAtFire ?? this.coinsAtFire,
     graceMinutes: graceMinutes ?? this.graceMinutes,
+    wakeCheckResolved: wakeCheckResolved ?? this.wakeCheckResolved,
   );
 
   Map<String, dynamic> toJson() => {
@@ -74,6 +83,7 @@ class AlarmSession {
     'kakugoSnapshot': kakugoSnapshot?.toJson(),
     'coinsAtFire': coinsAtFire,
     'graceMinutes': graceMinutes,
+    'wakeCheckResolved': wakeCheckResolved?.name,
   };
 
   factory AlarmSession.fromJson(Map<String, dynamic> json) => AlarmSession(
@@ -97,6 +107,9 @@ class AlarmSession {
     graceMinutes: normalizeGraceMinutes(
       json['graceMinutes'] as int? ?? minGraceMinutes,
     ),
+    wakeCheckResolved: wakeCheckTypeByName(
+      json['wakeCheckResolved'] as String?,
+    ),
   );
 
   @override
@@ -110,7 +123,8 @@ class AlarmSession {
       other.loss == loss &&
       other.kakugoSnapshot == kakugoSnapshot &&
       other.coinsAtFire == coinsAtFire &&
-      other.graceMinutes == graceMinutes;
+      other.graceMinutes == graceMinutes &&
+      other.wakeCheckResolved == wakeCheckResolved;
 
   @override
   int get hashCode => Object.hash(
@@ -123,6 +137,7 @@ class AlarmSession {
     kakugoSnapshot,
     coinsAtFire,
     graceMinutes,
+    wakeCheckResolved,
   );
 
   @override

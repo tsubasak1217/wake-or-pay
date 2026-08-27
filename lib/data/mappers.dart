@@ -8,6 +8,14 @@ Set<int> _parseDays(String csv) =>
 
 String _formatDays(Set<int> days) => (days.toList()..sort()).join(',');
 
+Snooze? _snooze(int? intervalMinutes, int? maxCount) {
+  if (intervalMinutes == null || maxCount == null) return null;
+  return Snooze(
+    intervalMinutes: normalizeSnoozeInterval(intervalMinutes),
+    maxCount: normalizeSnoozeMaxCount(maxCount),
+  );
+}
+
 Kakugo? _kakugo(String? hostage, int? rate, int? cap) {
   if (rate == null || cap == null) return null;
   return Kakugo(
@@ -32,6 +40,8 @@ extension AlarmRowMapper on AlarmRow {
       orElse: () => WakeCheckType.longPress,
     ),
     graceMinutes: normalizeGraceMinutes(graceMinutes),
+    snooze: _snooze(snoozeIntervalMinutes, snoozeMaxCount),
+    soundId: soundId,
     kakugo: _kakugo(kakugoHostage, kakugoRatePerMinute, kakugoCap),
   );
 }
@@ -45,6 +55,13 @@ extension AlarmMapper on Alarm {
     enabled: Value(enabled),
     wakeCheck: Value(wakeCheck.name),
     graceMinutes: Value(normalizeGraceMinutes(graceMinutes)),
+    snoozeIntervalMinutes: Value(
+      snooze == null ? null : normalizeSnoozeInterval(snooze!.intervalMinutes),
+    ),
+    snoozeMaxCount: Value(
+      snooze == null ? null : normalizeSnoozeMaxCount(snooze!.maxCount),
+    ),
+    soundId: Value(soundId),
     kakugoHostage: Value(kakugo?.hostage.name),
     kakugoRatePerMinute: Value(kakugo?.ratePerMinute),
     kakugoCap: Value(kakugo?.cap),
@@ -67,6 +84,7 @@ extension AlarmSessionRowMapper on AlarmSessionRow {
     kakugoSnapshot: _kakugo(kakugoHostage, kakugoRatePerMinute, kakugoCap),
     coinsAtFire: coinsAtFire,
     graceMinutes: normalizeGraceMinutes(graceMinutes),
+    wakeCheckResolved: wakeCheckTypeByName(wakeCheckResolved),
   );
 }
 
@@ -83,5 +101,6 @@ extension AlarmSessionMapper on AlarmSession {
     kakugoCap: Value(kakugoSnapshot?.cap),
     coinsAtFire: Value(coinsAtFire),
     graceMinutes: Value(normalizeGraceMinutes(graceMinutes)),
+    wakeCheckResolved: Value(wakeCheckResolved?.name),
   );
 }

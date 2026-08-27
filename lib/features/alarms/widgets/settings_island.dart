@@ -1,0 +1,142 @@
+import 'package:flutter/material.dart';
+
+import '../alarm_draft.dart';
+
+/// One grouped block of the editor, in the shape iOS uses for its settings:
+/// a title above a rounded card whose rows are separated by hairlines.
+class SettingsIsland extends StatelessWidget {
+  const SettingsIsland({
+    super.key,
+    required this.title,
+    required this.children,
+    this.header,
+    this.background,
+    this.borderColor,
+    this.titleColor,
+  });
+
+  final String title;
+  final List<Widget> children;
+
+  /// Sits inside the card, above the rows. The kakugo island puts its running
+  /// total here.
+  final Widget? header;
+
+  final Color? background;
+  final Color? borderColor;
+  final Color? titleColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final border = borderColor;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(color: titleColor),
+            ),
+          ),
+          // Material, not a decorated box: ListTile paints its splashes onto
+          // the nearest Material, and a coloured box over it would hide them.
+          Material(
+            color: background ?? theme.colorScheme.surfaceContainerHighest,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: border == null
+                  ? BorderSide.none
+                  : BorderSide(color: border, width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ?header,
+                for (var i = 0; i < children.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, indent: 16),
+                  children[i],
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A row that shows a value and opens a sub-screen. The chevron is the promise
+/// that tapping goes somewhere.
+class SettingRow extends StatelessWidget {
+  const SettingRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.valueColor,
+    this.subtitle,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+  final Color? valueColor;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    debugRowBuildCounts.update(label, (n) => n + 1, ifAbsent: () => 1);
+    final theme = Theme.of(context);
+    return ListTile(
+      onTap: onTap,
+      title: Text(label),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: valueColor ?? theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+    );
+  }
+}
+
+/// A row that is just a switch.
+class SettingSwitchRow extends StatelessWidget {
+  const SettingSwitchRow({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    debugRowBuildCounts.update(label, (n) => n + 1, ifAbsent: () => 1);
+    return SwitchListTile(
+      value: value,
+      onChanged: onChanged,
+      title: Text(label),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+    );
+  }
+}

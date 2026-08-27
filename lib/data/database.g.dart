@@ -86,6 +86,39 @@ class $AlarmRowsTable extends AlarmRows
     requiredDuringInsert: false,
     defaultValue: const Constant(1),
   );
+  static const VerificationMeta _snoozeIntervalMinutesMeta =
+      const VerificationMeta('snoozeIntervalMinutes');
+  @override
+  late final GeneratedColumn<int> snoozeIntervalMinutes = GeneratedColumn<int>(
+    'snooze_interval_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _snoozeMaxCountMeta = const VerificationMeta(
+    'snoozeMaxCount',
+  );
+  @override
+  late final GeneratedColumn<int> snoozeMaxCount = GeneratedColumn<int>(
+    'snooze_max_count',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _soundIdMeta = const VerificationMeta(
+    'soundId',
+  );
+  @override
+  late final GeneratedColumn<String> soundId = GeneratedColumn<String>(
+    'sound_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(defaultSoundId),
+  );
   static const VerificationMeta _kakugoHostageMeta = const VerificationMeta(
     'kakugoHostage',
   );
@@ -118,6 +151,41 @@ class $AlarmRowsTable extends AlarmRows
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _kakugoSnoozePenaltyMeta =
+      const VerificationMeta('kakugoSnoozePenalty');
+  @override
+  late final GeneratedColumn<int> kakugoSnoozePenalty = GeneratedColumn<int>(
+    'kakugo_snooze_penalty',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _kakugoSnoozeResetsClockMeta =
+      const VerificationMeta('kakugoSnoozeResetsClock');
+  @override
+  late final GeneratedColumn<bool> kakugoSnoozeResetsClock =
+      GeneratedColumn<bool>(
+        'kakugo_snooze_resets_clock',
+        aliasedName,
+        true,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("kakugo_snooze_resets_clock" IN (0, 1))',
+        ),
+      );
+  static const VerificationMeta _oversleepContactMeta = const VerificationMeta(
+    'oversleepContact',
+  );
+  @override
+  late final GeneratedColumn<String> oversleepContact = GeneratedColumn<String>(
+    'oversleep_contact',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -127,9 +195,15 @@ class $AlarmRowsTable extends AlarmRows
     enabled,
     wakeCheck,
     graceMinutes,
+    snoozeIntervalMinutes,
+    snoozeMaxCount,
+    soundId,
     kakugoHostage,
     kakugoRatePerMinute,
     kakugoCap,
+    kakugoSnoozePenalty,
+    kakugoSnoozeResetsClock,
+    oversleepContact,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -193,6 +267,30 @@ class $AlarmRowsTable extends AlarmRows
         ),
       );
     }
+    if (data.containsKey('snooze_interval_minutes')) {
+      context.handle(
+        _snoozeIntervalMinutesMeta,
+        snoozeIntervalMinutes.isAcceptableOrUnknown(
+          data['snooze_interval_minutes']!,
+          _snoozeIntervalMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('snooze_max_count')) {
+      context.handle(
+        _snoozeMaxCountMeta,
+        snoozeMaxCount.isAcceptableOrUnknown(
+          data['snooze_max_count']!,
+          _snoozeMaxCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sound_id')) {
+      context.handle(
+        _soundIdMeta,
+        soundId.isAcceptableOrUnknown(data['sound_id']!, _soundIdMeta),
+      );
+    }
     if (data.containsKey('kakugo_hostage')) {
       context.handle(
         _kakugoHostageMeta,
@@ -215,6 +313,33 @@ class $AlarmRowsTable extends AlarmRows
       context.handle(
         _kakugoCapMeta,
         kakugoCap.isAcceptableOrUnknown(data['kakugo_cap']!, _kakugoCapMeta),
+      );
+    }
+    if (data.containsKey('kakugo_snooze_penalty')) {
+      context.handle(
+        _kakugoSnoozePenaltyMeta,
+        kakugoSnoozePenalty.isAcceptableOrUnknown(
+          data['kakugo_snooze_penalty']!,
+          _kakugoSnoozePenaltyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('kakugo_snooze_resets_clock')) {
+      context.handle(
+        _kakugoSnoozeResetsClockMeta,
+        kakugoSnoozeResetsClock.isAcceptableOrUnknown(
+          data['kakugo_snooze_resets_clock']!,
+          _kakugoSnoozeResetsClockMeta,
+        ),
+      );
+    }
+    if (data.containsKey('oversleep_contact')) {
+      context.handle(
+        _oversleepContactMeta,
+        oversleepContact.isAcceptableOrUnknown(
+          data['oversleep_contact']!,
+          _oversleepContactMeta,
+        ),
       );
     }
     return context;
@@ -254,6 +379,18 @@ class $AlarmRowsTable extends AlarmRows
         DriftSqlType.int,
         data['${effectivePrefix}grace_minutes'],
       )!,
+      snoozeIntervalMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}snooze_interval_minutes'],
+      ),
+      snoozeMaxCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}snooze_max_count'],
+      ),
+      soundId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sound_id'],
+      )!,
       kakugoHostage: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}kakugo_hostage'],
@@ -265,6 +402,18 @@ class $AlarmRowsTable extends AlarmRows
       kakugoCap: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}kakugo_cap'],
+      ),
+      kakugoSnoozePenalty: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}kakugo_snooze_penalty'],
+      ),
+      kakugoSnoozeResetsClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}kakugo_snooze_resets_clock'],
+      ),
+      oversleepContact: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}oversleep_contact'],
       ),
     );
   }
@@ -288,9 +437,29 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
   /// Minutes of slack before the burn starts, 1-5. Alarms written before this
   /// column existed keep the old behaviour, which is exactly 1.
   final int graceMinutes;
+
+  /// Both null = this alarm cannot be snoozed. Rows written before v4 read
+  /// that way, which is the rule they were saved under.
+  final int? snoozeIntervalMinutes;
+  final int? snoozeMaxCount;
+
+  /// A sound library id, or `file:<path>`. Alarms written before v4 rang with
+  /// the one bundled sound, which is `bell`.
+  final String soundId;
   final String? kakugoHostage;
   final int? kakugoRatePerMinute;
   final int? kakugoCap;
+
+  /// Stage B of the v2 alarm spec: the coin cost of one snooze, and whether
+  /// snoozing restarts the clock. Added in the v4 migration, together with
+  /// [oversleepContact], so that stage needs no migration of its own. Nothing
+  /// reads them yet.
+  final int? kakugoSnoozePenalty;
+  final bool? kakugoSnoozeResetsClock;
+
+  /// Stage B: the whole OversleepContact as one JSON blob, because it is only
+  /// ever read and written whole.
+  final String? oversleepContact;
   const AlarmRow({
     required this.id,
     required this.hour,
@@ -299,9 +468,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     required this.enabled,
     required this.wakeCheck,
     required this.graceMinutes,
+    this.snoozeIntervalMinutes,
+    this.snoozeMaxCount,
+    required this.soundId,
     this.kakugoHostage,
     this.kakugoRatePerMinute,
     this.kakugoCap,
+    this.kakugoSnoozePenalty,
+    this.kakugoSnoozeResetsClock,
+    this.oversleepContact,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -313,6 +488,13 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     map['enabled'] = Variable<bool>(enabled);
     map['wake_check'] = Variable<String>(wakeCheck);
     map['grace_minutes'] = Variable<int>(graceMinutes);
+    if (!nullToAbsent || snoozeIntervalMinutes != null) {
+      map['snooze_interval_minutes'] = Variable<int>(snoozeIntervalMinutes);
+    }
+    if (!nullToAbsent || snoozeMaxCount != null) {
+      map['snooze_max_count'] = Variable<int>(snoozeMaxCount);
+    }
+    map['sound_id'] = Variable<String>(soundId);
     if (!nullToAbsent || kakugoHostage != null) {
       map['kakugo_hostage'] = Variable<String>(kakugoHostage);
     }
@@ -321,6 +503,17 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     }
     if (!nullToAbsent || kakugoCap != null) {
       map['kakugo_cap'] = Variable<int>(kakugoCap);
+    }
+    if (!nullToAbsent || kakugoSnoozePenalty != null) {
+      map['kakugo_snooze_penalty'] = Variable<int>(kakugoSnoozePenalty);
+    }
+    if (!nullToAbsent || kakugoSnoozeResetsClock != null) {
+      map['kakugo_snooze_resets_clock'] = Variable<bool>(
+        kakugoSnoozeResetsClock,
+      );
+    }
+    if (!nullToAbsent || oversleepContact != null) {
+      map['oversleep_contact'] = Variable<String>(oversleepContact);
     }
     return map;
   }
@@ -334,6 +527,13 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       enabled: Value(enabled),
       wakeCheck: Value(wakeCheck),
       graceMinutes: Value(graceMinutes),
+      snoozeIntervalMinutes: snoozeIntervalMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(snoozeIntervalMinutes),
+      snoozeMaxCount: snoozeMaxCount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(snoozeMaxCount),
+      soundId: Value(soundId),
       kakugoHostage: kakugoHostage == null && nullToAbsent
           ? const Value.absent()
           : Value(kakugoHostage),
@@ -343,6 +543,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       kakugoCap: kakugoCap == null && nullToAbsent
           ? const Value.absent()
           : Value(kakugoCap),
+      kakugoSnoozePenalty: kakugoSnoozePenalty == null && nullToAbsent
+          ? const Value.absent()
+          : Value(kakugoSnoozePenalty),
+      kakugoSnoozeResetsClock: kakugoSnoozeResetsClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(kakugoSnoozeResetsClock),
+      oversleepContact: oversleepContact == null && nullToAbsent
+          ? const Value.absent()
+          : Value(oversleepContact),
     );
   }
 
@@ -359,11 +568,23 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       enabled: serializer.fromJson<bool>(json['enabled']),
       wakeCheck: serializer.fromJson<String>(json['wakeCheck']),
       graceMinutes: serializer.fromJson<int>(json['graceMinutes']),
+      snoozeIntervalMinutes: serializer.fromJson<int?>(
+        json['snoozeIntervalMinutes'],
+      ),
+      snoozeMaxCount: serializer.fromJson<int?>(json['snoozeMaxCount']),
+      soundId: serializer.fromJson<String>(json['soundId']),
       kakugoHostage: serializer.fromJson<String?>(json['kakugoHostage']),
       kakugoRatePerMinute: serializer.fromJson<int?>(
         json['kakugoRatePerMinute'],
       ),
       kakugoCap: serializer.fromJson<int?>(json['kakugoCap']),
+      kakugoSnoozePenalty: serializer.fromJson<int?>(
+        json['kakugoSnoozePenalty'],
+      ),
+      kakugoSnoozeResetsClock: serializer.fromJson<bool?>(
+        json['kakugoSnoozeResetsClock'],
+      ),
+      oversleepContact: serializer.fromJson<String?>(json['oversleepContact']),
     );
   }
   @override
@@ -377,9 +598,17 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       'enabled': serializer.toJson<bool>(enabled),
       'wakeCheck': serializer.toJson<String>(wakeCheck),
       'graceMinutes': serializer.toJson<int>(graceMinutes),
+      'snoozeIntervalMinutes': serializer.toJson<int?>(snoozeIntervalMinutes),
+      'snoozeMaxCount': serializer.toJson<int?>(snoozeMaxCount),
+      'soundId': serializer.toJson<String>(soundId),
       'kakugoHostage': serializer.toJson<String?>(kakugoHostage),
       'kakugoRatePerMinute': serializer.toJson<int?>(kakugoRatePerMinute),
       'kakugoCap': serializer.toJson<int?>(kakugoCap),
+      'kakugoSnoozePenalty': serializer.toJson<int?>(kakugoSnoozePenalty),
+      'kakugoSnoozeResetsClock': serializer.toJson<bool?>(
+        kakugoSnoozeResetsClock,
+      ),
+      'oversleepContact': serializer.toJson<String?>(oversleepContact),
     };
   }
 
@@ -391,9 +620,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     bool? enabled,
     String? wakeCheck,
     int? graceMinutes,
+    Value<int?> snoozeIntervalMinutes = const Value.absent(),
+    Value<int?> snoozeMaxCount = const Value.absent(),
+    String? soundId,
     Value<String?> kakugoHostage = const Value.absent(),
     Value<int?> kakugoRatePerMinute = const Value.absent(),
     Value<int?> kakugoCap = const Value.absent(),
+    Value<int?> kakugoSnoozePenalty = const Value.absent(),
+    Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
+    Value<String?> oversleepContact = const Value.absent(),
   }) => AlarmRow(
     id: id ?? this.id,
     hour: hour ?? this.hour,
@@ -402,6 +637,13 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     enabled: enabled ?? this.enabled,
     wakeCheck: wakeCheck ?? this.wakeCheck,
     graceMinutes: graceMinutes ?? this.graceMinutes,
+    snoozeIntervalMinutes: snoozeIntervalMinutes.present
+        ? snoozeIntervalMinutes.value
+        : this.snoozeIntervalMinutes,
+    snoozeMaxCount: snoozeMaxCount.present
+        ? snoozeMaxCount.value
+        : this.snoozeMaxCount,
+    soundId: soundId ?? this.soundId,
     kakugoHostage: kakugoHostage.present
         ? kakugoHostage.value
         : this.kakugoHostage,
@@ -409,6 +651,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
         ? kakugoRatePerMinute.value
         : this.kakugoRatePerMinute,
     kakugoCap: kakugoCap.present ? kakugoCap.value : this.kakugoCap,
+    kakugoSnoozePenalty: kakugoSnoozePenalty.present
+        ? kakugoSnoozePenalty.value
+        : this.kakugoSnoozePenalty,
+    kakugoSnoozeResetsClock: kakugoSnoozeResetsClock.present
+        ? kakugoSnoozeResetsClock.value
+        : this.kakugoSnoozeResetsClock,
+    oversleepContact: oversleepContact.present
+        ? oversleepContact.value
+        : this.oversleepContact,
   );
   AlarmRow copyWithCompanion(AlarmRowsCompanion data) {
     return AlarmRow(
@@ -423,6 +674,13 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       graceMinutes: data.graceMinutes.present
           ? data.graceMinutes.value
           : this.graceMinutes,
+      snoozeIntervalMinutes: data.snoozeIntervalMinutes.present
+          ? data.snoozeIntervalMinutes.value
+          : this.snoozeIntervalMinutes,
+      snoozeMaxCount: data.snoozeMaxCount.present
+          ? data.snoozeMaxCount.value
+          : this.snoozeMaxCount,
+      soundId: data.soundId.present ? data.soundId.value : this.soundId,
       kakugoHostage: data.kakugoHostage.present
           ? data.kakugoHostage.value
           : this.kakugoHostage,
@@ -430,6 +688,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           ? data.kakugoRatePerMinute.value
           : this.kakugoRatePerMinute,
       kakugoCap: data.kakugoCap.present ? data.kakugoCap.value : this.kakugoCap,
+      kakugoSnoozePenalty: data.kakugoSnoozePenalty.present
+          ? data.kakugoSnoozePenalty.value
+          : this.kakugoSnoozePenalty,
+      kakugoSnoozeResetsClock: data.kakugoSnoozeResetsClock.present
+          ? data.kakugoSnoozeResetsClock.value
+          : this.kakugoSnoozeResetsClock,
+      oversleepContact: data.oversleepContact.present
+          ? data.oversleepContact.value
+          : this.oversleepContact,
     );
   }
 
@@ -443,9 +710,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           ..write('enabled: $enabled, ')
           ..write('wakeCheck: $wakeCheck, ')
           ..write('graceMinutes: $graceMinutes, ')
+          ..write('snoozeIntervalMinutes: $snoozeIntervalMinutes, ')
+          ..write('snoozeMaxCount: $snoozeMaxCount, ')
+          ..write('soundId: $soundId, ')
           ..write('kakugoHostage: $kakugoHostage, ')
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
-          ..write('kakugoCap: $kakugoCap')
+          ..write('kakugoCap: $kakugoCap, ')
+          ..write('kakugoSnoozePenalty: $kakugoSnoozePenalty, ')
+          ..write('kakugoSnoozeResetsClock: $kakugoSnoozeResetsClock, ')
+          ..write('oversleepContact: $oversleepContact')
           ..write(')'))
         .toString();
   }
@@ -459,9 +732,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     enabled,
     wakeCheck,
     graceMinutes,
+    snoozeIntervalMinutes,
+    snoozeMaxCount,
+    soundId,
     kakugoHostage,
     kakugoRatePerMinute,
     kakugoCap,
+    kakugoSnoozePenalty,
+    kakugoSnoozeResetsClock,
+    oversleepContact,
   );
   @override
   bool operator ==(Object other) =>
@@ -474,9 +753,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           other.enabled == this.enabled &&
           other.wakeCheck == this.wakeCheck &&
           other.graceMinutes == this.graceMinutes &&
+          other.snoozeIntervalMinutes == this.snoozeIntervalMinutes &&
+          other.snoozeMaxCount == this.snoozeMaxCount &&
+          other.soundId == this.soundId &&
           other.kakugoHostage == this.kakugoHostage &&
           other.kakugoRatePerMinute == this.kakugoRatePerMinute &&
-          other.kakugoCap == this.kakugoCap);
+          other.kakugoCap == this.kakugoCap &&
+          other.kakugoSnoozePenalty == this.kakugoSnoozePenalty &&
+          other.kakugoSnoozeResetsClock == this.kakugoSnoozeResetsClock &&
+          other.oversleepContact == this.oversleepContact);
 }
 
 class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
@@ -487,9 +772,15 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
   final Value<bool> enabled;
   final Value<String> wakeCheck;
   final Value<int> graceMinutes;
+  final Value<int?> snoozeIntervalMinutes;
+  final Value<int?> snoozeMaxCount;
+  final Value<String> soundId;
   final Value<String?> kakugoHostage;
   final Value<int?> kakugoRatePerMinute;
   final Value<int?> kakugoCap;
+  final Value<int?> kakugoSnoozePenalty;
+  final Value<bool?> kakugoSnoozeResetsClock;
+  final Value<String?> oversleepContact;
   final Value<int> rowid;
   const AlarmRowsCompanion({
     this.id = const Value.absent(),
@@ -499,9 +790,15 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.enabled = const Value.absent(),
     this.wakeCheck = const Value.absent(),
     this.graceMinutes = const Value.absent(),
+    this.snoozeIntervalMinutes = const Value.absent(),
+    this.snoozeMaxCount = const Value.absent(),
+    this.soundId = const Value.absent(),
     this.kakugoHostage = const Value.absent(),
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
+    this.kakugoSnoozePenalty = const Value.absent(),
+    this.kakugoSnoozeResetsClock = const Value.absent(),
+    this.oversleepContact = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlarmRowsCompanion.insert({
@@ -512,9 +809,15 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.enabled = const Value.absent(),
     required String wakeCheck,
     this.graceMinutes = const Value.absent(),
+    this.snoozeIntervalMinutes = const Value.absent(),
+    this.snoozeMaxCount = const Value.absent(),
+    this.soundId = const Value.absent(),
     this.kakugoHostage = const Value.absent(),
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
+    this.kakugoSnoozePenalty = const Value.absent(),
+    this.kakugoSnoozeResetsClock = const Value.absent(),
+    this.oversleepContact = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        hour = Value(hour),
@@ -528,9 +831,15 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Expression<bool>? enabled,
     Expression<String>? wakeCheck,
     Expression<int>? graceMinutes,
+    Expression<int>? snoozeIntervalMinutes,
+    Expression<int>? snoozeMaxCount,
+    Expression<String>? soundId,
     Expression<String>? kakugoHostage,
     Expression<int>? kakugoRatePerMinute,
     Expression<int>? kakugoCap,
+    Expression<int>? kakugoSnoozePenalty,
+    Expression<bool>? kakugoSnoozeResetsClock,
+    Expression<String>? oversleepContact,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -541,10 +850,19 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       if (enabled != null) 'enabled': enabled,
       if (wakeCheck != null) 'wake_check': wakeCheck,
       if (graceMinutes != null) 'grace_minutes': graceMinutes,
+      if (snoozeIntervalMinutes != null)
+        'snooze_interval_minutes': snoozeIntervalMinutes,
+      if (snoozeMaxCount != null) 'snooze_max_count': snoozeMaxCount,
+      if (soundId != null) 'sound_id': soundId,
       if (kakugoHostage != null) 'kakugo_hostage': kakugoHostage,
       if (kakugoRatePerMinute != null)
         'kakugo_rate_per_minute': kakugoRatePerMinute,
       if (kakugoCap != null) 'kakugo_cap': kakugoCap,
+      if (kakugoSnoozePenalty != null)
+        'kakugo_snooze_penalty': kakugoSnoozePenalty,
+      if (kakugoSnoozeResetsClock != null)
+        'kakugo_snooze_resets_clock': kakugoSnoozeResetsClock,
+      if (oversleepContact != null) 'oversleep_contact': oversleepContact,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -557,9 +875,15 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Value<bool>? enabled,
     Value<String>? wakeCheck,
     Value<int>? graceMinutes,
+    Value<int?>? snoozeIntervalMinutes,
+    Value<int?>? snoozeMaxCount,
+    Value<String>? soundId,
     Value<String?>? kakugoHostage,
     Value<int?>? kakugoRatePerMinute,
     Value<int?>? kakugoCap,
+    Value<int?>? kakugoSnoozePenalty,
+    Value<bool?>? kakugoSnoozeResetsClock,
+    Value<String?>? oversleepContact,
     Value<int>? rowid,
   }) {
     return AlarmRowsCompanion(
@@ -570,9 +894,17 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       enabled: enabled ?? this.enabled,
       wakeCheck: wakeCheck ?? this.wakeCheck,
       graceMinutes: graceMinutes ?? this.graceMinutes,
+      snoozeIntervalMinutes:
+          snoozeIntervalMinutes ?? this.snoozeIntervalMinutes,
+      snoozeMaxCount: snoozeMaxCount ?? this.snoozeMaxCount,
+      soundId: soundId ?? this.soundId,
       kakugoHostage: kakugoHostage ?? this.kakugoHostage,
       kakugoRatePerMinute: kakugoRatePerMinute ?? this.kakugoRatePerMinute,
       kakugoCap: kakugoCap ?? this.kakugoCap,
+      kakugoSnoozePenalty: kakugoSnoozePenalty ?? this.kakugoSnoozePenalty,
+      kakugoSnoozeResetsClock:
+          kakugoSnoozeResetsClock ?? this.kakugoSnoozeResetsClock,
+      oversleepContact: oversleepContact ?? this.oversleepContact,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -601,6 +933,17 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     if (graceMinutes.present) {
       map['grace_minutes'] = Variable<int>(graceMinutes.value);
     }
+    if (snoozeIntervalMinutes.present) {
+      map['snooze_interval_minutes'] = Variable<int>(
+        snoozeIntervalMinutes.value,
+      );
+    }
+    if (snoozeMaxCount.present) {
+      map['snooze_max_count'] = Variable<int>(snoozeMaxCount.value);
+    }
+    if (soundId.present) {
+      map['sound_id'] = Variable<String>(soundId.value);
+    }
     if (kakugoHostage.present) {
       map['kakugo_hostage'] = Variable<String>(kakugoHostage.value);
     }
@@ -609,6 +952,17 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     }
     if (kakugoCap.present) {
       map['kakugo_cap'] = Variable<int>(kakugoCap.value);
+    }
+    if (kakugoSnoozePenalty.present) {
+      map['kakugo_snooze_penalty'] = Variable<int>(kakugoSnoozePenalty.value);
+    }
+    if (kakugoSnoozeResetsClock.present) {
+      map['kakugo_snooze_resets_clock'] = Variable<bool>(
+        kakugoSnoozeResetsClock.value,
+      );
+    }
+    if (oversleepContact.present) {
+      map['oversleep_contact'] = Variable<String>(oversleepContact.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -626,9 +980,15 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
           ..write('enabled: $enabled, ')
           ..write('wakeCheck: $wakeCheck, ')
           ..write('graceMinutes: $graceMinutes, ')
+          ..write('snoozeIntervalMinutes: $snoozeIntervalMinutes, ')
+          ..write('snoozeMaxCount: $snoozeMaxCount, ')
+          ..write('soundId: $soundId, ')
           ..write('kakugoHostage: $kakugoHostage, ')
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap, ')
+          ..write('kakugoSnoozePenalty: $kakugoSnoozePenalty, ')
+          ..write('kakugoSnoozeResetsClock: $kakugoSnoozeResetsClock, ')
+          ..write('oversleepContact: $oversleepContact, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -758,6 +1118,40 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
     requiredDuringInsert: false,
     defaultValue: const Constant(1),
   );
+  static const VerificationMeta _wakeCheckResolvedMeta = const VerificationMeta(
+    'wakeCheckResolved',
+  );
+  @override
+  late final GeneratedColumn<String> wakeCheckResolved =
+      GeneratedColumn<String>(
+        'wake_check_resolved',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _snoozesMeta = const VerificationMeta(
+    'snoozes',
+  );
+  @override
+  late final GeneratedColumn<String> snoozes = GeneratedColumn<String>(
+    'snoozes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _currentRingAtMsMeta = const VerificationMeta(
+    'currentRingAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> currentRingAtMs = GeneratedColumn<int>(
+    'current_ring_at_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -771,6 +1165,9 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
     kakugoCap,
     coinsAtFire,
     graceMinutes,
+    wakeCheckResolved,
+    snoozes,
+    currentRingAtMs,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -870,6 +1267,30 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
         ),
       );
     }
+    if (data.containsKey('wake_check_resolved')) {
+      context.handle(
+        _wakeCheckResolvedMeta,
+        wakeCheckResolved.isAcceptableOrUnknown(
+          data['wake_check_resolved']!,
+          _wakeCheckResolvedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('snoozes')) {
+      context.handle(
+        _snoozesMeta,
+        snoozes.isAcceptableOrUnknown(data['snoozes']!, _snoozesMeta),
+      );
+    }
+    if (data.containsKey('current_ring_at_ms')) {
+      context.handle(
+        _currentRingAtMsMeta,
+        currentRingAtMs.isAcceptableOrUnknown(
+          data['current_ring_at_ms']!,
+          _currentRingAtMsMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -923,6 +1344,18 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
         DriftSqlType.int,
         data['${effectivePrefix}grace_minutes'],
       )!,
+      wakeCheckResolved: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}wake_check_resolved'],
+      ),
+      snoozes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}snoozes'],
+      ),
+      currentRingAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}current_ring_at_ms'],
+      ),
     );
   }
 
@@ -946,6 +1379,16 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
 
   /// The grace window frozen at fire time, alongside the pledge and balance.
   final int graceMinutes;
+
+  /// The wake check drawn for this ring, set only when the alarm asked for a
+  /// random one. Stored so a relaunch mid-ring cannot re-roll it.
+  final String? wakeCheckResolved;
+
+  /// Stage B: the times the user pressed snooze (JSON list of epoch millis)
+  /// and the start of the current ring. Added in v4 so stage B needs no
+  /// migration; nothing reads them yet.
+  final String? snoozes;
+  final int? currentRingAtMs;
   const AlarmSessionRow({
     required this.id,
     required this.alarmId,
@@ -958,6 +1401,9 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     this.kakugoCap,
     required this.coinsAtFire,
     required this.graceMinutes,
+    this.wakeCheckResolved,
+    this.snoozes,
+    this.currentRingAtMs,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -981,6 +1427,15 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     }
     map['coins_at_fire'] = Variable<int>(coinsAtFire);
     map['grace_minutes'] = Variable<int>(graceMinutes);
+    if (!nullToAbsent || wakeCheckResolved != null) {
+      map['wake_check_resolved'] = Variable<String>(wakeCheckResolved);
+    }
+    if (!nullToAbsent || snoozes != null) {
+      map['snoozes'] = Variable<String>(snoozes);
+    }
+    if (!nullToAbsent || currentRingAtMs != null) {
+      map['current_ring_at_ms'] = Variable<int>(currentRingAtMs);
+    }
     return map;
   }
 
@@ -1005,6 +1460,15 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           : Value(kakugoCap),
       coinsAtFire: Value(coinsAtFire),
       graceMinutes: Value(graceMinutes),
+      wakeCheckResolved: wakeCheckResolved == null && nullToAbsent
+          ? const Value.absent()
+          : Value(wakeCheckResolved),
+      snoozes: snoozes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(snoozes),
+      currentRingAtMs: currentRingAtMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(currentRingAtMs),
     );
   }
 
@@ -1027,6 +1491,11 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       kakugoCap: serializer.fromJson<int?>(json['kakugoCap']),
       coinsAtFire: serializer.fromJson<int>(json['coinsAtFire']),
       graceMinutes: serializer.fromJson<int>(json['graceMinutes']),
+      wakeCheckResolved: serializer.fromJson<String?>(
+        json['wakeCheckResolved'],
+      ),
+      snoozes: serializer.fromJson<String?>(json['snoozes']),
+      currentRingAtMs: serializer.fromJson<int?>(json['currentRingAtMs']),
     );
   }
   @override
@@ -1044,6 +1513,9 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       'kakugoCap': serializer.toJson<int?>(kakugoCap),
       'coinsAtFire': serializer.toJson<int>(coinsAtFire),
       'graceMinutes': serializer.toJson<int>(graceMinutes),
+      'wakeCheckResolved': serializer.toJson<String?>(wakeCheckResolved),
+      'snoozes': serializer.toJson<String?>(snoozes),
+      'currentRingAtMs': serializer.toJson<int?>(currentRingAtMs),
     };
   }
 
@@ -1059,6 +1531,9 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     Value<int?> kakugoCap = const Value.absent(),
     int? coinsAtFire,
     int? graceMinutes,
+    Value<String?> wakeCheckResolved = const Value.absent(),
+    Value<String?> snoozes = const Value.absent(),
+    Value<int?> currentRingAtMs = const Value.absent(),
   }) => AlarmSessionRow(
     id: id ?? this.id,
     alarmId: alarmId ?? this.alarmId,
@@ -1077,6 +1552,13 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     kakugoCap: kakugoCap.present ? kakugoCap.value : this.kakugoCap,
     coinsAtFire: coinsAtFire ?? this.coinsAtFire,
     graceMinutes: graceMinutes ?? this.graceMinutes,
+    wakeCheckResolved: wakeCheckResolved.present
+        ? wakeCheckResolved.value
+        : this.wakeCheckResolved,
+    snoozes: snoozes.present ? snoozes.value : this.snoozes,
+    currentRingAtMs: currentRingAtMs.present
+        ? currentRingAtMs.value
+        : this.currentRingAtMs,
   );
   AlarmSessionRow copyWithCompanion(AlarmSessionRowsCompanion data) {
     return AlarmSessionRow(
@@ -1101,6 +1583,13 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       graceMinutes: data.graceMinutes.present
           ? data.graceMinutes.value
           : this.graceMinutes,
+      wakeCheckResolved: data.wakeCheckResolved.present
+          ? data.wakeCheckResolved.value
+          : this.wakeCheckResolved,
+      snoozes: data.snoozes.present ? data.snoozes.value : this.snoozes,
+      currentRingAtMs: data.currentRingAtMs.present
+          ? data.currentRingAtMs.value
+          : this.currentRingAtMs,
     );
   }
 
@@ -1117,7 +1606,10 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap, ')
           ..write('coinsAtFire: $coinsAtFire, ')
-          ..write('graceMinutes: $graceMinutes')
+          ..write('graceMinutes: $graceMinutes, ')
+          ..write('wakeCheckResolved: $wakeCheckResolved, ')
+          ..write('snoozes: $snoozes, ')
+          ..write('currentRingAtMs: $currentRingAtMs')
           ..write(')'))
         .toString();
   }
@@ -1135,6 +1627,9 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     kakugoCap,
     coinsAtFire,
     graceMinutes,
+    wakeCheckResolved,
+    snoozes,
+    currentRingAtMs,
   );
   @override
   bool operator ==(Object other) =>
@@ -1150,7 +1645,10 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           other.kakugoRatePerMinute == this.kakugoRatePerMinute &&
           other.kakugoCap == this.kakugoCap &&
           other.coinsAtFire == this.coinsAtFire &&
-          other.graceMinutes == this.graceMinutes);
+          other.graceMinutes == this.graceMinutes &&
+          other.wakeCheckResolved == this.wakeCheckResolved &&
+          other.snoozes == this.snoozes &&
+          other.currentRingAtMs == this.currentRingAtMs);
 }
 
 class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
@@ -1165,6 +1663,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
   final Value<int?> kakugoCap;
   final Value<int> coinsAtFire;
   final Value<int> graceMinutes;
+  final Value<String?> wakeCheckResolved;
+  final Value<String?> snoozes;
+  final Value<int?> currentRingAtMs;
   final Value<int> rowid;
   const AlarmSessionRowsCompanion({
     this.id = const Value.absent(),
@@ -1178,6 +1679,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     this.kakugoCap = const Value.absent(),
     this.coinsAtFire = const Value.absent(),
     this.graceMinutes = const Value.absent(),
+    this.wakeCheckResolved = const Value.absent(),
+    this.snoozes = const Value.absent(),
+    this.currentRingAtMs = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlarmSessionRowsCompanion.insert({
@@ -1192,6 +1696,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     this.kakugoCap = const Value.absent(),
     this.coinsAtFire = const Value.absent(),
     this.graceMinutes = const Value.absent(),
+    this.wakeCheckResolved = const Value.absent(),
+    this.snoozes = const Value.absent(),
+    this.currentRingAtMs = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        alarmId = Value(alarmId),
@@ -1209,6 +1716,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     Expression<int>? kakugoCap,
     Expression<int>? coinsAtFire,
     Expression<int>? graceMinutes,
+    Expression<String>? wakeCheckResolved,
+    Expression<String>? snoozes,
+    Expression<int>? currentRingAtMs,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1224,6 +1734,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
       if (kakugoCap != null) 'kakugo_cap': kakugoCap,
       if (coinsAtFire != null) 'coins_at_fire': coinsAtFire,
       if (graceMinutes != null) 'grace_minutes': graceMinutes,
+      if (wakeCheckResolved != null) 'wake_check_resolved': wakeCheckResolved,
+      if (snoozes != null) 'snoozes': snoozes,
+      if (currentRingAtMs != null) 'current_ring_at_ms': currentRingAtMs,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1240,6 +1753,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     Value<int?>? kakugoCap,
     Value<int>? coinsAtFire,
     Value<int>? graceMinutes,
+    Value<String?>? wakeCheckResolved,
+    Value<String?>? snoozes,
+    Value<int?>? currentRingAtMs,
     Value<int>? rowid,
   }) {
     return AlarmSessionRowsCompanion(
@@ -1254,6 +1770,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
       kakugoCap: kakugoCap ?? this.kakugoCap,
       coinsAtFire: coinsAtFire ?? this.coinsAtFire,
       graceMinutes: graceMinutes ?? this.graceMinutes,
+      wakeCheckResolved: wakeCheckResolved ?? this.wakeCheckResolved,
+      snoozes: snoozes ?? this.snoozes,
+      currentRingAtMs: currentRingAtMs ?? this.currentRingAtMs,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1294,6 +1813,15 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     if (graceMinutes.present) {
       map['grace_minutes'] = Variable<int>(graceMinutes.value);
     }
+    if (wakeCheckResolved.present) {
+      map['wake_check_resolved'] = Variable<String>(wakeCheckResolved.value);
+    }
+    if (snoozes.present) {
+      map['snoozes'] = Variable<String>(snoozes.value);
+    }
+    if (currentRingAtMs.present) {
+      map['current_ring_at_ms'] = Variable<int>(currentRingAtMs.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1314,6 +1842,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
           ..write('kakugoCap: $kakugoCap, ')
           ..write('coinsAtFire: $coinsAtFire, ')
           ..write('graceMinutes: $graceMinutes, ')
+          ..write('wakeCheckResolved: $wakeCheckResolved, ')
+          ..write('snoozes: $snoozes, ')
+          ..write('currentRingAtMs: $currentRingAtMs, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2438,6 +2969,420 @@ class GardenInventoryRowsCompanion extends UpdateCompanion<GardenInventoryRow> {
   }
 }
 
+class $ContactEventRowsTable extends ContactEventRows
+    with TableInfo<$ContactEventRowsTable, ContactEventRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ContactEventRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _firedAtMsMeta = const VerificationMeta(
+    'firedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> firedAtMs = GeneratedColumn<int>(
+    'fired_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contactNameMeta = const VerificationMeta(
+    'contactName',
+  );
+  @override
+  late final GeneratedColumn<String> contactName = GeneratedColumn<String>(
+    'contact_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _channelMeta = const VerificationMeta(
+    'channel',
+  );
+  @override
+  late final GeneratedColumn<String> channel = GeneratedColumn<String>(
+    'channel',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _detailMeta = const VerificationMeta('detail');
+  @override
+  late final GeneratedColumn<String> detail = GeneratedColumn<String>(
+    'detail',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sessionId,
+    firedAtMs,
+    contactName,
+    channel,
+    detail,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'contact_event_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ContactEventRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('fired_at_ms')) {
+      context.handle(
+        _firedAtMsMeta,
+        firedAtMs.isAcceptableOrUnknown(data['fired_at_ms']!, _firedAtMsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_firedAtMsMeta);
+    }
+    if (data.containsKey('contact_name')) {
+      context.handle(
+        _contactNameMeta,
+        contactName.isAcceptableOrUnknown(
+          data['contact_name']!,
+          _contactNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contactNameMeta);
+    }
+    if (data.containsKey('channel')) {
+      context.handle(
+        _channelMeta,
+        channel.isAcceptableOrUnknown(data['channel']!, _channelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_channelMeta);
+    }
+    if (data.containsKey('detail')) {
+      context.handle(
+        _detailMeta,
+        detail.isAcceptableOrUnknown(data['detail']!, _detailMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ContactEventRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ContactEventRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      )!,
+      firedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}fired_at_ms'],
+      )!,
+      contactName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}contact_name'],
+      )!,
+      channel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}channel'],
+      )!,
+      detail: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}detail'],
+      ),
+    );
+  }
+
+  @override
+  $ContactEventRowsTable createAlias(String alias) {
+    return $ContactEventRowsTable(attachedDatabase, alias);
+  }
+}
+
+class ContactEventRow extends DataClass implements Insertable<ContactEventRow> {
+  final String id;
+  final String sessionId;
+  final int firedAtMs;
+  final String contactName;
+  final String channel;
+  final String? detail;
+  const ContactEventRow({
+    required this.id,
+    required this.sessionId,
+    required this.firedAtMs,
+    required this.contactName,
+    required this.channel,
+    this.detail,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['session_id'] = Variable<String>(sessionId);
+    map['fired_at_ms'] = Variable<int>(firedAtMs);
+    map['contact_name'] = Variable<String>(contactName);
+    map['channel'] = Variable<String>(channel);
+    if (!nullToAbsent || detail != null) {
+      map['detail'] = Variable<String>(detail);
+    }
+    return map;
+  }
+
+  ContactEventRowsCompanion toCompanion(bool nullToAbsent) {
+    return ContactEventRowsCompanion(
+      id: Value(id),
+      sessionId: Value(sessionId),
+      firedAtMs: Value(firedAtMs),
+      contactName: Value(contactName),
+      channel: Value(channel),
+      detail: detail == null && nullToAbsent
+          ? const Value.absent()
+          : Value(detail),
+    );
+  }
+
+  factory ContactEventRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ContactEventRow(
+      id: serializer.fromJson<String>(json['id']),
+      sessionId: serializer.fromJson<String>(json['sessionId']),
+      firedAtMs: serializer.fromJson<int>(json['firedAtMs']),
+      contactName: serializer.fromJson<String>(json['contactName']),
+      channel: serializer.fromJson<String>(json['channel']),
+      detail: serializer.fromJson<String?>(json['detail']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sessionId': serializer.toJson<String>(sessionId),
+      'firedAtMs': serializer.toJson<int>(firedAtMs),
+      'contactName': serializer.toJson<String>(contactName),
+      'channel': serializer.toJson<String>(channel),
+      'detail': serializer.toJson<String?>(detail),
+    };
+  }
+
+  ContactEventRow copyWith({
+    String? id,
+    String? sessionId,
+    int? firedAtMs,
+    String? contactName,
+    String? channel,
+    Value<String?> detail = const Value.absent(),
+  }) => ContactEventRow(
+    id: id ?? this.id,
+    sessionId: sessionId ?? this.sessionId,
+    firedAtMs: firedAtMs ?? this.firedAtMs,
+    contactName: contactName ?? this.contactName,
+    channel: channel ?? this.channel,
+    detail: detail.present ? detail.value : this.detail,
+  );
+  ContactEventRow copyWithCompanion(ContactEventRowsCompanion data) {
+    return ContactEventRow(
+      id: data.id.present ? data.id.value : this.id,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      firedAtMs: data.firedAtMs.present ? data.firedAtMs.value : this.firedAtMs,
+      contactName: data.contactName.present
+          ? data.contactName.value
+          : this.contactName,
+      channel: data.channel.present ? data.channel.value : this.channel,
+      detail: data.detail.present ? data.detail.value : this.detail,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ContactEventRow(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('firedAtMs: $firedAtMs, ')
+          ..write('contactName: $contactName, ')
+          ..write('channel: $channel, ')
+          ..write('detail: $detail')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, sessionId, firedAtMs, contactName, channel, detail);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ContactEventRow &&
+          other.id == this.id &&
+          other.sessionId == this.sessionId &&
+          other.firedAtMs == this.firedAtMs &&
+          other.contactName == this.contactName &&
+          other.channel == this.channel &&
+          other.detail == this.detail);
+}
+
+class ContactEventRowsCompanion extends UpdateCompanion<ContactEventRow> {
+  final Value<String> id;
+  final Value<String> sessionId;
+  final Value<int> firedAtMs;
+  final Value<String> contactName;
+  final Value<String> channel;
+  final Value<String?> detail;
+  final Value<int> rowid;
+  const ContactEventRowsCompanion({
+    this.id = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.firedAtMs = const Value.absent(),
+    this.contactName = const Value.absent(),
+    this.channel = const Value.absent(),
+    this.detail = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ContactEventRowsCompanion.insert({
+    required String id,
+    required String sessionId,
+    required int firedAtMs,
+    required String contactName,
+    required String channel,
+    this.detail = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sessionId = Value(sessionId),
+       firedAtMs = Value(firedAtMs),
+       contactName = Value(contactName),
+       channel = Value(channel);
+  static Insertable<ContactEventRow> custom({
+    Expression<String>? id,
+    Expression<String>? sessionId,
+    Expression<int>? firedAtMs,
+    Expression<String>? contactName,
+    Expression<String>? channel,
+    Expression<String>? detail,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sessionId != null) 'session_id': sessionId,
+      if (firedAtMs != null) 'fired_at_ms': firedAtMs,
+      if (contactName != null) 'contact_name': contactName,
+      if (channel != null) 'channel': channel,
+      if (detail != null) 'detail': detail,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ContactEventRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sessionId,
+    Value<int>? firedAtMs,
+    Value<String>? contactName,
+    Value<String>? channel,
+    Value<String?>? detail,
+    Value<int>? rowid,
+  }) {
+    return ContactEventRowsCompanion(
+      id: id ?? this.id,
+      sessionId: sessionId ?? this.sessionId,
+      firedAtMs: firedAtMs ?? this.firedAtMs,
+      contactName: contactName ?? this.contactName,
+      channel: channel ?? this.channel,
+      detail: detail ?? this.detail,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
+    if (firedAtMs.present) {
+      map['fired_at_ms'] = Variable<int>(firedAtMs.value);
+    }
+    if (contactName.present) {
+      map['contact_name'] = Variable<String>(contactName.value);
+    }
+    if (channel.present) {
+      map['channel'] = Variable<String>(channel.value);
+    }
+    if (detail.present) {
+      map['detail'] = Variable<String>(detail.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ContactEventRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('firedAtMs: $firedAtMs, ')
+          ..write('contactName: $contactName, ')
+          ..write('channel: $channel, ')
+          ..write('detail: $detail, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2451,6 +3396,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $GardenPlacementRowsTable(this);
   late final $GardenInventoryRowsTable gardenInventoryRows =
       $GardenInventoryRowsTable(this);
+  late final $ContactEventRowsTable contactEventRows = $ContactEventRowsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2462,6 +3410,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     ojisanRows,
     gardenPlacementRows,
     gardenInventoryRows,
+    contactEventRows,
   ];
 }
 
@@ -2473,9 +3422,15 @@ typedef $$AlarmRowsTableCreateCompanionBuilder = AlarmRowsCompanion Function({
   Value<bool> enabled,
   required String wakeCheck,
   Value<int> graceMinutes,
+  Value<int?> snoozeIntervalMinutes,
+  Value<int?> snoozeMaxCount,
+  Value<String> soundId,
   Value<String?> kakugoHostage,
   Value<int?> kakugoRatePerMinute,
   Value<int?> kakugoCap,
+  Value<int?> kakugoSnoozePenalty,
+  Value<bool?> kakugoSnoozeResetsClock,
+  Value<String?> oversleepContact,
   Value<int> rowid,
 });
 typedef $$AlarmRowsTableUpdateCompanionBuilder = AlarmRowsCompanion Function({
@@ -2486,9 +3441,15 @@ typedef $$AlarmRowsTableUpdateCompanionBuilder = AlarmRowsCompanion Function({
   Value<bool> enabled,
   Value<String> wakeCheck,
   Value<int> graceMinutes,
+  Value<int?> snoozeIntervalMinutes,
+  Value<int?> snoozeMaxCount,
+  Value<String> soundId,
   Value<String?> kakugoHostage,
   Value<int?> kakugoRatePerMinute,
   Value<int?> kakugoCap,
+  Value<int?> kakugoSnoozePenalty,
+  Value<bool?> kakugoSnoozeResetsClock,
+  Value<String?> oversleepContact,
   Value<int> rowid,
 });
 
@@ -2536,6 +3497,21 @@ class $$AlarmRowsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get snoozeIntervalMinutes => $composableBuilder(
+    column: $table.snoozeIntervalMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get snoozeMaxCount => $composableBuilder(
+    column: $table.snoozeMaxCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get soundId => $composableBuilder(
+    column: $table.soundId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get kakugoHostage => $composableBuilder(
     column: $table.kakugoHostage,
     builder: (column) => ColumnFilters(column),
@@ -2548,6 +3524,21 @@ class $$AlarmRowsTableFilterComposer
 
   ColumnFilters<int> get kakugoCap => $composableBuilder(
     column: $table.kakugoCap,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get kakugoSnoozePenalty => $composableBuilder(
+    column: $table.kakugoSnoozePenalty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get kakugoSnoozeResetsClock => $composableBuilder(
+    column: $table.kakugoSnoozeResetsClock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get oversleepContact => $composableBuilder(
+    column: $table.oversleepContact,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2596,6 +3587,21 @@ class $$AlarmRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get snoozeIntervalMinutes => $composableBuilder(
+    column: $table.snoozeIntervalMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get snoozeMaxCount => $composableBuilder(
+    column: $table.snoozeMaxCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get soundId => $composableBuilder(
+    column: $table.soundId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get kakugoHostage => $composableBuilder(
     column: $table.kakugoHostage,
     builder: (column) => ColumnOrderings(column),
@@ -2608,6 +3614,21 @@ class $$AlarmRowsTableOrderingComposer
 
   ColumnOrderings<int> get kakugoCap => $composableBuilder(
     column: $table.kakugoCap,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get kakugoSnoozePenalty => $composableBuilder(
+    column: $table.kakugoSnoozePenalty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get kakugoSnoozeResetsClock => $composableBuilder(
+    column: $table.kakugoSnoozeResetsClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get oversleepContact => $composableBuilder(
+    column: $table.oversleepContact,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -2646,6 +3667,19 @@ class $$AlarmRowsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get snoozeIntervalMinutes => $composableBuilder(
+    column: $table.snoozeIntervalMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get snoozeMaxCount => $composableBuilder(
+    column: $table.snoozeMaxCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get soundId =>
+      $composableBuilder(column: $table.soundId, builder: (column) => column);
+
   GeneratedColumn<String> get kakugoHostage => $composableBuilder(
     column: $table.kakugoHostage,
     builder: (column) => column,
@@ -2658,6 +3692,21 @@ class $$AlarmRowsTableAnnotationComposer
 
   GeneratedColumn<int> get kakugoCap =>
       $composableBuilder(column: $table.kakugoCap, builder: (column) => column);
+
+  GeneratedColumn<int> get kakugoSnoozePenalty => $composableBuilder(
+    column: $table.kakugoSnoozePenalty,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get kakugoSnoozeResetsClock => $composableBuilder(
+    column: $table.kakugoSnoozeResetsClock,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get oversleepContact => $composableBuilder(
+    column: $table.oversleepContact,
+    builder: (column) => column,
+  );
 }
 
 class $$AlarmRowsTableTableManager
@@ -2695,9 +3744,15 @@ class $$AlarmRowsTableTableManager
                 Value<bool> enabled = const Value.absent(),
                 Value<String> wakeCheck = const Value.absent(),
                 Value<int> graceMinutes = const Value.absent(),
+                Value<int?> snoozeIntervalMinutes = const Value.absent(),
+                Value<int?> snoozeMaxCount = const Value.absent(),
+                Value<String> soundId = const Value.absent(),
                 Value<String?> kakugoHostage = const Value.absent(),
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
+                Value<int?> kakugoSnoozePenalty = const Value.absent(),
+                Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
+                Value<String?> oversleepContact = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmRowsCompanion(
                 id: id,
@@ -2707,9 +3762,15 @@ class $$AlarmRowsTableTableManager
                 enabled: enabled,
                 wakeCheck: wakeCheck,
                 graceMinutes: graceMinutes,
+                snoozeIntervalMinutes: snoozeIntervalMinutes,
+                snoozeMaxCount: snoozeMaxCount,
+                soundId: soundId,
                 kakugoHostage: kakugoHostage,
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
+                kakugoSnoozePenalty: kakugoSnoozePenalty,
+                kakugoSnoozeResetsClock: kakugoSnoozeResetsClock,
+                oversleepContact: oversleepContact,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2721,9 +3782,15 @@ class $$AlarmRowsTableTableManager
                 Value<bool> enabled = const Value.absent(),
                 required String wakeCheck,
                 Value<int> graceMinutes = const Value.absent(),
+                Value<int?> snoozeIntervalMinutes = const Value.absent(),
+                Value<int?> snoozeMaxCount = const Value.absent(),
+                Value<String> soundId = const Value.absent(),
                 Value<String?> kakugoHostage = const Value.absent(),
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
+                Value<int?> kakugoSnoozePenalty = const Value.absent(),
+                Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
+                Value<String?> oversleepContact = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmRowsCompanion.insert(
                 id: id,
@@ -2733,9 +3800,15 @@ class $$AlarmRowsTableTableManager
                 enabled: enabled,
                 wakeCheck: wakeCheck,
                 graceMinutes: graceMinutes,
+                snoozeIntervalMinutes: snoozeIntervalMinutes,
+                snoozeMaxCount: snoozeMaxCount,
+                soundId: soundId,
                 kakugoHostage: kakugoHostage,
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
+                kakugoSnoozePenalty: kakugoSnoozePenalty,
+                kakugoSnoozeResetsClock: kakugoSnoozeResetsClock,
+                oversleepContact: oversleepContact,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2773,6 +3846,9 @@ typedef $$AlarmSessionRowsTableCreateCompanionBuilder =
       Value<int?> kakugoCap,
       Value<int> coinsAtFire,
       Value<int> graceMinutes,
+      Value<String?> wakeCheckResolved,
+      Value<String?> snoozes,
+      Value<int?> currentRingAtMs,
       Value<int> rowid,
     });
 typedef $$AlarmSessionRowsTableUpdateCompanionBuilder =
@@ -2788,6 +3864,9 @@ typedef $$AlarmSessionRowsTableUpdateCompanionBuilder =
       Value<int?> kakugoCap,
       Value<int> coinsAtFire,
       Value<int> graceMinutes,
+      Value<String?> wakeCheckResolved,
+      Value<String?> snoozes,
+      Value<int?> currentRingAtMs,
       Value<int> rowid,
     });
 
@@ -2852,6 +3931,21 @@ class $$AlarmSessionRowsTableFilterComposer
 
   ColumnFilters<int> get graceMinutes => $composableBuilder(
     column: $table.graceMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get wakeCheckResolved => $composableBuilder(
+    column: $table.wakeCheckResolved,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get snoozes => $composableBuilder(
+    column: $table.snoozes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get currentRingAtMs => $composableBuilder(
+    column: $table.currentRingAtMs,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2919,6 +4013,21 @@ class $$AlarmSessionRowsTableOrderingComposer
     column: $table.graceMinutes,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get wakeCheckResolved => $composableBuilder(
+    column: $table.wakeCheckResolved,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get snoozes => $composableBuilder(
+    column: $table.snoozes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get currentRingAtMs => $composableBuilder(
+    column: $table.currentRingAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AlarmSessionRowsTableAnnotationComposer
@@ -2972,6 +4081,19 @@ class $$AlarmSessionRowsTableAnnotationComposer
     column: $table.graceMinutes,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get wakeCheckResolved => $composableBuilder(
+    column: $table.wakeCheckResolved,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get snoozes =>
+      $composableBuilder(column: $table.snoozes, builder: (column) => column);
+
+  GeneratedColumn<int> get currentRingAtMs => $composableBuilder(
+    column: $table.currentRingAtMs,
+    builder: (column) => column,
+  );
 }
 
 class $$AlarmSessionRowsTableTableManager
@@ -3022,6 +4144,9 @@ class $$AlarmSessionRowsTableTableManager
                 Value<int?> kakugoCap = const Value.absent(),
                 Value<int> coinsAtFire = const Value.absent(),
                 Value<int> graceMinutes = const Value.absent(),
+                Value<String?> wakeCheckResolved = const Value.absent(),
+                Value<String?> snoozes = const Value.absent(),
+                Value<int?> currentRingAtMs = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmSessionRowsCompanion(
                 id: id,
@@ -3035,6 +4160,9 @@ class $$AlarmSessionRowsTableTableManager
                 kakugoCap: kakugoCap,
                 coinsAtFire: coinsAtFire,
                 graceMinutes: graceMinutes,
+                wakeCheckResolved: wakeCheckResolved,
+                snoozes: snoozes,
+                currentRingAtMs: currentRingAtMs,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3050,6 +4178,9 @@ class $$AlarmSessionRowsTableTableManager
                 Value<int?> kakugoCap = const Value.absent(),
                 Value<int> coinsAtFire = const Value.absent(),
                 Value<int> graceMinutes = const Value.absent(),
+                Value<String?> wakeCheckResolved = const Value.absent(),
+                Value<String?> snoozes = const Value.absent(),
+                Value<int?> currentRingAtMs = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmSessionRowsCompanion.insert(
                 id: id,
@@ -3063,6 +4194,9 @@ class $$AlarmSessionRowsTableTableManager
                 kakugoCap: kakugoCap,
                 coinsAtFire: coinsAtFire,
                 graceMinutes: graceMinutes,
+                wakeCheckResolved: wakeCheckResolved,
+                snoozes: snoozes,
+                currentRingAtMs: currentRingAtMs,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -3789,6 +4923,233 @@ typedef $$GardenInventoryRowsTableProcessedTableManager =
       GardenInventoryRow,
       PrefetchHooks Function()
     >;
+typedef $$ContactEventRowsTableCreateCompanionBuilder =
+    ContactEventRowsCompanion Function({
+      required String id,
+      required String sessionId,
+      required int firedAtMs,
+      required String contactName,
+      required String channel,
+      Value<String?> detail,
+      Value<int> rowid,
+    });
+typedef $$ContactEventRowsTableUpdateCompanionBuilder =
+    ContactEventRowsCompanion Function({
+      Value<String> id,
+      Value<String> sessionId,
+      Value<int> firedAtMs,
+      Value<String> contactName,
+      Value<String> channel,
+      Value<String?> detail,
+      Value<int> rowid,
+    });
+
+class $$ContactEventRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $ContactEventRowsTable> {
+  $$ContactEventRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get firedAtMs => $composableBuilder(
+    column: $table.firedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contactName => $composableBuilder(
+    column: $table.contactName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get channel => $composableBuilder(
+    column: $table.channel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get detail => $composableBuilder(
+    column: $table.detail,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ContactEventRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ContactEventRowsTable> {
+  $$ContactEventRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get firedAtMs => $composableBuilder(
+    column: $table.firedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contactName => $composableBuilder(
+    column: $table.contactName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get channel => $composableBuilder(
+    column: $table.channel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get detail => $composableBuilder(
+    column: $table.detail,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ContactEventRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ContactEventRowsTable> {
+  $$ContactEventRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
+  GeneratedColumn<int> get firedAtMs =>
+      $composableBuilder(column: $table.firedAtMs, builder: (column) => column);
+
+  GeneratedColumn<String> get contactName => $composableBuilder(
+    column: $table.contactName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get channel =>
+      $composableBuilder(column: $table.channel, builder: (column) => column);
+
+  GeneratedColumn<String> get detail =>
+      $composableBuilder(column: $table.detail, builder: (column) => column);
+}
+
+class $$ContactEventRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ContactEventRowsTable,
+          ContactEventRow,
+          $$ContactEventRowsTableFilterComposer,
+          $$ContactEventRowsTableOrderingComposer,
+          $$ContactEventRowsTableAnnotationComposer,
+          $$ContactEventRowsTableCreateCompanionBuilder,
+          $$ContactEventRowsTableUpdateCompanionBuilder,
+          (
+            ContactEventRow,
+            BaseReferences<
+              _$AppDatabase,
+              $ContactEventRowsTable,
+              ContactEventRow
+            >,
+          ),
+          ContactEventRow,
+          PrefetchHooks Function()
+        > {
+  $$ContactEventRowsTableTableManager(
+    _$AppDatabase db,
+    $ContactEventRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ContactEventRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ContactEventRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ContactEventRowsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sessionId = const Value.absent(),
+                Value<int> firedAtMs = const Value.absent(),
+                Value<String> contactName = const Value.absent(),
+                Value<String> channel = const Value.absent(),
+                Value<String?> detail = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ContactEventRowsCompanion(
+                id: id,
+                sessionId: sessionId,
+                firedAtMs: firedAtMs,
+                contactName: contactName,
+                channel: channel,
+                detail: detail,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sessionId,
+                required int firedAtMs,
+                required String contactName,
+                required String channel,
+                Value<String?> detail = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ContactEventRowsCompanion.insert(
+                id: id,
+                sessionId: sessionId,
+                firedAtMs: firedAtMs,
+                contactName: contactName,
+                channel: channel,
+                detail: detail,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ContactEventRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ContactEventRowsTable,
+      ContactEventRow,
+      $$ContactEventRowsTableFilterComposer,
+      $$ContactEventRowsTableOrderingComposer,
+      $$ContactEventRowsTableAnnotationComposer,
+      $$ContactEventRowsTableCreateCompanionBuilder,
+      $$ContactEventRowsTableUpdateCompanionBuilder,
+      (
+        ContactEventRow,
+        BaseReferences<_$AppDatabase, $ContactEventRowsTable, ContactEventRow>,
+      ),
+      ContactEventRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3805,4 +5166,6 @@ class $AppDatabaseManager {
       $$GardenPlacementRowsTableTableManager(_db, _db.gardenPlacementRows);
   $$GardenInventoryRowsTableTableManager get gardenInventoryRows =>
       $$GardenInventoryRowsTableTableManager(_db, _db.gardenInventoryRows);
+  $$ContactEventRowsTableTableManager get contactEventRows =>
+      $$ContactEventRowsTableTableManager(_db, _db.contactEventRows);
 }

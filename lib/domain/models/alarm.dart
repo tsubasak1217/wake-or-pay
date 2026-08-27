@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'kakugo.dart';
+import 'snooze.dart';
 
 /// How the user proves they are actually awake.
 enum WakeCheckType { longPress, math, typing }
@@ -11,6 +12,23 @@ extension WakeCheckTypeLabel on WakeCheckType {
     WakeCheckType.math => '計算（3問）',
     WakeCheckType.typing => '文字入力',
   };
+
+  /// One line of explanation, shown in the editor's sub-screen.
+  String get description => switch (this) {
+    WakeCheckType.longPress => 'ボタンを5秒間押し続ける',
+    WakeCheckType.math => '2桁の足し算を3問続けて正解する',
+    WakeCheckType.typing => '表示された文を一字一句そのまま打つ',
+  };
+}
+
+/// Looks a stored wake check up by name. null in, null out; an unknown name
+/// also gives null, so a row written by a future version cannot crash a read.
+WakeCheckType? wakeCheckTypeByName(String? name) {
+  if (name == null) return null;
+  for (final type in WakeCheckType.values) {
+    if (type.name == name) return type;
+  }
+  return null;
 }
 
 /// How long, in minutes, the user may take to clear the wake check before it
@@ -26,6 +44,11 @@ const maxGraceMinutes = 5;
 int normalizeGraceMinutes(int minutes) =>
     minutes.clamp(minGraceMinutes, maxGraceMinutes);
 
+/// The bundled sound an alarm rings with when nothing else was chosen. The
+/// library itself lives in `domain/sound_library.dart`; an id of the form
+/// `file:<path>` is a file the user picked off their device.
+const defaultSoundId = 'bell';
+
 @immutable
 class Alarm {
   const Alarm({
@@ -36,6 +59,8 @@ class Alarm {
     this.enabled = true,
     this.wakeCheck = WakeCheckType.longPress,
     this.graceMinutes = minGraceMinutes,
+    this.snooze,
+    this.soundId = defaultSoundId,
     this.kakugo,
   });
 
@@ -51,10 +76,18 @@ class Alarm {
   /// Minutes of slack before oversleeping starts, 1-5.
   final int graceMinutes;
 
+  /// null = this alarm cannot be snoozed at all.
+  final Snooze? snooze;
+
+  /// A library id, or `file:<path>` for a sound copied off the device.
+  final String soundId;
+
   /// null = plain alarm, nothing at stake.
   final Kakugo? kakugo;
 
   bool get isKakugo => kakugo != null;
+
+  bool get canSnooze => snooze != null;
 
   Alarm copyWith({
     String? id,
@@ -64,6 +97,9 @@ class Alarm {
     bool? enabled,
     WakeCheckType? wakeCheck,
     int? graceMinutes,
+    Snooze? snooze,
+    bool clearSnooze = false,
+    String? soundId,
     Kakugo? kakugo,
     bool clearKakugo = false,
   }) => Alarm(
@@ -74,6 +110,8 @@ class Alarm {
     enabled: enabled ?? this.enabled,
     wakeCheck: wakeCheck ?? this.wakeCheck,
     graceMinutes: graceMinutes ?? this.graceMinutes,
+    snooze: clearSnooze ? null : (snooze ?? this.snooze),
+    soundId: soundId ?? this.soundId,
     kakugo: clearKakugo ? null : (kakugo ?? this.kakugo),
   );
 
@@ -85,6 +123,8 @@ class Alarm {
     'enabled': enabled,
     'wakeCheck': wakeCheck.name,
     'graceMinutes': graceMinutes,
+    'snooze': snooze?.toJson(),
+    'soundId': soundId,
     'kakugo': kakugo?.toJson(),
   };
 
@@ -101,6 +141,10 @@ class Alarm {
     graceMinutes: normalizeGraceMinutes(
       json['graceMinutes'] as int? ?? minGraceMinutes,
     ),
+    snooze: json['snooze'] == null
+        ? null
+        : Snooze.fromJson((json['snooze'] as Map).cast<String, dynamic>()),
+    soundId: json['soundId'] as String? ?? defaultSoundId,
     kakugo: json['kakugo'] == null
         ? null
         : Kakugo.fromJson((json['kakugo'] as Map).cast<String, dynamic>()),
@@ -116,6 +160,8 @@ class Alarm {
       other.enabled == enabled &&
       other.wakeCheck == wakeCheck &&
       other.graceMinutes == graceMinutes &&
+      other.snooze == snooze &&
+      other.soundId == soundId &&
       other.kakugo == kakugo;
 
   @override
@@ -127,11 +173,13 @@ class Alarm {
     enabled,
     wakeCheck,
     graceMinutes,
+    snooze,
+    soundId,
     kakugo,
   );
 
   @override
   String toString() =>
       'Alarm($id, $hour:$minute, days $repeatDays, enabled $enabled, '
-      '$wakeCheck, grace ${graceMinutes}m, $kakugo)';
+      '$wakeCheck, grace ${graceMinutes}m, $snooze, $soundId, $kakugo)';
 }

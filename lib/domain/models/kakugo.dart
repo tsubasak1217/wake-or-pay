@@ -3,6 +3,15 @@ import 'package:flutter/foundation.dart';
 /// What the user puts up as collateral. Only [coin] exists in the MVP.
 enum HostageType { coin }
 
+/// The bounds the editor offers, and the bounds every read is clamped to.
+const minKakugoRate = 1;
+const maxKakugoRate = 1000;
+const minKakugoCap = 100;
+const maxKakugoCap = 10000;
+
+int normalizeKakugoRate(int rate) => rate.clamp(minKakugoRate, maxKakugoRate);
+int normalizeKakugoCap(int cap) => cap.clamp(minKakugoCap, maxKakugoCap);
+
 /// The user's pledge for one alarm: how much burns per minute, and the most
 /// a single ring may ever cost.
 @immutable
