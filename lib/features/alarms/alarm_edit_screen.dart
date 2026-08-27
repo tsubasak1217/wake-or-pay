@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -86,11 +87,6 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     kakugo: _kakugoOn ? Kakugo(ratePerMinute: _rate, cap: _cap) : null,
   );
 
-  Future<void> _pickTime() async {
-    final picked = await showTimePicker(context: context, initialTime: _time);
-    if (picked != null) setState(() => _time = picked);
-  }
-
   Future<void> _save() async {
     final coins = (await ref.read(walletRepositoryProvider).read()).coins;
     if (!mounted) return;
@@ -150,15 +146,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
-          Center(
-            child: TextButton(
-              onPressed: _pickTime,
-              child: Text(
-                hhmm(_time.hour, _time.minute),
-                style: theme.textTheme.displayMedium,
-              ),
-            ),
-          ),
+          _TimeWheel(time: _time, onChanged: (t) => setState(() => _time = t)),
           const SizedBox(height: 16),
           Text('繰り返し', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -247,6 +235,55 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
         onPressed: _save,
         icon: const Icon(Icons.check),
         label: const Text('保存'),
+      ),
+    );
+  }
+}
+
+/// The iOS style hour/minute wheels, 24 hour, inline in the form.
+///
+/// Cupertino widgets carry their own theme, so the picker is wrapped in a
+/// [CupertinoTheme] built from the Material one — otherwise it would ignore the
+/// app's colours and read as black text on the dark themes.
+class _TimeWheel extends StatelessWidget {
+  const _TimeWheel({required this.time, required this.onChanged});
+
+  final TimeOfDay time;
+  final ValueChanged<TimeOfDay> onChanged;
+
+  static const height = 190.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: CupertinoTheme(
+        data: CupertinoThemeData(
+          brightness: theme.brightness,
+          textTheme: CupertinoTextThemeData(
+            dateTimePickerTextStyle:
+                theme.textTheme.headlineSmall?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ) ??
+                const TextStyle(),
+          ),
+        ),
+        child: CupertinoDatePicker(
+          key: const ValueKey('timeWheel'),
+          mode: CupertinoDatePickerMode.time,
+          use24hFormat: true,
+          // A fixed date: only the hour and minute of this value are read.
+          initialDateTime: DateTime(2026, 1, 1, time.hour, time.minute),
+          onDateTimeChanged: (t) =>
+              onChanged(TimeOfDay(hour: t.hour, minute: t.minute)),
+        ),
       ),
     );
   }

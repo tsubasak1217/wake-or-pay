@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,15 @@ Future<ProviderContainer> pumpHome(WidgetTester tester, {int coins = 0}) async {
   return container;
 }
 
+/// The editor's own scroll view. The time wheel brings scrollables of its own,
+/// so the form has to be addressed explicitly.
+Finder get editorScrollable => find
+    .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+    .first;
+
+Future<void> scrollToInEditor(WidgetTester tester, Finder target) =>
+    tester.scrollUntilVisible(target, 200, scrollable: editorScrollable);
+
 void main() {
   testWidgets('saving a new alarm makes it appear on Home', (tester) async {
     final container = await pumpHome(tester, coins: 5000);
@@ -36,14 +46,11 @@ void main() {
     await tester.tap(find.widgetWithText(FilterChip, '月'));
     await tester.tap(find.widgetWithText(FilterChip, '金'));
     await tester.tap(find.text('計算（3問）'));
+    await scrollToInEditor(tester, find.byType(SwitchListTile));
     await tester.tap(find.byType(SwitchListTile));
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.widgetWithText(ChoiceChip, '500'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await scrollToInEditor(tester, find.widgetWithText(ChoiceChip, '500'));
     await tester.tap(find.widgetWithText(ChoiceChip, '500'));
     await tester.pumpAndSettle();
     expect(find.text('💀 寝るな'), findsOneWidget);
@@ -68,11 +75,46 @@ void main() {
     expect(fake.scheduled, contains(saved.id));
   });
 
+  testWidgets('the time is set with inline 24h wheels, not a dialog', (
+    tester,
+  ) async {
+    final container = await pumpHome(tester, coins: 5000);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<CupertinoDatePicker>(
+      find.byKey(const ValueKey('timeWheel')),
+    );
+    expect(picker.mode, CupertinoDatePickerMode.time);
+    expect(picker.use24hFormat, isTrue);
+    expect(picker.initialDateTime.hour, 7);
+    expect(picker.initialDateTime.minute, 0);
+    expect(find.byType(TimePickerDialog), findsNothing, reason: 'inline');
+
+    // Spinning the hour wheel up two rows moves 07:00 to 09:00.
+    final wheel = tester.getRect(find.byKey(const ValueKey('timeWheel')));
+    await tester.dragFrom(
+      Offset(wheel.center.dx - 60, wheel.center.dy),
+      const Offset(0, -64),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    final saved =
+        (await container.read(alarmRepositoryProvider).getAll()).single;
+    expect(saved.hour, 9);
+    expect(saved.minute, 0);
+    expect(find.text('09:00'), findsOneWidget, reason: 'shown on Home');
+  });
+
   testWidgets('a cap above the balance warns but still saves', (tester) async {
     final container = await pumpHome(tester, coins: 100);
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
+    await scrollToInEditor(tester, find.byType(SwitchListTile));
     await tester.tap(find.byType(SwitchListTile));
     await tester.pumpAndSettle();
 
@@ -96,6 +138,7 @@ void main() {
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
+    await scrollToInEditor(tester, find.byType(SwitchListTile));
     await tester.tap(find.byType(SwitchListTile));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(FloatingActionButton));
