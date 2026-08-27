@@ -74,6 +74,18 @@ class $AlarmRowsTable extends AlarmRows
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _graceMinutesMeta = const VerificationMeta(
+    'graceMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> graceMinutes = GeneratedColumn<int>(
+    'grace_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
   static const VerificationMeta _kakugoHostageMeta = const VerificationMeta(
     'kakugoHostage',
   );
@@ -114,6 +126,7 @@ class $AlarmRowsTable extends AlarmRows
     repeatDays,
     enabled,
     wakeCheck,
+    graceMinutes,
     kakugoHostage,
     kakugoRatePerMinute,
     kakugoCap,
@@ -170,6 +183,15 @@ class $AlarmRowsTable extends AlarmRows
       );
     } else if (isInserting) {
       context.missing(_wakeCheckMeta);
+    }
+    if (data.containsKey('grace_minutes')) {
+      context.handle(
+        _graceMinutesMeta,
+        graceMinutes.isAcceptableOrUnknown(
+          data['grace_minutes']!,
+          _graceMinutesMeta,
+        ),
+      );
     }
     if (data.containsKey('kakugo_hostage')) {
       context.handle(
@@ -228,6 +250,10 @@ class $AlarmRowsTable extends AlarmRows
         DriftSqlType.string,
         data['${effectivePrefix}wake_check'],
       )!,
+      graceMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}grace_minutes'],
+      )!,
       kakugoHostage: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}kakugo_hostage'],
@@ -258,6 +284,10 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
   final String repeatDays;
   final bool enabled;
   final String wakeCheck;
+
+  /// Minutes of slack before the burn starts, 1-5. Alarms written before this
+  /// column existed keep the old behaviour, which is exactly 1.
+  final int graceMinutes;
   final String? kakugoHostage;
   final int? kakugoRatePerMinute;
   final int? kakugoCap;
@@ -268,6 +298,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     required this.repeatDays,
     required this.enabled,
     required this.wakeCheck,
+    required this.graceMinutes,
     this.kakugoHostage,
     this.kakugoRatePerMinute,
     this.kakugoCap,
@@ -281,6 +312,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     map['repeat_days'] = Variable<String>(repeatDays);
     map['enabled'] = Variable<bool>(enabled);
     map['wake_check'] = Variable<String>(wakeCheck);
+    map['grace_minutes'] = Variable<int>(graceMinutes);
     if (!nullToAbsent || kakugoHostage != null) {
       map['kakugo_hostage'] = Variable<String>(kakugoHostage);
     }
@@ -301,6 +333,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       repeatDays: Value(repeatDays),
       enabled: Value(enabled),
       wakeCheck: Value(wakeCheck),
+      graceMinutes: Value(graceMinutes),
       kakugoHostage: kakugoHostage == null && nullToAbsent
           ? const Value.absent()
           : Value(kakugoHostage),
@@ -325,6 +358,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       repeatDays: serializer.fromJson<String>(json['repeatDays']),
       enabled: serializer.fromJson<bool>(json['enabled']),
       wakeCheck: serializer.fromJson<String>(json['wakeCheck']),
+      graceMinutes: serializer.fromJson<int>(json['graceMinutes']),
       kakugoHostage: serializer.fromJson<String?>(json['kakugoHostage']),
       kakugoRatePerMinute: serializer.fromJson<int?>(
         json['kakugoRatePerMinute'],
@@ -342,6 +376,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       'repeatDays': serializer.toJson<String>(repeatDays),
       'enabled': serializer.toJson<bool>(enabled),
       'wakeCheck': serializer.toJson<String>(wakeCheck),
+      'graceMinutes': serializer.toJson<int>(graceMinutes),
       'kakugoHostage': serializer.toJson<String?>(kakugoHostage),
       'kakugoRatePerMinute': serializer.toJson<int?>(kakugoRatePerMinute),
       'kakugoCap': serializer.toJson<int?>(kakugoCap),
@@ -355,6 +390,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     String? repeatDays,
     bool? enabled,
     String? wakeCheck,
+    int? graceMinutes,
     Value<String?> kakugoHostage = const Value.absent(),
     Value<int?> kakugoRatePerMinute = const Value.absent(),
     Value<int?> kakugoCap = const Value.absent(),
@@ -365,6 +401,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     repeatDays: repeatDays ?? this.repeatDays,
     enabled: enabled ?? this.enabled,
     wakeCheck: wakeCheck ?? this.wakeCheck,
+    graceMinutes: graceMinutes ?? this.graceMinutes,
     kakugoHostage: kakugoHostage.present
         ? kakugoHostage.value
         : this.kakugoHostage,
@@ -383,6 +420,9 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           : this.repeatDays,
       enabled: data.enabled.present ? data.enabled.value : this.enabled,
       wakeCheck: data.wakeCheck.present ? data.wakeCheck.value : this.wakeCheck,
+      graceMinutes: data.graceMinutes.present
+          ? data.graceMinutes.value
+          : this.graceMinutes,
       kakugoHostage: data.kakugoHostage.present
           ? data.kakugoHostage.value
           : this.kakugoHostage,
@@ -402,6 +442,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           ..write('repeatDays: $repeatDays, ')
           ..write('enabled: $enabled, ')
           ..write('wakeCheck: $wakeCheck, ')
+          ..write('graceMinutes: $graceMinutes, ')
           ..write('kakugoHostage: $kakugoHostage, ')
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap')
@@ -417,6 +458,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     repeatDays,
     enabled,
     wakeCheck,
+    graceMinutes,
     kakugoHostage,
     kakugoRatePerMinute,
     kakugoCap,
@@ -431,6 +473,7 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           other.repeatDays == this.repeatDays &&
           other.enabled == this.enabled &&
           other.wakeCheck == this.wakeCheck &&
+          other.graceMinutes == this.graceMinutes &&
           other.kakugoHostage == this.kakugoHostage &&
           other.kakugoRatePerMinute == this.kakugoRatePerMinute &&
           other.kakugoCap == this.kakugoCap);
@@ -443,6 +486,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
   final Value<String> repeatDays;
   final Value<bool> enabled;
   final Value<String> wakeCheck;
+  final Value<int> graceMinutes;
   final Value<String?> kakugoHostage;
   final Value<int?> kakugoRatePerMinute;
   final Value<int?> kakugoCap;
@@ -454,6 +498,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.repeatDays = const Value.absent(),
     this.enabled = const Value.absent(),
     this.wakeCheck = const Value.absent(),
+    this.graceMinutes = const Value.absent(),
     this.kakugoHostage = const Value.absent(),
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
@@ -466,6 +511,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.repeatDays = const Value.absent(),
     this.enabled = const Value.absent(),
     required String wakeCheck,
+    this.graceMinutes = const Value.absent(),
     this.kakugoHostage = const Value.absent(),
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
@@ -481,6 +527,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Expression<String>? repeatDays,
     Expression<bool>? enabled,
     Expression<String>? wakeCheck,
+    Expression<int>? graceMinutes,
     Expression<String>? kakugoHostage,
     Expression<int>? kakugoRatePerMinute,
     Expression<int>? kakugoCap,
@@ -493,6 +540,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       if (repeatDays != null) 'repeat_days': repeatDays,
       if (enabled != null) 'enabled': enabled,
       if (wakeCheck != null) 'wake_check': wakeCheck,
+      if (graceMinutes != null) 'grace_minutes': graceMinutes,
       if (kakugoHostage != null) 'kakugo_hostage': kakugoHostage,
       if (kakugoRatePerMinute != null)
         'kakugo_rate_per_minute': kakugoRatePerMinute,
@@ -508,6 +556,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Value<String>? repeatDays,
     Value<bool>? enabled,
     Value<String>? wakeCheck,
+    Value<int>? graceMinutes,
     Value<String?>? kakugoHostage,
     Value<int?>? kakugoRatePerMinute,
     Value<int?>? kakugoCap,
@@ -520,6 +569,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       repeatDays: repeatDays ?? this.repeatDays,
       enabled: enabled ?? this.enabled,
       wakeCheck: wakeCheck ?? this.wakeCheck,
+      graceMinutes: graceMinutes ?? this.graceMinutes,
       kakugoHostage: kakugoHostage ?? this.kakugoHostage,
       kakugoRatePerMinute: kakugoRatePerMinute ?? this.kakugoRatePerMinute,
       kakugoCap: kakugoCap ?? this.kakugoCap,
@@ -548,6 +598,9 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     if (wakeCheck.present) {
       map['wake_check'] = Variable<String>(wakeCheck.value);
     }
+    if (graceMinutes.present) {
+      map['grace_minutes'] = Variable<int>(graceMinutes.value);
+    }
     if (kakugoHostage.present) {
       map['kakugo_hostage'] = Variable<String>(kakugoHostage.value);
     }
@@ -572,6 +625,7 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
           ..write('repeatDays: $repeatDays, ')
           ..write('enabled: $enabled, ')
           ..write('wakeCheck: $wakeCheck, ')
+          ..write('graceMinutes: $graceMinutes, ')
           ..write('kakugoHostage: $kakugoHostage, ')
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap, ')
@@ -692,6 +746,18 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _graceMinutesMeta = const VerificationMeta(
+    'graceMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> graceMinutes = GeneratedColumn<int>(
+    'grace_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -704,6 +770,7 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
     kakugoRatePerMinute,
     kakugoCap,
     coinsAtFire,
+    graceMinutes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -794,6 +861,15 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
         ),
       );
     }
+    if (data.containsKey('grace_minutes')) {
+      context.handle(
+        _graceMinutesMeta,
+        graceMinutes.isAcceptableOrUnknown(
+          data['grace_minutes']!,
+          _graceMinutesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -843,6 +919,10 @@ class $AlarmSessionRowsTable extends AlarmSessionRows
         DriftSqlType.int,
         data['${effectivePrefix}coins_at_fire'],
       )!,
+      graceMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}grace_minutes'],
+      )!,
     );
   }
 
@@ -863,6 +943,9 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
   final int? kakugoRatePerMinute;
   final int? kakugoCap;
   final int coinsAtFire;
+
+  /// The grace window frozen at fire time, alongside the pledge and balance.
+  final int graceMinutes;
   const AlarmSessionRow({
     required this.id,
     required this.alarmId,
@@ -874,6 +957,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     this.kakugoRatePerMinute,
     this.kakugoCap,
     required this.coinsAtFire,
+    required this.graceMinutes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -896,6 +980,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       map['kakugo_cap'] = Variable<int>(kakugoCap);
     }
     map['coins_at_fire'] = Variable<int>(coinsAtFire);
+    map['grace_minutes'] = Variable<int>(graceMinutes);
     return map;
   }
 
@@ -919,6 +1004,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           ? const Value.absent()
           : Value(kakugoCap),
       coinsAtFire: Value(coinsAtFire),
+      graceMinutes: Value(graceMinutes),
     );
   }
 
@@ -940,6 +1026,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       ),
       kakugoCap: serializer.fromJson<int?>(json['kakugoCap']),
       coinsAtFire: serializer.fromJson<int>(json['coinsAtFire']),
+      graceMinutes: serializer.fromJson<int>(json['graceMinutes']),
     );
   }
   @override
@@ -956,6 +1043,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       'kakugoRatePerMinute': serializer.toJson<int?>(kakugoRatePerMinute),
       'kakugoCap': serializer.toJson<int?>(kakugoCap),
       'coinsAtFire': serializer.toJson<int>(coinsAtFire),
+      'graceMinutes': serializer.toJson<int>(graceMinutes),
     };
   }
 
@@ -970,6 +1058,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     Value<int?> kakugoRatePerMinute = const Value.absent(),
     Value<int?> kakugoCap = const Value.absent(),
     int? coinsAtFire,
+    int? graceMinutes,
   }) => AlarmSessionRow(
     id: id ?? this.id,
     alarmId: alarmId ?? this.alarmId,
@@ -987,6 +1076,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
         : this.kakugoRatePerMinute,
     kakugoCap: kakugoCap.present ? kakugoCap.value : this.kakugoCap,
     coinsAtFire: coinsAtFire ?? this.coinsAtFire,
+    graceMinutes: graceMinutes ?? this.graceMinutes,
   );
   AlarmSessionRow copyWithCompanion(AlarmSessionRowsCompanion data) {
     return AlarmSessionRow(
@@ -1008,6 +1098,9 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
       coinsAtFire: data.coinsAtFire.present
           ? data.coinsAtFire.value
           : this.coinsAtFire,
+      graceMinutes: data.graceMinutes.present
+          ? data.graceMinutes.value
+          : this.graceMinutes,
     );
   }
 
@@ -1023,7 +1116,8 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           ..write('kakugoHostage: $kakugoHostage, ')
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap, ')
-          ..write('coinsAtFire: $coinsAtFire')
+          ..write('coinsAtFire: $coinsAtFire, ')
+          ..write('graceMinutes: $graceMinutes')
           ..write(')'))
         .toString();
   }
@@ -1040,6 +1134,7 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
     kakugoRatePerMinute,
     kakugoCap,
     coinsAtFire,
+    graceMinutes,
   );
   @override
   bool operator ==(Object other) =>
@@ -1054,7 +1149,8 @@ class AlarmSessionRow extends DataClass implements Insertable<AlarmSessionRow> {
           other.kakugoHostage == this.kakugoHostage &&
           other.kakugoRatePerMinute == this.kakugoRatePerMinute &&
           other.kakugoCap == this.kakugoCap &&
-          other.coinsAtFire == this.coinsAtFire);
+          other.coinsAtFire == this.coinsAtFire &&
+          other.graceMinutes == this.graceMinutes);
 }
 
 class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
@@ -1068,6 +1164,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
   final Value<int?> kakugoRatePerMinute;
   final Value<int?> kakugoCap;
   final Value<int> coinsAtFire;
+  final Value<int> graceMinutes;
   final Value<int> rowid;
   const AlarmSessionRowsCompanion({
     this.id = const Value.absent(),
@@ -1080,6 +1177,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
     this.coinsAtFire = const Value.absent(),
+    this.graceMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlarmSessionRowsCompanion.insert({
@@ -1093,6 +1191,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     this.kakugoRatePerMinute = const Value.absent(),
     this.kakugoCap = const Value.absent(),
     this.coinsAtFire = const Value.absent(),
+    this.graceMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        alarmId = Value(alarmId),
@@ -1109,6 +1208,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     Expression<int>? kakugoRatePerMinute,
     Expression<int>? kakugoCap,
     Expression<int>? coinsAtFire,
+    Expression<int>? graceMinutes,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1123,6 +1223,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
         'kakugo_rate_per_minute': kakugoRatePerMinute,
       if (kakugoCap != null) 'kakugo_cap': kakugoCap,
       if (coinsAtFire != null) 'coins_at_fire': coinsAtFire,
+      if (graceMinutes != null) 'grace_minutes': graceMinutes,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1138,6 +1239,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     Value<int?>? kakugoRatePerMinute,
     Value<int?>? kakugoCap,
     Value<int>? coinsAtFire,
+    Value<int>? graceMinutes,
     Value<int>? rowid,
   }) {
     return AlarmSessionRowsCompanion(
@@ -1151,6 +1253,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
       kakugoRatePerMinute: kakugoRatePerMinute ?? this.kakugoRatePerMinute,
       kakugoCap: kakugoCap ?? this.kakugoCap,
       coinsAtFire: coinsAtFire ?? this.coinsAtFire,
+      graceMinutes: graceMinutes ?? this.graceMinutes,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1188,6 +1291,9 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
     if (coinsAtFire.present) {
       map['coins_at_fire'] = Variable<int>(coinsAtFire.value);
     }
+    if (graceMinutes.present) {
+      map['grace_minutes'] = Variable<int>(graceMinutes.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1207,6 +1313,7 @@ class AlarmSessionRowsCompanion extends UpdateCompanion<AlarmSessionRow> {
           ..write('kakugoRatePerMinute: $kakugoRatePerMinute, ')
           ..write('kakugoCap: $kakugoCap, ')
           ..write('coinsAtFire: $coinsAtFire, ')
+          ..write('graceMinutes: $graceMinutes, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1734,6 +1841,7 @@ typedef $$AlarmRowsTableCreateCompanionBuilder = AlarmRowsCompanion Function({
   Value<String> repeatDays,
   Value<bool> enabled,
   required String wakeCheck,
+  Value<int> graceMinutes,
   Value<String?> kakugoHostage,
   Value<int?> kakugoRatePerMinute,
   Value<int?> kakugoCap,
@@ -1746,6 +1854,7 @@ typedef $$AlarmRowsTableUpdateCompanionBuilder = AlarmRowsCompanion Function({
   Value<String> repeatDays,
   Value<bool> enabled,
   Value<String> wakeCheck,
+  Value<int> graceMinutes,
   Value<String?> kakugoHostage,
   Value<int?> kakugoRatePerMinute,
   Value<int?> kakugoCap,
@@ -1788,6 +1897,11 @@ class $$AlarmRowsTableFilterComposer
 
   ColumnFilters<String> get wakeCheck => $composableBuilder(
     column: $table.wakeCheck,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get graceMinutes => $composableBuilder(
+    column: $table.graceMinutes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1846,6 +1960,11 @@ class $$AlarmRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get graceMinutes => $composableBuilder(
+    column: $table.graceMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get kakugoHostage => $composableBuilder(
     column: $table.kakugoHostage,
     builder: (column) => ColumnOrderings(column),
@@ -1890,6 +2009,11 @@ class $$AlarmRowsTableAnnotationComposer
 
   GeneratedColumn<String> get wakeCheck =>
       $composableBuilder(column: $table.wakeCheck, builder: (column) => column);
+
+  GeneratedColumn<int> get graceMinutes => $composableBuilder(
+    column: $table.graceMinutes,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get kakugoHostage => $composableBuilder(
     column: $table.kakugoHostage,
@@ -1939,6 +2063,7 @@ class $$AlarmRowsTableTableManager
                 Value<String> repeatDays = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
                 Value<String> wakeCheck = const Value.absent(),
+                Value<int> graceMinutes = const Value.absent(),
                 Value<String?> kakugoHostage = const Value.absent(),
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
@@ -1950,6 +2075,7 @@ class $$AlarmRowsTableTableManager
                 repeatDays: repeatDays,
                 enabled: enabled,
                 wakeCheck: wakeCheck,
+                graceMinutes: graceMinutes,
                 kakugoHostage: kakugoHostage,
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
@@ -1963,6 +2089,7 @@ class $$AlarmRowsTableTableManager
                 Value<String> repeatDays = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
                 required String wakeCheck,
+                Value<int> graceMinutes = const Value.absent(),
                 Value<String?> kakugoHostage = const Value.absent(),
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
@@ -1974,6 +2101,7 @@ class $$AlarmRowsTableTableManager
                 repeatDays: repeatDays,
                 enabled: enabled,
                 wakeCheck: wakeCheck,
+                graceMinutes: graceMinutes,
                 kakugoHostage: kakugoHostage,
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
@@ -2013,6 +2141,7 @@ typedef $$AlarmSessionRowsTableCreateCompanionBuilder =
       Value<int?> kakugoRatePerMinute,
       Value<int?> kakugoCap,
       Value<int> coinsAtFire,
+      Value<int> graceMinutes,
       Value<int> rowid,
     });
 typedef $$AlarmSessionRowsTableUpdateCompanionBuilder =
@@ -2027,6 +2156,7 @@ typedef $$AlarmSessionRowsTableUpdateCompanionBuilder =
       Value<int?> kakugoRatePerMinute,
       Value<int?> kakugoCap,
       Value<int> coinsAtFire,
+      Value<int> graceMinutes,
       Value<int> rowid,
     });
 
@@ -2086,6 +2216,11 @@ class $$AlarmSessionRowsTableFilterComposer
 
   ColumnFilters<int> get coinsAtFire => $composableBuilder(
     column: $table.coinsAtFire,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get graceMinutes => $composableBuilder(
+    column: $table.graceMinutes,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2148,6 +2283,11 @@ class $$AlarmSessionRowsTableOrderingComposer
     column: $table.coinsAtFire,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get graceMinutes => $composableBuilder(
+    column: $table.graceMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AlarmSessionRowsTableAnnotationComposer
@@ -2194,6 +2334,11 @@ class $$AlarmSessionRowsTableAnnotationComposer
 
   GeneratedColumn<int> get coinsAtFire => $composableBuilder(
     column: $table.coinsAtFire,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get graceMinutes => $composableBuilder(
+    column: $table.graceMinutes,
     builder: (column) => column,
   );
 }
@@ -2245,6 +2390,7 @@ class $$AlarmSessionRowsTableTableManager
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
                 Value<int> coinsAtFire = const Value.absent(),
+                Value<int> graceMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmSessionRowsCompanion(
                 id: id,
@@ -2257,6 +2403,7 @@ class $$AlarmSessionRowsTableTableManager
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
                 coinsAtFire: coinsAtFire,
+                graceMinutes: graceMinutes,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2271,6 +2418,7 @@ class $$AlarmSessionRowsTableTableManager
                 Value<int?> kakugoRatePerMinute = const Value.absent(),
                 Value<int?> kakugoCap = const Value.absent(),
                 Value<int> coinsAtFire = const Value.absent(),
+                Value<int> graceMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmSessionRowsCompanion.insert(
                 id: id,
@@ -2283,6 +2431,7 @@ class $$AlarmSessionRowsTableTableManager
                 kakugoRatePerMinute: kakugoRatePerMinute,
                 kakugoCap: kakugoCap,
                 coinsAtFire: coinsAtFire,
+                graceMinutes: graceMinutes,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

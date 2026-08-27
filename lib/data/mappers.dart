@@ -31,6 +31,7 @@ extension AlarmRowMapper on AlarmRow {
       (w) => w.name == wakeCheck,
       orElse: () => WakeCheckType.longPress,
     ),
+    graceMinutes: normalizeGraceMinutes(graceMinutes),
     kakugo: _kakugo(kakugoHostage, kakugoRatePerMinute, kakugoCap),
   );
 }
@@ -43,6 +44,7 @@ extension AlarmMapper on Alarm {
     repeatDays: Value(_formatDays(repeatDays)),
     enabled: Value(enabled),
     wakeCheck: Value(wakeCheck.name),
+    graceMinutes: Value(normalizeGraceMinutes(graceMinutes)),
     kakugoHostage: Value(kakugo?.hostage.name),
     kakugoRatePerMinute: Value(kakugo?.ratePerMinute),
     kakugoCap: Value(kakugo?.cap),
@@ -64,6 +66,7 @@ extension AlarmSessionRowMapper on AlarmSessionRow {
     loss: loss,
     kakugoSnapshot: _kakugo(kakugoHostage, kakugoRatePerMinute, kakugoCap),
     coinsAtFire: coinsAtFire,
+    graceMinutes: normalizeGraceMinutes(graceMinutes),
   );
 }
 
@@ -79,5 +82,6 @@ extension AlarmSessionMapper on AlarmSession {
     kakugoRatePerMinute: Value(kakugoSnapshot?.ratePerMinute),
     kakugoCap: Value(kakugoSnapshot?.cap),
     coinsAtFire: Value(coinsAtFire),
+    graceMinutes: Value(normalizeGraceMinutes(graceMinutes)),
   );
 }

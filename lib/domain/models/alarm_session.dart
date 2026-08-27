@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'alarm.dart';
 import 'kakugo.dart';
 
 enum SessionStatus { ringing, success, failed }
@@ -20,6 +21,7 @@ class AlarmSession {
     this.loss = 0,
     this.kakugoSnapshot,
     this.coinsAtFire = 0,
+    this.graceMinutes = minGraceMinutes,
   });
 
   final String id;
@@ -33,6 +35,11 @@ class AlarmSession {
   /// Coin balance when the alarm fired. Never burn more than this.
   final int coinsAtFire;
 
+  /// The alarm's grace window, frozen at fire time like the pledge. Lives on
+  /// the session rather than inside [kakugoSnapshot] so a plain alarm — which
+  /// has no pledge but still has a success window — carries it too.
+  final int graceMinutes;
+
   bool get isRinging => status == SessionStatus.ringing;
 
   AlarmSession copyWith({
@@ -44,6 +51,7 @@ class AlarmSession {
     int? loss,
     Kakugo? kakugoSnapshot,
     int? coinsAtFire,
+    int? graceMinutes,
   }) => AlarmSession(
     id: id ?? this.id,
     alarmId: alarmId ?? this.alarmId,
@@ -53,6 +61,7 @@ class AlarmSession {
     loss: loss ?? this.loss,
     kakugoSnapshot: kakugoSnapshot ?? this.kakugoSnapshot,
     coinsAtFire: coinsAtFire ?? this.coinsAtFire,
+    graceMinutes: graceMinutes ?? this.graceMinutes,
   );
 
   Map<String, dynamic> toJson() => {
@@ -64,6 +73,7 @@ class AlarmSession {
     'loss': loss,
     'kakugoSnapshot': kakugoSnapshot?.toJson(),
     'coinsAtFire': coinsAtFire,
+    'graceMinutes': graceMinutes,
   };
 
   factory AlarmSession.fromJson(Map<String, dynamic> json) => AlarmSession(
@@ -84,6 +94,9 @@ class AlarmSession {
             (json['kakugoSnapshot'] as Map).cast<String, dynamic>(),
           ),
     coinsAtFire: json['coinsAtFire'] as int? ?? 0,
+    graceMinutes: normalizeGraceMinutes(
+      json['graceMinutes'] as int? ?? minGraceMinutes,
+    ),
   );
 
   @override
@@ -96,7 +109,8 @@ class AlarmSession {
       other.status == status &&
       other.loss == loss &&
       other.kakugoSnapshot == kakugoSnapshot &&
-      other.coinsAtFire == coinsAtFire;
+      other.coinsAtFire == coinsAtFire &&
+      other.graceMinutes == graceMinutes;
 
   @override
   int get hashCode => Object.hash(
@@ -108,6 +122,7 @@ class AlarmSession {
     loss,
     kakugoSnapshot,
     coinsAtFire,
+    graceMinutes,
   );
 
   @override

@@ -30,8 +30,13 @@ Finder get editorScrollable => find
     .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
     .first;
 
-Future<void> scrollToInEditor(WidgetTester tester, Finder target) =>
-    tester.scrollUntilVisible(target, 200, scrollable: editorScrollable);
+Future<void> scrollToInEditor(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(target, 120, scrollable: editorScrollable);
+  // scrollUntilVisible stops as soon as the widget is attached, which can leave
+  // it clipped at the edge of the viewport where a tap would miss it.
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('saving a new alarm makes it appear on Home', (tester) async {
@@ -107,6 +112,34 @@ void main() {
     expect(saved.hour, 9);
     expect(saved.minute, 0);
     expect(find.text('09:00'), findsOneWidget, reason: 'shown on Home');
+  });
+
+  testWidgets('the grace window defaults to one minute and is editable', (
+    tester,
+  ) async {
+    final container = await pumpHome(tester, coins: 5000);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    await scrollToInEditor(tester, find.widgetWithText(ChoiceChip, '5 分'));
+    final byDefault = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, '1 分'),
+    );
+    expect(byDefault.selected, isTrue, reason: 'today\'s rule, unchanged');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '5 分'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('鳴り始めから 5 分以内'), findsOneWidget);
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    expect(
+      (await container.read(alarmRepositoryProvider).getAll())
+          .single
+          .graceMinutes,
+      5,
+    );
   });
 
   testWidgets('a cap above the balance warns but still saves', (tester) async {

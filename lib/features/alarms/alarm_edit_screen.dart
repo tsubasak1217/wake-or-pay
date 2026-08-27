@@ -46,6 +46,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
   late TimeOfDay _time;
   late Set<int> _days;
   late WakeCheckType _wakeCheck;
+  late int _grace;
   late bool _kakugoOn;
   late int _rate;
   late final TextEditingController _capController;
@@ -58,6 +59,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     _time = TimeOfDay(hour: a?.hour ?? 7, minute: a?.minute ?? 0);
     _days = {...?a?.repeatDays};
     _wakeCheck = a?.wakeCheck ?? WakeCheckType.longPress;
+    _grace = normalizeGraceMinutes(a?.graceMinutes ?? minGraceMinutes);
     _kakugoOn = a?.isKakugo ?? false;
     _rate = a?.kakugo?.ratePerMinute ?? 100;
     _capController = TextEditingController(
@@ -84,6 +86,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     repeatDays: _days,
     enabled: widget.existing?.enabled ?? true,
     wakeCheck: _wakeCheck,
+    graceMinutes: _grace,
     kakugo: _kakugoOn ? Kakugo(ratePerMinute: _rate, cap: _cap) : null,
   );
 
@@ -173,6 +176,26 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
               title: Text(type.label),
               trailing: _wakeCheck == type ? const Icon(Icons.check) : null,
             ),
+          const SizedBox(height: 24),
+          Text('起床猶予', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final minutes in graceMinutesOptions)
+                ChoiceChip(
+                  label: Text('$minutes 分'),
+                  selected: _grace == minutes,
+                  onSelected: (_) => setState(() => _grace = minutes),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '鳴り始めから $_grace 分以内に解除できれば起床成功。'
+            '過ぎるとその瞬間から燃え始めます。',
+            style: theme.textTheme.bodySmall,
+          ),
           const Divider(height: 32),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

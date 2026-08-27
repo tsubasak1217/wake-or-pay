@@ -22,6 +22,12 @@ String repeatDaysLabel(Set<int> days) {
 String hhmm(int hour, int minute) =>
     '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
+/// A countdown, `m:ss`. Pure.
+String mmss(Duration d) {
+  final seconds = d.inSeconds < 0 ? 0 : d.inSeconds;
+  return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+}
+
 String formatDateTime(DateTime t) =>
     '${t.month}/${t.day} ${hhmm(t.hour, t.minute)}';
 

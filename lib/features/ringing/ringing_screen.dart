@@ -6,6 +6,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app/router.dart';
 import '../../data/providers.dart';
+import '../../domain/format.dart';
 import '../../domain/loss_calculator.dart';
 import '../../domain/models.dart';
 import '../../domain/ojisan.dart';
@@ -117,6 +118,7 @@ class _RingingBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final loss = lossAt(now, session);
+    final grace = graceRemaining(now, session);
     final alarm = ref.watch(alarmByIdProvider(session.alarmId));
 
     // A bare Column inside a scroll view shrinks to its widest child and lands
@@ -145,7 +147,11 @@ class _RingingBody extends ConsumerWidget {
               Text(_hhmm(now), style: theme.textTheme.displayLarge),
               Text('起きろ！！', style: theme.textTheme.headlineMedium),
               const SizedBox(height: 24),
-              if (session.kakugoSnapshot != null)
+              // The grace window first, so the user can see exactly how long
+              // they have; the burn takes over the moment it runs out.
+              if (grace > Duration.zero)
+                _GracePanel(remaining: grace, kakugo: session.kakugoSnapshot)
+              else if (session.kakugoSnapshot != null)
                 _OjisanPanel(loss: loss)
               else
                 Text('覚悟モードはオフです', style: theme.textTheme.bodyLarge),
@@ -180,6 +186,37 @@ Widget _wakeCheckFor(WakeCheckType type, VoidCallback onCleared) =>
       WakeCheckType.math => MathCheck(onCleared: onCleared),
       WakeCheckType.typing => TypingCheck(onCleared: onCleared),
     };
+
+/// The countdown shown while the alarm is still free to clear.
+class _GracePanel extends StatelessWidget {
+  const _GracePanel({required this.remaining, required this.kakugo});
+
+  final Duration remaining;
+  final Kakugo? kakugo;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final pledge = kakugo;
+    return Column(
+      children: [
+        Text(
+          '猶予 あと ${mmss(remaining)}',
+          style: theme.textTheme.headlineMedium,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          pledge == null
+              ? '今のうちに解除すれば起床成功'
+              : '過ぎると 1分ごとに ${pledge.ratePerMinute} コイン',
+          style: theme.textTheme.titleMedium,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
 
 class _OjisanPanel extends StatelessWidget {
   const _OjisanPanel({required this.loss});

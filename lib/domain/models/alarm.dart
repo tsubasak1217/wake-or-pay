@@ -13,6 +13,19 @@ extension WakeCheckTypeLabel on WakeCheckType {
   };
 }
 
+/// How long, in minutes, the user may take to clear the wake check before it
+/// counts as oversleeping. 1 = the burn starts at 60 seconds.
+const graceMinutesOptions = <int>[1, 2, 3, 4, 5];
+
+const minGraceMinutes = 1;
+const maxGraceMinutes = 5;
+
+/// Grace is money, so nothing downstream trusts the stored number: a hand
+/// edited database or an old row can never widen the window past five minutes
+/// or shrink it below one. Pure.
+int normalizeGraceMinutes(int minutes) =>
+    minutes.clamp(minGraceMinutes, maxGraceMinutes);
+
 @immutable
 class Alarm {
   const Alarm({
@@ -22,6 +35,7 @@ class Alarm {
     this.repeatDays = const {},
     this.enabled = true,
     this.wakeCheck = WakeCheckType.longPress,
+    this.graceMinutes = minGraceMinutes,
     this.kakugo,
   });
 
@@ -33,6 +47,9 @@ class Alarm {
   final Set<int> repeatDays;
   final bool enabled;
   final WakeCheckType wakeCheck;
+
+  /// Minutes of slack before oversleeping starts, 1-5.
+  final int graceMinutes;
 
   /// null = plain alarm, nothing at stake.
   final Kakugo? kakugo;
@@ -46,6 +63,7 @@ class Alarm {
     Set<int>? repeatDays,
     bool? enabled,
     WakeCheckType? wakeCheck,
+    int? graceMinutes,
     Kakugo? kakugo,
     bool clearKakugo = false,
   }) => Alarm(
@@ -55,6 +73,7 @@ class Alarm {
     repeatDays: repeatDays ?? this.repeatDays,
     enabled: enabled ?? this.enabled,
     wakeCheck: wakeCheck ?? this.wakeCheck,
+    graceMinutes: graceMinutes ?? this.graceMinutes,
     kakugo: clearKakugo ? null : (kakugo ?? this.kakugo),
   );
 
@@ -65,6 +84,7 @@ class Alarm {
     'repeatDays': (repeatDays.toList()..sort()),
     'enabled': enabled,
     'wakeCheck': wakeCheck.name,
+    'graceMinutes': graceMinutes,
     'kakugo': kakugo?.toJson(),
   };
 
@@ -77,6 +97,9 @@ class Alarm {
     wakeCheck: WakeCheckType.values.firstWhere(
       (w) => w.name == json['wakeCheck'],
       orElse: () => WakeCheckType.longPress,
+    ),
+    graceMinutes: normalizeGraceMinutes(
+      json['graceMinutes'] as int? ?? minGraceMinutes,
     ),
     kakugo: json['kakugo'] == null
         ? null
@@ -92,6 +115,7 @@ class Alarm {
       setEquals(other.repeatDays, repeatDays) &&
       other.enabled == enabled &&
       other.wakeCheck == wakeCheck &&
+      other.graceMinutes == graceMinutes &&
       other.kakugo == kakugo;
 
   @override
@@ -102,11 +126,12 @@ class Alarm {
     Object.hashAllUnordered(repeatDays),
     enabled,
     wakeCheck,
+    graceMinutes,
     kakugo,
   );
 
   @override
   String toString() =>
       'Alarm($id, $hour:$minute, days $repeatDays, enabled $enabled, '
-      '$wakeCheck, $kakugo)';
+      '$wakeCheck, grace ${graceMinutes}m, $kakugo)';
 }

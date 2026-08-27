@@ -95,6 +95,61 @@ void main() {
     expect(content.width, moreOrLessEquals(screen.width - 32, epsilon: 1));
   });
 
+  testWidgets('the grace counts down first, then the burn takes over', (
+    tester,
+  ) async {
+    // Five minutes of grace, two of them already gone. The half second keeps
+    // the countdown off a whole-second boundary, where the few milliseconds
+    // between arranging the session and painting would flip the display.
+    await openRinging(
+      tester,
+      withAlarm: alarm.copyWith(graceMinutes: 5),
+      ringingFor: const Duration(minutes: 2, seconds: 17, milliseconds: 500),
+    );
+
+    expect(find.text('猶予 あと 2:42'), findsOneWidget);
+    expect(find.text('過ぎると 1分ごとに 100 コイン'), findsOneWidget);
+    expect(find.textContaining('💸 あなた'), findsNothing, reason: 'still free');
+  });
+
+  testWidgets('a spent grace hands over to the loss counter', (tester) async {
+    // Grace 5, five and a half minutes in: exactly one billable minute.
+    await openRinging(
+      tester,
+      withAlarm: alarm.copyWith(graceMinutes: 5),
+      ringingFor: const Duration(minutes: 5, seconds: 30),
+    );
+
+    expect(find.textContaining('猶予 あと'), findsNothing);
+    expect(find.text('💸 あなた：−100'), findsOneWidget);
+  });
+
+  testWidgets('clearing inside a five minute grace is still a success', (
+    tester,
+  ) async {
+    final opened = await openRinging(
+      tester,
+      withAlarm: alarm.copyWith(graceMinutes: 5),
+      ringingFor: const Duration(minutes: 4, seconds: 50),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('解除')),
+    );
+    await tester.pump(const Duration(seconds: 6));
+    await gesture.up();
+    await settle(tester, frames: 30);
+
+    expect(find.text('起床成功'), findsOneWidget);
+    expect(find.text('消費：0'), findsOneWidget);
+
+    final settled = await opened.container
+        .read(alarmSessionRepositoryProvider)
+        .getById(opened.session.id);
+    expect(settled!.graceMinutes, 5, reason: 'frozen on the session');
+    expect(settled.status, SessionStatus.success);
+  });
+
   testWidgets('letting go of the long press resets it', (tester) async {
     await openRinging(tester);
 

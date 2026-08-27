@@ -15,6 +15,10 @@ class AlarmRows extends Table {
   TextColumn get repeatDays => text().withDefault(const Constant(''))();
   BoolColumn get enabled => boolean().withDefault(const Constant(true))();
   TextColumn get wakeCheck => text()();
+
+  /// Minutes of slack before the burn starts, 1-5. Alarms written before this
+  /// column existed keep the old behaviour, which is exactly 1.
+  IntColumn get graceMinutes => integer().withDefault(const Constant(1))();
   TextColumn get kakugoHostage => text().nullable()();
   IntColumn get kakugoRatePerMinute => integer().nullable()();
   IntColumn get kakugoCap => integer().nullable()();
@@ -34,6 +38,9 @@ class AlarmSessionRows extends Table {
   IntColumn get kakugoRatePerMinute => integer().nullable()();
   IntColumn get kakugoCap => integer().nullable()();
   IntColumn get coinsAtFire => integer().withDefault(const Constant(0))();
+
+  /// The grace window frozen at fire time, alongside the pledge and balance.
+  IntColumn get graceMinutes => integer().withDefault(const Constant(1))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -69,7 +76,21 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(inMemoryExecutor());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  /// v1 → v2 adds the per alarm grace window. Both columns default to 1, which
+  /// is the rule every existing row was written under, so no stored session's
+  /// loss changes under the upgrade.
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(alarmRows, alarmRows.graceMinutes);
+        await m.addColumn(alarmSessionRows, alarmSessionRows.graceMinutes);
+      }
+    },
+  );
 }
 
 /// Kept as a function so tests can build one without touching the filesystem.

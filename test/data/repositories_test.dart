@@ -36,6 +36,17 @@ void main() {
       expect(await repo.getAll(), isEmpty);
     });
 
+    test('the grace window round trips and defaults to one minute', () async {
+      final repo = (await testContainer()).read(alarmRepositoryProvider);
+      await repo.save(const Alarm(id: 'plain', hour: 7, minute: 0));
+      expect((await repo.getById('plain'))!.graceMinutes, 1);
+
+      await repo.save(
+        const Alarm(id: 'slow', hour: 7, minute: 0, graceMinutes: 5),
+      );
+      expect((await repo.getById('slow'))!.graceMinutes, 5);
+    });
+
     test('a one-shot alarm round trips with no repeat days', () async {
       final repo = (await testContainer()).read(alarmRepositoryProvider);
       const alarm = Alarm(id: 'a1', hour: 23, minute: 59);
@@ -84,12 +95,14 @@ void main() {
         firedAt: firedAt,
         kakugoSnapshot: kakugo,
         coinsAtFire: 1200,
+        graceMinutes: 3,
       );
       await repo.save(session);
 
       final back = await repo.getById('s1');
       expect(back, session);
       expect(back!.firedAt, firedAt, reason: 'seconds must survive');
+      expect(back.graceMinutes, 3);
     });
 
     test('getRinging finds the newest ringing session only', () async {

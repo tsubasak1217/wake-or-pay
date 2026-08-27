@@ -7,6 +7,20 @@ Phase 0（端末内完結・サーバーなし・Android のみ）の実装。
 
 仕様は [`docs/MVP_SPEC.md`](docs/MVP_SPEC.md) が正。
 
+## 起床猶予（graceMinutes）
+
+アラームごとに「鳴り始めてから何分までなら起床成功とするか」を 1〜5 分で選べる。既定は 1 分で、
+これは従来のルール（60秒未満で解除すれば成功・損失0）とまったく同じ挙動。
+
+- 成功判定：`経過分 < 猶予分`
+- 損失：`max(0, 経過分 - 猶予分 + 1) × コイン/分`（そのあと上限と鳴動時残高で頭打ち）
+- 猶予 5 分の例：7:04:59 → 成功・0／7:05:00 → 失敗・100／7:06:00 → 失敗・200
+- 鳴動画面は猶予が残っている間「猶予 あと 3:42」を表示し、切れると損失カウンタに変わる
+- **60 分の安全弁は猶予に関係なく 60 分のまま**
+
+猶予は鳴動開始時にセッションへ固定される（覚悟モードなしのアラームも猶予を持つ）ので、
+鳴っている最中にアラームを編集しても、そのセッションの条件は変わらない。
+
 ## 設計原則（変更不可）
 
 1. 起こすための機能はすべて無料。枠数・回数・上位機能の制限は一切設けない。
@@ -44,6 +58,11 @@ drift のコード生成物 `lib/data/database.g.dart` はリポジトリにコ�
 ```powershell
 dart run build_runner build
 ```
+
+現在のスキーマは **v2**。v1 → v2 で `alarm_rows` と `alarm_session_rows` に `grace_minutes`
+（既定 1）を追加した。既存の行はすべて「猶予 1 分」＝従来と同じルールで書かれているので、
+移行によって過去のセッションの損失額が変わることはない。
+`test/data/migration_test.dart` が v1 のスキーマを手で作って移行を通し、これを検証している。
 
 ## ビルドと実行
 
@@ -91,7 +110,8 @@ lib/
   main.dart              起動、Riverpod コンテナ、AlarmService の起動
   app/                   router.dart, theme.dart, theme_controller.dart
   domain/                models/ と純粋ロジック
-    loss_calculator.dart lossAt / judgeStatus / finalizeSession / recoverSession
+    loss_calculator.dart lossAt / billableMinutes / graceRemaining / judgeStatus
+                         / finalizeSession / recoverSession
     ojisan.dart          成長セリフ
     reward.dart          ご褒美トークン付与
     schedule.dart        nextFireTime

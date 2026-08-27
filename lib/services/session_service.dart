@@ -40,6 +40,7 @@ class SessionService {
       firedAt: firedAt,
       kakugoSnapshot: alarm.kakugo,
       coinsAtFire: wallet.coins,
+      graceMinutes: alarm.graceMinutes,
     );
     await _sessions.save(session);
     return session;

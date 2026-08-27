@@ -34,6 +34,7 @@ Alarm
   repeatDays: Set<int>      // 1=月 … 7=日。空なら一回限り
   enabled: bool
   wakeCheck: WakeCheckType  // longPress | math | typing
+  graceMinutes: int         // 起床猶予。1〜5、既定 1
   kakugo: Kakugo?           // null = 覚悟モードなし（通常目覚まし）
 
 Kakugo（覚悟）
@@ -48,6 +49,7 @@ AlarmSession（1回の鳴動）
   status: ringing | success | failed
   loss: int                 // 確定した損失コイン
   kakugoSnapshot: Kakugo?   // 鳴動時点の設定を固定
+  graceMinutes: int         // 鳴動時点の起床猶予を固定（通常アラームも持つ）
 
 Wallet
   coins: int
@@ -64,17 +66,33 @@ Settings
 
 ## 3. 損失計算（最重要ロジック。純粋関数として実装し、単体テスト必須）
 
+### 3.1 起床猶予（graceMinutes）
+
+鳴り始めてから何分までを「起きられた」とみなすか。アラームごとに 1〜5 分から選び、既定は 1 分。
+`Alarm.graceMinutes` に持ち、鳴動開始時に `AlarmSession.graceMinutes` へ固定する
+（`kakugoSnapshot` の中ではなく**セッション自身**に持たせる。覚悟モードなしのアラームにも猶予はあるため）。
+1〜5 の範囲外の値は、読み出し・計算のたびに 1〜5 へ丸める（DB を手で書き換えられても窓は広がらない）。
+
 ```
 lossAt(now, session):
   if kakugoSnapshot == null → 0
-  elapsedMinutes = floor((now - firedAt) / 1min)     // 7:00:59 は 0分、7:01:00 は 1分
-  raw = elapsedMinutes * ratePerMinute
+  elapsedMinutes  = floor((now - firedAt) / 1min)    // 7:00:59 は 0分、7:01:00 は 1分
+  billableMinutes = max(0, elapsedMinutes - graceMinutes + 1)
+  raw = billableMinutes * ratePerMinute
   return min(raw, cap, coinsAtFire)
 ```
 
+- **成功／失敗の判定**：`elapsedMinutes < graceMinutes` なら success、それ以外は failed
+- 猶予 1 分は従来のルールとまったく同じ（59秒でクリア → 成功・損失0、7:01 → 100、7:07 → 700）
+- 猶予 5 分の例：7:04:59 → 成功・0／7:05:00 → 失敗・100／7:06:00 → 失敗・200
+- **60 分の安全弁は猶予に関係なく 60 分のまま**
+- 鳴動画面は猶予が残っている間「猶予 あと 3:42」を表示し、切れた瞬間から損失カウンタに切り替わる
+
+### 3.2 確定と判定
+
 - `coinsAtFire`：鳴動時点の残高。残高より多く燃やさない
 - 起床確認クリア時刻を `dismissedAt` として `loss = lossAt(dismissedAt)` を確定し、`Wallet.coins -= loss`、`OjisanState.totalEarned += loss`
-- **成功／失敗の判定**：損失額ではなく**経過時間**で判定する。`elapsedMinutes == 0`（鳴動開始から60秒未満で起床確認をクリア）なら success、それ以外は failed。残高0・上限0・rate 0 で損失が出なくても、寝坊は寝坊
+- **成功／失敗の判定**：損失額ではなく**経過時間**で判定する（上記 3.1）。残高0・上限0・rate 0 で損失が出なくても、寝坊は寝坊
 - **鳴動開始時刻 `firedAt` はアラームの予定時刻**（プラットフォームから渡される `dateTime`）を使う。アプリを開いた時刻ではない。通知を無視して後からアプリを開いても、損失は予定時刻から数える
 - **おじさんの累計寝坊回数 `totalOversleeps` は、覚悟モードのセッション（`kakugoSnapshot != null`）が failed になった時だけ増える**。通常アラームの失敗は履歴には残るがおじさんは儲からないので数えない。`totalEarned` は loss の合計
 - ご褒美トークンは success の時だけ付与
@@ -122,7 +140,7 @@ lossAt(now, session):
 ## 7. 画面
 
 1. **Home**：アラーム一覧（時刻、曜日、覚悟の有無と rate/cap、ON/OFF）。右下＋で追加。上部にコイン／トークン残高
-2. **AlarmEdit**：時刻ピッカー（iOS 風のホイール、24時間表記、画面内にインライン表示。モーダルダイアログは使わない）、曜日、起床確認種類、覚悟トグル → rate（プリセット 1/10/50/100/500 とカスタム）と cap。保存時、`cap > coins` なら警告（保存は可能）
+2. **AlarmEdit**：時刻ピッカー（iOS 風のホイール、24時間表記、画面内にインライン表示。モーダルダイアログは使わない）、曜日、起床確認種類、起床猶予（1〜5分）、覚悟トグル → rate（プリセット 1/10/50/100/500 とカスタム）と cap。保存時、`cap > coins` なら警告（保存は可能）
 3. **Ringing**（全画面・スリープ解除・ロック画面上に表示）：時刻、損失カウンタ、おじさん、起床確認 UI
 4. **Result**：成功／失敗、損失、獲得トークン、おじさんセリフ、「閉じる」
 5. **Wallet**：残高、開発用チャージボタン、履歴（セッション一覧：日時・結果・損失）
@@ -131,7 +149,7 @@ lossAt(now, session):
 ## 8. 非機能・品質
 
 - `flutter analyze` 警告ゼロ
-- 単体テスト：損失計算、成功／失敗判定、成長セリフ、トークン付与、復旧ロジック（60分超の自動確定）
+- 単体テスト：損失計算、成功／失敗判定（猶予 1 分と 5 分の境界＝59秒/60秒、4:59/5:00 を含む）、成長セリフ、トークン付与、復旧ロジック（60分超の自動確定）、スキーマ移行
 - ウィジェットテスト：AlarmEdit の保存 → Home に反映、Ringing の longPress 解除
 - 実機／エミュレータで確認する項目（README に手順を書く）：画面OFF・ロック中に指定時刻に鳴る／鳴動中にアプリをスワイプで殺しても音が続く／解除で止まる／再起動後の復帰
 - 設計原則の遵守：無料機能への制限、広告、スヌーズ、課金誘導の UI を**作らない**
