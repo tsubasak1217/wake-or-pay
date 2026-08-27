@@ -1,6 +1,55 @@
 import 'loss_calculator.dart';
 import 'models.dart';
 
+/// The contact as it should be **shown and used right now**.
+///
+/// [OversleepContact] holds a *snapshot* of a 連絡帳 entry — taken the moment
+/// the person was picked — so that deleting them from the book never leaves an
+/// alarm with nobody to call. The cost of that snapshot is drift: renaming
+/// 田中太郎 in the book used to leave every alarm pointing at him still saying
+/// the old name on every screen, and still mailing the old address.
+///
+/// So the snapshot is a **fallback**, not the truth: while the entry still
+/// exists the live one wins. A route the edited entry can no longer reach is
+/// switched off here too — an alarm cannot mail an address that was deleted.
+///
+/// Pure: the caller supplies the book. A contact that never came from the book
+/// ([OversleepContact.contactId] null), or one whose entry has since been
+/// deleted, comes back untouched.
+OversleepContact resolveOversleepContact(
+  OversleepContact contact,
+  Iterable<ContactEntry> book,
+) {
+  final id = contact.contactId;
+  if (id == null) return contact;
+  for (final entry in book) {
+    if (entry.id != id) continue;
+    return contact.copyWith(
+      name: entry.name,
+      phone: entry.phone,
+      clearPhone: entry.phone == null,
+      email: entry.email,
+      clearEmail: entry.email == null,
+      phoneEnabled: contact.phoneEnabled && entry.hasPhone,
+      emailEnabled: contact.emailEnabled && entry.hasEmail,
+    );
+  }
+  return contact;
+}
+
+/// [resolveOversleepContact] for an alarm that may have nobody on it. Pure.
+OversleepContact? resolveOversleepContactOrNull(
+  OversleepContact? contact,
+  Iterable<ContactEntry> book,
+) => contact == null ? null : resolveOversleepContact(contact, book);
+
+/// [alarm] with its contact snapshot brought back up to date. Pure.
+Alarm resolveAlarmContact(Alarm alarm, Iterable<ContactEntry> book) {
+  final contact = alarm.contact;
+  if (contact == null) return alarm;
+  return alarm.copyWith(contact: resolveOversleepContact(contact, book));
+}
+
 /// When the contact for [session] is triggered, or null if there is nobody to
 /// contact. Pure, per spec 5.
 ///

@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme_controller.dart';
+import '../../data/providers.dart';
 import '../../domain/models.dart';
+import '../../domain/oversleep_contact_rules.dart';
 import '../../services/voice_recorder.dart';
 import '../settings/user_name_screen.dart';
 import 'contact_book_screen.dart';
@@ -90,31 +92,45 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     super.dispose();
   }
 
-  bool get _hasPhone => (_phone ?? '').trim().isNotEmpty;
-
-  bool get _hasEmail => (_email ?? '').trim().isNotEmpty;
-
   bool get _hasContact => _name.trim().isNotEmpty;
 
-  OversleepContact? get _value {
+  /// What this screen would hand back, with the **live** 連絡帳 entry's name and
+  /// addresses in it rather than the copy the alarm was carrying.
+  ///
+  /// The fields above are the snapshot the alarm arrived with; they are only
+  /// what is shown when the entry behind them has been deleted. Resolving here
+  /// means both that the screen shows the edited name straight away and that
+  /// the alarm's stored copy is refreshed the moment this screen is left —
+  /// the snapshot cannot drift while anyone is looking at it.
+  OversleepContact? _contactFor(List<ContactEntry> book) {
     if (!_hasContact) return null;
     final message = _mailMessage.text.trim();
-    return OversleepContact(
-      contactId: _contactId,
-      name: _name.trim(),
-      phone: _phone,
-      email: _email,
-      // A route can never be on without an address behind it, whatever the
-      // stored value said: the toggle for it is not even reachable.
-      phoneEnabled: _phoneEnabled && _hasPhone,
-      emailEnabled: _emailEnabled && _hasEmail,
-      mailMode: _mailMode,
-      mailMessage: message.isEmpty ? null : message,
-      phoneMode: _phoneMode,
-      recordingPath: _recordingPath,
-      triggerMinutesAfterGrace: normalizeContactTriggerMinutes(_trigger),
+    final live = resolveOversleepContact(
+      OversleepContact(
+        contactId: _contactId,
+        name: _name.trim(),
+        phone: _phone,
+        email: _email,
+        phoneEnabled: _phoneEnabled,
+        emailEnabled: _emailEnabled,
+        mailMode: _mailMode,
+        mailMessage: message.isEmpty ? null : message,
+        phoneMode: _phoneMode,
+        recordingPath: _recordingPath,
+        triggerMinutesAfterGrace: normalizeContactTriggerMinutes(_trigger),
+      ),
+      book,
+    );
+    // A route can never be on without an address behind it, whatever the
+    // stored value said: the toggle for it is not even reachable.
+    return live.copyWith(
+      phoneEnabled: live.phoneEnabled && live.hasPhone,
+      emailEnabled: live.emailEnabled && live.hasEmail,
     );
   }
+
+  OversleepContact? get _value =>
+      _contactFor(ref.read(contactBookListProvider));
 
   Future<void> _pickContact() async {
     final picked = await Navigator.of(context).push<ContactEntry>(
@@ -222,6 +238,16 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     // editor redraws the row and both previews.
     final userName = ref.watch(settingsProvider).userName;
 
+    // Watched, not read: editing this person inside the 連絡帳 — which is a
+    // route pushed on top of this screen — has to land on the 連絡先 row and
+    // on both route toggles the moment it pops.
+    final live = _contactFor(ref.watch(contactBookListProvider));
+    final hasContact = live != null;
+    final hasPhone = live?.hasPhone ?? false;
+    final hasEmail = live?.hasEmail ?? false;
+    final phoneOn = live?.phoneEnabled ?? false;
+    final emailOn = live?.emailEnabled ?? false;
+
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) return;
@@ -251,7 +277,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                 SettingRow(
                   key: const ValueKey('contactPickRow'),
                   label: '連絡先',
-                  value: _hasContact ? _name : 'なし',
+                  value: live?.name ?? 'なし',
                   onTap: _pickContact,
                 ),
                 SettingRow(
@@ -275,16 +301,16 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                 ),
                 SettingSwitchRow(
                   label: '電話',
-                  value: _phoneEnabled && _hasPhone,
-                  enabled: _hasPhone,
-                  subtitle: _hasPhone ? null : 'この連絡先には電話番号がありません',
+                  value: phoneOn,
+                  enabled: hasPhone,
+                  subtitle: hasPhone ? null : 'この連絡先には電話番号がありません',
                   onChanged: (v) => setState(() => _phoneEnabled = v),
                 ),
                 SettingSwitchRow(
                   label: 'メール',
-                  value: _emailEnabled && _hasEmail,
-                  enabled: _hasEmail,
-                  subtitle: _hasEmail ? null : 'この連絡先にはメールアドレスがありません',
+                  value: emailOn,
+                  enabled: hasEmail,
+                  subtitle: hasEmail ? null : 'この連絡先にはメールアドレスがありません',
                   onChanged: (v) => setState(() => _emailEnabled = v),
                 ),
               ],
@@ -301,9 +327,9 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                   ),
                 ),
               ),
-            if (_emailEnabled && _hasEmail) _mailIsland(theme, userName),
-            if (_phoneEnabled && _hasPhone) _phoneIsland(theme, userName),
-            if (_hasContact)
+            if (emailOn) _mailIsland(theme, userName),
+            if (phoneOn) _phoneIsland(theme, userName),
+            if (hasContact)
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(

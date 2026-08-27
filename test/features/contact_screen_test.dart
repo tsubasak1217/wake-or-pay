@@ -553,10 +553,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('settingsUserNameRow')));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('userNameField')),
-      '山田花子',
-    );
+    await tester.enterText(find.byKey(const ValueKey('userNameField')), '山田花子');
     await tester.pageBack();
     await tester.pumpAndSettle();
 

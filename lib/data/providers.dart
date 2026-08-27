@@ -100,6 +100,16 @@ final contactBookProvider = StreamProvider<List<ContactEntry>>(
   (ref) => ref.watch(contactBookRepositoryProvider).watchAll(),
 );
 
+/// The 連絡帳 as a plain list, for everything that resolves an alarm's contact
+/// snapshot against it — see `resolveOversleepContact`.
+///
+/// Empty while the stream is still loading, which is the same answer as an
+/// empty book: the snapshot held on the alarm is used, and the row corrects
+/// itself one frame later when the rows arrive.
+final contactBookListProvider = Provider<List<ContactEntry>>(
+  (ref) => ref.watch(contactBookProvider).valueOrNull ?? const <ContactEntry>[],
+);
+
 final sessionByIdProvider = FutureProvider.family<AlarmSession?, String>(
   (ref, id) => ref.watch(alarmSessionRepositoryProvider).getById(id),
 );

@@ -89,7 +89,12 @@ class _RingingScreenState extends ConsumerState<RingingScreen> {
 
     final alarm = ref.read(alarmByIdProvider(session.alarmId)).valueOrNull;
     if (alarm == null || !alarm.willContact) return;
-    final contact = alarm.contact!;
+    // The 連絡帳 as it stands now: the name said out loud has to be the one the
+    // user last typed, not the copy taken when the alarm was written.
+    final contact = resolveOversleepContact(
+      alarm.contact!,
+      ref.read(contactBookListProvider),
+    );
 
     final remaining = contactRemaining(now, session, contact);
     if (remaining == null) return;
@@ -236,7 +241,12 @@ class _RingingBody extends ConsumerWidget {
               alarm.maybeWhen(
                 data: (data) => data != null && data.willContact
                     ? _ContactPanel(
-                        contact: data.contact!,
+                        // Resolved against the live 連絡帳, so a name edited in
+                        // the book reads correctly on the countdown too.
+                        contact: resolveOversleepContact(
+                          data.contact!,
+                          ref.watch(contactBookListProvider),
+                        ),
                         remaining: contactRemaining(
                           now,
                           session,

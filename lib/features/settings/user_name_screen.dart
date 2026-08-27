@@ -77,7 +77,6 @@ class _UserNameSubScreenState extends ConsumerState<UserNameSubScreen> {
 }
 
 /// Opens the editor over whatever screen asked for it.
-Future<void> pushUserNameSubScreen(BuildContext context) =>
-    Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const UserNameSubScreen()),
-    );
+Future<void> pushUserNameSubScreen(BuildContext context) => Navigator.of(
+  context,
+).push<void>(MaterialPageRoute(builder: (_) => const UserNameSubScreen()));

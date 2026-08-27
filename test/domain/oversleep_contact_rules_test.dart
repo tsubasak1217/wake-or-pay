@@ -240,4 +240,96 @@ void main() {
       expect(text.body, '田中太郎 さんへの連絡が送信されました（開発中：実際には送信していません）');
     });
   });
+
+  group('連絡帳との突き合わせ', () {
+    ContactEntry entry({
+      String name = '田中太郎',
+      String? phone = '090-0000-0000',
+      String? email = 'taro@example.com',
+    }) => ContactEntry(
+      id: 'c1',
+      name: name,
+      phone: phone,
+      email: email,
+      createdAt: DateTime(2026),
+    );
+
+    const snapshot = OversleepContact(
+      contactId: 'c1',
+      name: '田中太郎',
+      phone: '090-0000-0000',
+      email: 'taro@example.com',
+      phoneEnabled: true,
+      emailEnabled: true,
+    );
+
+    test('the live entry wins over the snapshot the alarm carries', () {
+      final live = resolveOversleepContact(snapshot, [
+        entry(name: '田中太郎（部長）', email: 'bucho@example.com'),
+      ]);
+      expect(live.name, '田中太郎（部長）');
+      expect(live.email, 'bucho@example.com');
+      expect(live.phone, '090-0000-0000', reason: 'unchanged in the book');
+      expect(live.contactId, 'c1');
+    });
+
+    test('nothing else on the contact is touched', () {
+      const rich = OversleepContact(
+        contactId: 'c1',
+        name: '古い名前',
+        phone: '090-0000-0000',
+        mailMode: MailMode.custom,
+        mailMessage: '起こして',
+        phoneMode: PhoneMode.custom,
+        recordingPath: '/tmp/a.m4a',
+        triggerMinutesAfterGrace: 12,
+      );
+      final live = resolveOversleepContact(rich, [entry()]);
+      expect(live.mailMessage, '起こして');
+      expect(live.recordingPath, '/tmp/a.m4a');
+      expect(live.triggerMinutesAfterGrace, 12);
+    });
+
+    test('a deleted entry leaves the snapshot alone', () {
+      expect(resolveOversleepContact(snapshot, const []), snapshot);
+    });
+
+    test('a contact that never came from the book is untouched', () {
+      const loose = OversleepContact(name: '誰か', phone: '090-1111-1111');
+      expect(resolveOversleepContact(loose, [entry()]), loose);
+    });
+
+    test('an address deleted in the book switches its route off', () {
+      final live = resolveOversleepContact(snapshot, [entry(phone: null)]);
+      expect(live.phone, isNull);
+      expect(live.phoneEnabled, isFalse, reason: 'nothing left to call');
+      expect(live.emailEnabled, isTrue);
+      expect(live.willPhone, isFalse);
+    });
+
+    test('an address added in the book does not switch its route on', () {
+      const mailOnly = OversleepContact(
+        contactId: 'c1',
+        name: '田中太郎',
+        email: 'taro@example.com',
+        emailEnabled: true,
+      );
+      final live = resolveOversleepContact(mailOnly, [entry()]);
+      expect(live.phone, '090-0000-0000', reason: 'now reachable');
+      expect(live.phoneEnabled, isFalse, reason: 'but the user never asked');
+    });
+
+    test('resolveAlarmContact leaves a contactless alarm alone', () {
+      const alarm = Alarm(id: 'a', hour: 7, minute: 0);
+      expect(resolveAlarmContact(alarm, [entry()]), alarm);
+    });
+
+    test('the countdown line reads the resolved name', () {
+      final live = resolveOversleepContact(snapshot, [entry(name: '新しい名前')]);
+      expect(
+        contactCountdownLine(const Duration(minutes: 1), live),
+        'あと 1:00 で 新しい名前 さんに連絡が行きます',
+      );
+    });
+  });
 }

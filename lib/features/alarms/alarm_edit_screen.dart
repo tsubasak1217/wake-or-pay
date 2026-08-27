@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
+import '../../domain/oversleep_contact_rules.dart';
 import '../../domain/sound_library.dart';
 import 'alarm_controller.dart';
 import 'alarm_draft.dart';
@@ -509,10 +510,15 @@ class _ContactRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The name as the 連絡帳 has it now, not the copy carried on the draft:
+    // renaming somebody in the book has to show up here without re-picking.
+    final book = ref.watch(contactBookListProvider);
     // The name, not the contact: `select` compares with `==`, and watching the
     // object would rebuild this row for a change to any of its six fields.
     final label = ref.watch(
-      alarmDraftProvider(seed).select((a) => a.contact?.name ?? 'なし'),
+      alarmDraftProvider(seed).select(
+        (a) => resolveOversleepContactOrNull(a.contact, book)?.name ?? 'なし',
+      ),
     );
     return SettingRow(
       label: '寝坊時連絡先',

@@ -117,10 +117,20 @@ String? detailFor(
 /// a flag in memory, so a relaunch mid-ring — or the ring screen being rebuilt
 /// — cannot send a second one.
 class ContactDispatcher {
-  ContactDispatcher(this._events, this._notifier);
+  ContactDispatcher(this._events, this._notifier, {ContactBookReader? book})
+    : _book = book ?? _emptyBook;
+
+  static Future<List<ContactEntry>> _emptyBook() async =>
+      const <ContactEntry>[];
 
   final ContactEventRepository _events;
   final OversleepNotifier _notifier;
+
+  /// The 連絡帳, read at trigger time. The alarm carries a snapshot of the
+  /// person it names, and that snapshot is only the fallback: while the entry
+  /// still exists it is the entry that is mailed and named, so an address
+  /// corrected last night is the one used this morning.
+  final ContactBookReader _book;
 
   /// Returns the event if one was recorded now, null in every other case:
   /// nobody to contact, not due yet, or already sent for this session.
@@ -130,13 +140,17 @@ class ContactDispatcher {
     required DateTime now,
   }) async {
     if (!alarm.willContact) return null;
-    final contact = alarm.contact!;
-    if (!contactIsDue(now, session, contact)) return null;
+    final snapshot = alarm.contact!;
+    if (!contactIsDue(now, session, snapshot)) return null;
     if ((await _events.forSession(session.id)).isNotEmpty) return null;
 
+    final contact = resolveOversleepContact(snapshot, await _book());
     return _notifier.notify(session: session, contact: contact, at: now);
   }
 }
+
+/// How [ContactDispatcher] gets at the 連絡帳 without knowing about drift.
+typedef ContactBookReader = Future<List<ContactEntry>> Function();
 
 final oversleepNotifierProvider = Provider<OversleepNotifier>(
   (ref) => LoggingOversleepNotifier(
@@ -152,5 +166,6 @@ final contactDispatcherProvider = Provider(
   (ref) => ContactDispatcher(
     ref.watch(contactEventRepositoryProvider),
     ref.watch(oversleepNotifierProvider),
+    book: () => ref.read(contactBookRepositoryProvider).getAll(),
   ),
 );
