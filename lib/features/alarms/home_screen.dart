@@ -7,6 +7,7 @@ import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
 import 'alarm_controller.dart';
+import 'widgets/swipe_to_delete.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -84,34 +85,40 @@ class _AlarmTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    return ListTile(
-      onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
-      title: Text(
-        hhmm(alarm.hour, alarm.minute),
-        style: theme.textTheme.displaySmall?.copyWith(
-          color: alarm.enabled ? null : theme.disabledColor,
+    return SwipeToDelete(
+      // Goes through the controller, so the platform alarm is cancelled before
+      // the row disappears — a deleted alarm that still rings is the one bug
+      // this screen must never have.
+      onDelete: () => ref.read(alarmControllerProvider).delete(alarm),
+      child: ListTile(
+        onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
+        title: Text(
+          hhmm(alarm.hour, alarm.minute),
+          style: theme.textTheme.displaySmall?.copyWith(
+            color: alarm.enabled ? null : theme.disabledColor,
+          ),
         ),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${repeatDaysLabel(alarm.repeatDays)} ・ ${alarm.wakeCheck.label}',
-          ),
-          Text(
-            kakugoLabel(alarm.kakugo),
-            style: alarm.isKakugo
-                ? theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.error,
-                  )
-                : null,
-          ),
-        ],
-      ),
-      trailing: Switch(
-        value: alarm.enabled,
-        onChanged: (v) =>
-            ref.read(alarmControllerProvider).setEnabled(alarm, v),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${repeatDaysLabel(alarm.repeatDays)} ・ ${alarm.wakeCheck.label}',
+            ),
+            Text(
+              kakugoLabel(alarm.kakugo),
+              style: alarm.isKakugo
+                  ? theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    )
+                  : null,
+            ),
+          ],
+        ),
+        trailing: Switch(
+          value: alarm.enabled,
+          onChanged: (v) =>
+              ref.read(alarmControllerProvider).setEnabled(alarm, v),
+        ),
       ),
     );
   }

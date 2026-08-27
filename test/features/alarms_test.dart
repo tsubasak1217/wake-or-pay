@@ -104,8 +104,8 @@ void main() {
     expect(find.text('月・金 ・ 計算（3問）'), findsOneWidget);
     expect(find.text('500 コイン/分 ・ 最大 1000'), findsOneWidget);
 
-    final saved = (await container.read(alarmRepositoryProvider).getAll())
-        .single;
+    final saved =
+        (await container.read(alarmRepositoryProvider).getAll()).single;
     expect(saved.repeatDays, {1, 5});
     expect(saved.wakeCheck, WakeCheckType.math);
     expect(saved.kakugo, const Kakugo(ratePerMinute: 500, cap: 1000));
@@ -145,8 +145,8 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
-    final saved = (await container.read(alarmRepositoryProvider).getAll())
-        .single;
+    final saved =
+        (await container.read(alarmRepositoryProvider).getAll()).single;
     expect(saved.hour, 9);
     expect(saved.minute, 0);
     expect(find.text('09:00'), findsOneWidget, reason: 'shown on Home');
@@ -279,7 +279,10 @@ void main() {
     await tester.tap(find.text('このまま保存'));
     await tester.pumpAndSettle();
 
-    expect(await container.read(alarmRepositoryProvider).getAll(), hasLength(1));
+    expect(
+      await container.read(alarmRepositoryProvider).getAll(),
+      hasLength(1),
+    );
   });
 
   testWidgets('the warning can be backed out of without saving', (
