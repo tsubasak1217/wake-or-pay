@@ -116,6 +116,14 @@ final contactEventsProvider = StreamProvider<List<ContactEvent>>(
   (ref) => ref.watch(contactEventRepositoryProvider).watchRecent(),
 );
 
+/// The oversleep log for one ring, live. The ringing screen reads it to say
+/// which routes actually went out — 「田中太郎 に電話をかけました」.
+final sessionContactEventsProvider =
+    StreamProvider.family<List<ContactEvent>, String>(
+      (ref, sessionId) =>
+          ref.watch(contactEventRepositoryProvider).watchForSession(sessionId),
+    );
+
 /// The 連絡帳, already in よみがな order.
 final contactBookProvider = StreamProvider<List<ContactEntry>>(
   (ref) => ref.watch(contactBookRepositoryProvider).watchAll(),

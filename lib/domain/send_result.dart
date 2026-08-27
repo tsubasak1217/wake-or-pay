@@ -28,7 +28,7 @@ class SendResult {
   final String? detail;
 
   /// One short phrase for the event row and the SnackBar.
-  String get label => ok ? '成功' : '失敗（${reason ?? '不明なエラー'}）';
+  String get label => ok ? sendSuccessLabel : '失敗（${reason ?? '不明なエラー'}）';
 
   @override
   bool operator ==(Object other) =>
@@ -43,6 +43,12 @@ class SendResult {
   @override
   String toString() => 'SendResult($label)';
 }
+
+/// What a route's log row says when it worked.
+///
+/// A constant because the ringing screen reads the rows back and has to tell a
+/// call that connected from one that did not — see `oversleepCallLine`.
+const sendSuccessLabel = '成功';
 
 /// The failures every route can hit, in the words the app says them in.
 class SendFailure {

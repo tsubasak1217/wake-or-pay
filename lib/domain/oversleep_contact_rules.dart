@@ -1,5 +1,6 @@
 import 'loss_calculator.dart';
 import 'models.dart';
+import 'send_result.dart';
 
 /// The contact as it should be **shown and used right now**.
 ///
@@ -225,27 +226,58 @@ String contactSpeechText(
 ///
 /// [discordSent] and [discordFailed] count 共有先 posted to and 共有先 that
 /// refused. [sentRoutes] and [failedRoutes] name the personal routes that were
-/// really attempted — 「メール」, 「SMS」, 「電話」 — and [pendingRoutes] names the
-/// ones the alarm asked for that the app cannot yet perform.
+/// attempted — 「電話」, 「SMS」, 「メール」 — and which of them worked. A route
+/// the app could not take at all, such as a call from the background isolate,
+/// is a failure here: from the sleeper's side there is no difference between a
+/// call that could not be placed and one that would not connect.
 ({String title, String body}) contactSentNotificationText(
   String target, {
   int discordSent = 0,
   int discordFailed = 0,
   List<String> sentRoutes = const [],
   List<String> failedRoutes = const [],
-  List<String> pendingRoutes = const [],
 }) {
+  // 「電話を送信しました」 is not a sentence. A call is placed, not sent, so it
+  // gets its own clause and the written routes share the other one.
+  const phone = '電話';
+  final sent = sentRoutes.where((r) => r != phone);
+  final failed = failedRoutes.where((r) => r != phone);
   final parts = [
     if (discordSent > 0) 'Discord $discordSent件に投稿しました',
     if (discordFailed > 0) 'Discord $discordFailed件は送信できませんでした',
-    if (sentRoutes.isNotEmpty) '${sentRoutes.join('・')}を送信しました',
-    if (failedRoutes.isNotEmpty) '${failedRoutes.join('・')}は送信できませんでした',
-    if (pendingRoutes.isNotEmpty) '${pendingRoutes.join('・')}は開発中で、記録だけが残ります',
+    if (sentRoutes.contains(phone)) '電話をかけました',
+    if (failedRoutes.contains(phone)) '電話をかけられませんでした',
+    if (sent.isNotEmpty) '${sent.join('・')}を送信しました',
+    if (failed.isNotEmpty) '${failed.join('・')}は送信できませんでした',
   ];
   return (
     title: '$targetへの連絡',
     body: parts.isEmpty ? '$targetへの連絡を記録しました' : parts.join('。'),
   );
+}
+
+/// The suffix the per-route log rows carry on their id, so the summary row —
+/// which is filed under the loudest channel and shares the same timestamp —
+/// can be told apart from the route's own row.
+String contactRouteRowSuffix(ContactChannel channel) => '-${channel.name}';
+
+/// 「田中太郎 に電話をかけました」 for the ringing screen, or null when no call was
+/// attempted for this session. Pure, per spec 11.5.
+///
+/// It reads the rows the dispatcher wrote rather than being told by the
+/// dispatcher, so the line on screen is the log: if it says the call was
+/// placed, there is a row saying so, and if the call failed the screen says
+/// that instead of quietly showing nothing.
+String? oversleepCallLine(Iterable<ContactEvent> events) {
+  for (final event in events) {
+    if (!event.id.endsWith(contactRouteRowSuffix(ContactChannel.phone))) {
+      continue;
+    }
+    return event.detail == sendSuccessLabel
+        ? '${event.contactName} に電話をかけました'
+        : '${event.contactName} に電話をかけられませんでした';
+  }
+  return null;
 }
 
 /// What each route is called in a sentence and in a log row. Pure.

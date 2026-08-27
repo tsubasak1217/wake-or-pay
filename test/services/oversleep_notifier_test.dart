@@ -6,6 +6,7 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/oversleep_notifier.dart';
+import 'package:wake_or_pay/services/phone_caller.dart';
 import 'package:wake_or_pay/services/sms_sender.dart';
 
 import '../helpers.dart';
@@ -84,6 +85,8 @@ Future<({ProviderContainer container, AlarmSession session})> ringing(
   bool mailConfigured = false,
   SendResult mailResult = const SendResult.success(),
   SendResult smsResult = const SendResult.success(),
+  SendResult phoneResult = const SendResult.success(),
+  PhoneCaller? phone,
 }) async {
   sender = FakeDiscordWebhookSender(failFor: failFor);
   mails = FakeMailSender(result: mailResult);
@@ -98,6 +101,9 @@ Future<({ProviderContainer container, AlarmSession session})> ringing(
       fakeDiscordSenderOverride(sender),
       fakeMailSenderOverride(mails),
       recordingSmsSenderOverride(RecordingSmsSender(result: smsResult)),
+      phoneCallerProvider.overrideWithValue(
+        phone ?? RecordingPhoneCaller(result: phoneResult),
+      ),
       if (mailConfigured) seededSecretStoreOverride(),
     ],
   );
@@ -134,7 +140,7 @@ void main() {
     });
 
     test(
-      'at the trigger it logs the event and says nothing was sent',
+      'at the trigger it logs the event and places the call',
       () async {
         final r = await ringing(pledged);
 
@@ -163,14 +169,20 @@ void main() {
         final stored = await r.container
             .read(contactEventRepositoryProvider)
             .getRecent();
-        expect(stored.single, event);
-
-        final posted = notifierOf(r.container).posted.single;
         expect(
-          posted.body,
-          '電話は開発中で、記録だけが残ります',
-          reason: 'the call really was not placed, and it says so',
+          stored,
+          hasLength(2),
+          reason: 'the summary row, and the 電話 route’s own outcome',
         );
+        expect(stored, contains(event));
+
+        expect(
+          phoneCallerOf(r.container).called,
+          ['09000000000'],
+          reason: 'dialled with the digits, not with the hyphens',
+        );
+        final posted = notifierOf(r.container).posted.single;
+        expect(posted.body, '電話をかけました');
         expect(sender.posts, isEmpty, reason: 'no share on this alarm');
       },
     );
@@ -200,8 +212,10 @@ void main() {
       }
       expect(
         await r.container.read(contactEventRepositoryProvider).getRecent(),
-        hasLength(1),
+        hasLength(2),
+        reason: 'one round: the summary row and the 電話 route’s own row',
       );
+      expect(phoneCallerOf(r.container).called, hasLength(1));
     });
 
     test('a share-only alarm is every bit as much a notification', () async {
@@ -446,7 +460,7 @@ void main() {
       );
     });
 
-    test('both halves: Discord went, the phone call did not', () async {
+    test('both halves: Discord and the call both went', () async {
       const both = Alarm(
         id: 'a1',
         hour: 7,
@@ -465,8 +479,68 @@ void main() {
       expect(sender.posts, hasLength(1));
       expect(
         notifierOf(r.container).posted.single.body,
-        'Discord 1件に投稿しました。電話は開発中で、記録だけが残ります',
+        'Discord 1件に投稿しました。電話をかけました',
       );
+    });
+  });
+
+  group('電話の発信', () {
+    test('a refused call is a row and a sentence, never a throw', () async {
+      final r = await ringing(
+        pledged,
+        phoneResult: const SendResult.failure(SendFailure.permission),
+      );
+
+      final event = await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: pledged, session: r.session, now: at(minutes: 11));
+
+      expect(event, isNotNull, reason: 'the session still fired');
+      expect(notifierOf(r.container).posted.single.body, '電話をかけられませんでした');
+      final row = (await r.container
+              .read(contactEventRepositoryProvider)
+              .getRecent())
+          .firstWhere((e) => e.id.endsWith('-phone'));
+      expect(row.detail, '失敗（権限がありません）');
+    });
+
+    test('from the background the call is skipped and said to be', () async {
+      final r = await ringing(pledged, phone: const UnavailablePhoneCaller());
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: pledged, session: r.session, now: at(minutes: 11));
+
+      final row = (await r.container
+              .read(contactEventRepositoryProvider)
+              .getRecent())
+          .firstWhere((e) => e.id.endsWith('-phone'));
+      expect(row.detail, contains(UnavailablePhoneCaller.backgroundReason));
+      expect(notifierOf(r.container).posted.single.body, '電話をかけられませんでした');
+    });
+
+    test('電話 off on the contact dials nobody', () async {
+      const noPhone = OversleepContact(
+        name: '田中太郎',
+        phone: '090-0000-0000',
+        smsEnabled: true,
+      );
+      const alarm = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+        contact: noPhone,
+        oversleepTriggerMinutes: 10,
+      );
+      final r = await ringing(alarm);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: alarm, session: r.session, now: at(minutes: 11));
+
+      expect(phoneCallerOf(r.container).called, isEmpty);
+      expect(notifierOf(r.container).posted.single.body, 'SMSを送信しました');
     });
   });
 

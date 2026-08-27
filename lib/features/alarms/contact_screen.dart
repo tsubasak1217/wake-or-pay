@@ -121,6 +121,13 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
       ),
     );
     if (picked == null || !mounted) return;
+    // Asked before the route is switched on, exactly as the toggle does it:
+    // an alarm must never be stored with 電話 on and no permission behind it,
+    // because that is a route that fails silently at 7am.
+    final mayCall =
+        picked.hasPhone &&
+        await ref.read(routePermissionsProvider).requestPhone();
+    if (!mounted) return;
     setState(() {
       _contactId = picked.id;
       _name = picked.name;
@@ -129,7 +136,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
       // Picking somebody means wanting to reach them: the loudest route they
       // have an address for starts on. SMS does not — a text message is a
       // different decision from a phone call, and one that is silent at 4am.
-      _phoneEnabled = picked.hasPhone;
+      _phoneEnabled = mayCall;
       // Gated on the same flag the toggle is: switching メール on for somebody
       // the app cannot mail would put a route in the stored contact — and in
       // the event log — that the user never enabled and cannot see, let alone
@@ -156,20 +163,42 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
   /// A refusal leaves the toggle off and says so. Storing it on anyway would
   /// put a route in the alarm that silently fails at 7am, which is the one
   /// outcome this whole feature exists to avoid.
-  Future<void> _setSms(bool on) async {
+  Future<void> _setSms(bool on) => _setRoute(
+    on: on,
+    request: () => ref.read(routePermissionsProvider).requestSms(),
+    apply: (value) => setState(() => _smsEnabled = value),
+    refusal: 'SMS の送信が許可されていないので、SMS は使えません',
+  );
+
+  /// 電話 needs `CALL_PHONE`, and `READ_PHONE_STATE` beside it so the alarm
+  /// sound can get out of the way while the call is up. Same rule as SMS: no
+  /// permission, no route.
+  Future<void> _setPhone(bool on) => _setRoute(
+    on: on,
+    request: () => ref.read(routePermissionsProvider).requestPhone(),
+    apply: (value) => setState(() => _phoneEnabled = value),
+    refusal: '電話の発信が許可されていないので、電話は使えません',
+  );
+
+  Future<void> _setRoute({
+    required bool on,
+    required Future<bool> Function() request,
+    required void Function(bool) apply,
+    required String refusal,
+  }) async {
     if (!on) {
-      setState(() => _smsEnabled = false);
+      apply(false);
       return;
     }
-    final granted = await ref.read(routePermissionsProvider).requestSms();
+    final granted = await request();
     if (!mounted) return;
     if (granted) {
-      setState(() => _smsEnabled = true);
+      apply(true);
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('SMS の送信が許可されていないので、SMS は使えません')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(refusal)));
   }
 
   /// The example the preview is drawn against: a fixed 07:00, so the text does
@@ -240,9 +269,9 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                   value: phoneOn,
                   enabled: hasPhone,
                   subtitle: hasPhone
-                      ? '相手の電話が鳴ります。音声は流れません'
+                      ? '相手の電話が鳴ります。スピーカーになり、音声は流れません'
                       : 'この連絡先には電話番号がありません',
-                  onChanged: (v) => setState(() => _phoneEnabled = v),
+                  onChanged: _setPhone,
                 ),
                 SettingSwitchRow(
                   label: 'メール',
@@ -319,8 +348,10 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
               ),
             const SizedBox(height: 16),
             Text(
-              'SMS・メールと寝坊の共有（Discord）は実際に送信します。'
-              '電話はまだ発信せず、発火した記録がアプリ内に残るだけです。',
+              'ここの経路（電話・SMS・メール）と寝坊の共有（Discord）は、'
+              '発火したときに実際に送信します。'
+              '電話はスピーカーで相手の声が聞こえるようにしますが、'
+              'こちらから音声を流すことはありません。',
               style: theme.textTheme.bodySmall,
             ),
           ],

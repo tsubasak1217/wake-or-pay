@@ -182,24 +182,25 @@ void main() {
     final events = await r.container
         .read(contactEventRepositoryProvider)
         .getRecent();
-    expect(events, hasLength(1), reason: 'once per session');
+    // The summary row plus the 電話 route's own outcome — one round, not two.
+    expect(events, hasLength(2), reason: 'once per session');
     expect(
-      events.single.contactName,
+      events.firstWhere((e) => !e.id.endsWith('-phone')).contactName,
       target,
       reason: 'the log names the recipient with the same phrase the voice did',
     );
 
     final posted = notifierOf(r.container).posted;
-    // メール really goes out since D1, so it is no longer among the routes the
-    // notification apologises for. This alarm's contact has 電話 on and
-    // nothing else, and that is the one still owed an apology.
-    expect(posted.map((p) => p.body), contains('電話は開発中で、記録だけが残ります'));
+    // Every route really goes out since D3; this alarm's contact has 電話 on
+    // and nothing else.
+    expect(posted.map((p) => p.body), contains('電話をかけました'));
+    expect(find.byKey(const ValueKey('ringingCallLine')), findsOneWidget);
 
     // Ticking on does not send a second one.
     await tick(tester, seconds: 3);
     expect(
       await r.container.read(contactEventRepositoryProvider).getRecent(),
-      hasLength(1),
+      hasLength(2),
     );
   });
 

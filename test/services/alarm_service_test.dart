@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
+import 'package:wake_or_pay/services/phone_caller.dart';
 
 import '../helpers.dart';
 
@@ -140,5 +141,105 @@ void main() {
     expect((await alarms.getById(oneShot.id))!.enabled, isFalse);
     expect((await alarms.getById(repeating.id))!.enabled, isTrue);
     expect(service.scheduled, [repeating.id]);
+  });
+
+  group('an oversleep call silences the ring while it lasts', () {
+    /// A ring in progress, with a phone caller whose state the test drives.
+    ///
+    /// The `alarm` plugin has no pause — its API is `set` / `stop` — so
+    /// [AlarmService.watchCalls] stops the platform alarm and sets the same
+    /// one again when the call ends.
+    Future<
+      ({
+        FakeAlarmService service,
+        RecordingPhoneCaller phone,
+        ProviderContainer container,
+        AlarmSession session,
+      })
+    >
+    ringingWithCall({bool openSession = true}) async {
+      final phone = RecordingPhoneCaller();
+      final container = await testContainer(
+        extra: [
+          fakeAlarmServiceOverride(),
+          recordingPhoneCallerOverride(phone),
+        ],
+      );
+      await container.read(alarmRepositoryProvider).save(oneShot);
+      await container
+          .read(walletRepositoryProvider)
+          .write(const Wallet(coins: 5000));
+      final session = await container
+          .read(sessionServiceProvider)
+          .start(alarm: oneShot, firedAt: firedAt);
+      final service = container.read(alarmServiceProvider) as FakeAlarmService;
+      service.watchCalls();
+      return (
+        service: service,
+        phone: phone,
+        container: container,
+        session: session,
+      );
+    }
+
+    test('off while the call is up, and back on when it ends', () async {
+      final r = await ringingWithCall();
+
+      r.phone.emitInCall(true);
+      await pumpEventQueue();
+      expect(
+        r.service.cancelled,
+        [oneShot.id],
+        reason: 'the contact’s voice cannot be heard over the alarm',
+      );
+      expect(r.service.rearmed, isEmpty);
+
+      r.phone.emitInCall(false);
+      await pumpEventQueue();
+      expect(
+        r.service.rearmed.single.alarmId,
+        oneShot.id,
+        reason: 'the morning is not over just because the call was',
+      );
+    });
+
+    test('a ring cleared during the call is not started again', () async {
+      final r = await ringingWithCall();
+
+      r.phone.emitInCall(true);
+      await pumpEventQueue();
+      expect(r.service.cancelled, [oneShot.id]);
+
+      // Getting up during the call is the outcome this feature exists to
+      // cause. Settling the session must end the morning, not restart it.
+      await r.container
+          .read(sessionServiceProvider)
+          .dismiss(r.session, firedAt.add(const Duration(minutes: 2)));
+
+      r.phone.emitInCall(false);
+      await pumpEventQueue();
+      expect(r.service.rearmed, isEmpty);
+    });
+
+    test('a call with nothing ringing touches nothing', () async {
+      final phone = RecordingPhoneCaller();
+      final container = await testContainer(
+        extra: [
+          fakeAlarmServiceOverride(),
+          recordingPhoneCallerOverride(phone),
+        ],
+      );
+      await container.read(alarmRepositoryProvider).save(oneShot);
+      final service = container.read(alarmServiceProvider) as FakeAlarmService;
+      service.watchCalls();
+
+      phone.emitInCall(true);
+      await pumpEventQueue();
+      phone.emitInCall(false);
+      await pumpEventQueue();
+
+      expect(service.cancelled, isEmpty);
+      expect(service.rearmed, isEmpty);
+    });
   });
 }

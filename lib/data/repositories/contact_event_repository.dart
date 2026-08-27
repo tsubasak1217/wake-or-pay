@@ -41,6 +41,14 @@ class ContactEventRepository {
           .watch()
           .map((rows) => rows.map((r) => r.toModel()).toList());
 
+  /// Live rows for one session. The ringing screen reads this so it can say
+  /// 「田中太郎 に電話をかけました」 the moment the call really goes out.
+  Stream<List<ContactEvent>> watchForSession(String sessionId) =>
+      (_db.select(_db.contactEventRows)
+            ..where((e) => e.sessionId.equals(sessionId)))
+          .watch()
+          .map((rows) => rows.map((r) => r.toModel()).toList());
+
   Future<List<ContactEvent>> forSession(String sessionId) async =>
       (await (_db.select(
             _db.contactEventRows,

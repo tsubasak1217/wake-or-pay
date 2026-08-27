@@ -391,12 +391,14 @@ void main() {
       expect(contactSentNotificationText(target).title, '田中太郎 さんへの連絡');
 
       expect(
-        contactSentNotificationText(
-          target,
-          pendingRoutes: const ['電話', 'SMS'],
-        ).body,
-        '電話・SMSは開発中で、記録だけが残ります',
+        contactSentNotificationText(target, failedRoutes: const ['電話']).body,
+        '電話をかけられませんでした',
         reason: 'a call nobody placed must never read as one that was',
+      );
+      expect(
+        contactSentNotificationText(target, sentRoutes: const ['電話']).body,
+        '電話をかけました',
+        reason: '「電話を送信しました」 is not a sentence',
       );
       expect(
         contactSentNotificationText(target, discordSent: 2).body,
@@ -417,17 +419,47 @@ void main() {
           target,
           discordSent: 1,
           discordFailed: 1,
-          sentRoutes: const ['メール'],
-          pendingRoutes: const ['電話', 'SMS'],
+          sentRoutes: const ['電話', 'SMS'],
+          failedRoutes: const ['メール'],
         ).body,
         'Discord 1件に投稿しました。Discord 1件は送信できませんでした。'
-        'メールを送信しました。電話・SMSは開発中で、記録だけが残ります',
+        '電話をかけました。SMSを送信しました。メールは送信できませんでした',
       );
       expect(
         contactSentNotificationText(target).body,
         '田中太郎 さんへの連絡を記録しました',
         reason: 'no route left — every 共有先 on it had been deleted',
       );
+    });
+
+    group('oversleepCallLine', () {
+      ContactEvent row(String suffix, String? detail) => ContactEvent(
+        id: 'contact-1-s1$suffix',
+        sessionId: 's1',
+        firedAt: DateTime(2026, 8, 27, 7, 5),
+        contactName: '田中太郎',
+        channel: ContactChannel.phone,
+        detail: detail,
+      );
+
+      test('nothing at all until a call has been attempted', () {
+        expect(oversleepCallLine(const []), isNull);
+        expect(
+          oversleepCallLine([row('', '電話 / メール…')]),
+          isNull,
+          reason: 'the summary row is not the call',
+        );
+        expect(oversleepCallLine([row('-email', '成功')]), isNull);
+      });
+
+      test('a call that connected, and one that did not', () {
+        expect(oversleepCallLine([row('-phone', '成功')]), '田中太郎 に電話をかけました');
+        expect(
+          oversleepCallLine([row('-phone', '失敗（権限がありません）')]),
+          '田中太郎 に電話をかけられませんでした',
+          reason: 'a call that never went out must not read as one that did',
+        );
+      });
     });
   });
 

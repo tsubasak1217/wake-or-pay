@@ -14,6 +14,7 @@ import '../domain/snooze_rules.dart';
 import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
 import 'oversleep_notifier.dart';
+import 'phone_caller.dart';
 import 'session_service.dart';
 
 final sessionServiceProvider = Provider(
@@ -35,13 +36,19 @@ class AlarmService {
 
   final Ref _ref;
   StreamSubscription<pkg.AlarmSet>? _ringingSub;
+  StreamSubscription<bool>? _callSub;
   final _handled = <String>{};
+
+  /// The alarms silenced for the duration of an oversleep call, waiting to be
+  /// started again when it ends. See [_onCallStateChanged].
+  final _silencedByCall = <String>{};
 
   Future<void> init() async {
     await pkg.Alarm.init();
 
     _ringingSub = pkg.Alarm.ringing.listen(_onRinging);
     _ref.onDispose(() => _ringingSub?.cancel());
+    watchCalls();
 
     await requestPermissions();
     // Recovery first: it settles sessions the safety valve wrote off and
@@ -49,6 +56,61 @@ class AlarmService {
     // otherwise arm again for tomorrow.
     await resumePendingSession();
     await rescheduleAll();
+  }
+
+  /// Silences the ring while an oversleep call is up, and brings it back when
+  /// the call ends — spec 11.5.
+  ///
+  /// The whole point of the call is that the contact's voice comes out of the
+  /// speaker; an alarm going off over it defeats it entirely.
+  ///
+  /// **The `alarm` plugin has no pause.** Its API is `set` / `stop`, so this
+  /// stops the platform alarm and sets the same one again afterwards, one
+  /// second out, with the same id and payload. The re-ring lands in
+  /// [_handleRing] and finds the alarm already in [_handled], so it makes
+  /// noise without opening a second session or navigating anywhere.
+  ///
+  /// Public so a test can drive it without a platform behind `init`.
+  void watchCalls() {
+    _callSub = _ref
+        .read(phoneCallerProvider)
+        .inCall
+        .listen(_onCallStateChanged);
+    _ref.onDispose(() => _callSub?.cancel());
+  }
+
+  Future<void> _onCallStateChanged(bool inCall) async {
+    final sessions = await _ref
+        .read(alarmSessionRepositoryProvider)
+        .getRingingAll();
+
+    final alarms = _ref.read(alarmRepositoryProvider);
+
+    if (inCall) {
+      for (final session in sessions) {
+        // A snoozed session is already silent; stopping and re-arming it here
+        // would move its re-ring to the moment the call ended.
+        if (isSnoozePending(session, DateTime.now())) continue;
+        final alarm = await alarms.getById(session.alarmId);
+        if (alarm == null) continue;
+        _silencedByCall.add(alarm.id);
+        await cancel(alarm);
+      }
+      return;
+    }
+
+    if (_silencedByCall.isEmpty) return;
+    for (final alarmId in _silencedByCall.toList()) {
+      // Only if the morning is still unfinished: dismissing during the call is
+      // exactly the outcome this feature is trying to cause, and it must not
+      // be answered by starting the alarm up again.
+      final live = sessions.any((s) => s.alarmId == alarmId);
+      final alarm = await alarms.getById(alarmId);
+      if (live && alarm != null) {
+        await setRingAt(alarm, DateTime.now().add(const Duration(seconds: 1)));
+      }
+      _silencedByCall.remove(alarmId);
+    }
   }
 
   /// Notifications and exact alarms. Without the latter Android 12+ may delay

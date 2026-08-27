@@ -312,6 +312,30 @@ void main() {
     });
   });
 
+  testWidgets('a refused CALL_PHONE leaves 電話 off, even on picking', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester, routesPermitted: false);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      await pick(tester, '田中太郎');
+      expect(
+        routeRow(tester, '電話').value,
+        isFalse,
+        reason: 'picking somebody normally switches 電話 on, but not without '
+            'the permission behind it',
+      );
+
+      await flip(tester, '電話');
+      expect(routeRow(tester, '電話').value, isFalse);
+      expect(find.textContaining('電話の発信が許可されていない'), findsOneWidget);
+    });
+
+    final saved = await save(tester, container);
+    expect(saved.contact!.phoneEnabled, isFalse);
+  });
+
   testWidgets('SMS asks for SEND_SMS, and a refusal leaves it off', (
     tester,
   ) async {

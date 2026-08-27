@@ -10,6 +10,7 @@ import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
 import 'discord_sender.dart';
 import 'mail_sender.dart';
+import 'phone_caller.dart';
 import 'sms_sender.dart';
 
 /// How the app tells someone that an alarm was slept through.
@@ -31,19 +32,22 @@ abstract class OversleepNotifier {
   });
 }
 
-/// The implementation this phase ships: **Discord, mail and SMS are really
-/// sent**; the phone call is still only recorded.
+/// The implementation this phase ships: **every route really goes out** —
+/// Discord, mail, SMS, and the phone call.
 ///
-/// What must never happen is the app claiming either group is the other — see
-/// [contactSentNotificationText], which names the routes that went out, the
-/// ones that failed, and the ones it could not yet perform, separately.
+/// The one route that can be unavailable rather than merely failing is the
+/// call: `ACTION_CALL` needs a foreground Activity, so spec 11.7's background
+/// isolate is handed an [UnavailablePhoneCaller] and the log says the call was
+/// skipped. What must never happen is the app implying a call was placed when
+/// none was — see [contactSentNotificationText].
 class OversleepDispatchNotifier implements OversleepNotifier {
   OversleepDispatchNotifier(
     this._events,
     this._notifications,
     this._sender,
     this._mail,
-    this._sms, {
+    this._sms,
+    this._phone, {
     required this.userName,
     required this.discordUserId,
     required this.webhooks,
@@ -54,6 +58,11 @@ class OversleepDispatchNotifier implements OversleepNotifier {
   final DiscordWebhookSender _sender;
   final MailSender _mail;
   final SmsSender _sms;
+
+  /// From the ring screen this really dials; from spec 11.7's background
+  /// isolate it is an [UnavailablePhoneCaller], because `ACTION_CALL` needs an
+  /// Activity that is not there. Either way the log gets a row saying which.
+  final PhoneCaller _phone;
 
   /// Read at trigger time rather than held, so renaming yourself — or filling
   /// the Discord ID in last night — takes effect on alarms that were written
@@ -94,9 +103,9 @@ class OversleepDispatchNotifier implements OversleepNotifier {
         userName: userName(),
       ),
     );
-    // Written **before** anything is posted, per spec 11.7: the once-per-
-    // session guard reads these rows, so a relaunch mid-post must find the
-    // session already marked as fired rather than send a second round.
+    // Written **before** anything is sent, per spec 11.7: the once-per-session
+    // guard reads these rows, so a relaunch mid-post must find the session
+    // already marked as fired rather than send a second round.
     await _events.save(event);
 
     final results = await _postToShareTargets(
@@ -121,10 +130,6 @@ class OversleepDispatchNotifier implements OversleepNotifier {
       failedRoutes: [
         for (final run in personal)
           if (!run.result.ok) contactChannelLabel(run.channel),
-      ],
-      pendingRoutes: [
-        for (final channel in pendingChannelsFor(contact))
-          contactChannelLabel(channel),
       ],
     );
     await _notifications.show(
@@ -154,10 +159,16 @@ class OversleepDispatchNotifier implements OversleepNotifier {
     if (contact == null) return const [];
     final runs = <({ContactChannel channel, SendResult result})>[];
 
-    // SMS before mail: a text message makes a phone buzz on a bedside table,
-    // and a mail lands in an inbox somebody opens at nine. The loudest route
-    // available goes first, which is the same order every other list of routes
-    // in this app is written in.
+    // Loudest first, which is the order every list of routes in this app is
+    // written in: a ringing phone, then a text message buzzing on a bedside
+    // table, then a mail somebody opens at nine.
+    if (contact.willPhone) {
+      runs.add((
+        channel: ContactChannel.phone,
+        result: await _phone.call(normalizePhoneNumber(contact.phone ?? '')),
+      ));
+    }
+
     if (contact.willSms) {
       final sms = buildOversleepSms(
         contact,
@@ -192,10 +203,10 @@ class OversleepDispatchNotifier implements OversleepNotifier {
       await _events.save(
         ContactEvent(
           // The channel is on the end because the primary key is this string:
-          // the mail row and the summary row fire in the same millisecond of
+          // the route rows and the summary row fire in the same millisecond of
           // the same session, and without it one would overwrite the other.
           id: 'contact-${at.millisecondsSinceEpoch}-${session.id}'
-              '-${run.channel.name}',
+              '${contactRouteRowSuffix(run.channel)}',
           sessionId: session.id,
           firedAt: at,
           contactName: contact.name,
@@ -268,17 +279,6 @@ List<ContactChannel> channelsFor({
   if (contact?.willSms ?? false) ContactChannel.sms,
   if (contact?.willEmail ?? false) ContactChannel.email,
   if (share?.isUsable ?? false) ContactChannel.discord,
-];
-
-/// The routes [contact] asked for that this build cannot actually perform.
-/// Pure.
-///
-/// The honest half of [contactSentNotificationText]: a user who switched 電話
-/// on is owed a sentence saying it did not ring, rather than a notification
-/// that quietly implies it did. It shrinks as D2 and D3 land, and the day it
-/// is empty the sentence disappears on its own.
-List<ContactChannel> pendingChannelsFor(OversleepContact? contact) => [
-  if (contact?.willPhone ?? false) ContactChannel.phone,
 ];
 
 /// The single channel the event row is filed under. Pure.
@@ -386,6 +386,7 @@ final oversleepNotifierProvider = Provider<OversleepNotifier>(
     ref.watch(discordWebhookSenderProvider),
     ref.watch(mailSenderProvider),
     ref.watch(smsSenderProvider),
+    ref.watch(phoneCallerProvider),
     // read, not watch: the profile is wanted at the moment of firing, and a
     // rename should not tear this provider down mid-session.
     userName: () => ref.read(profileRepositoryProvider).read().userName,
