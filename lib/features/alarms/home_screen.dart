@@ -108,6 +108,17 @@ class _AlarmRow extends ConsumerWidget {
           )
         : null;
 
+    // How many 共有先 this alarm still has. Counted against the live list, so a
+    // 共有先 deleted from the app stops being counted here the moment it goes.
+    // The row drops the honorific: it is a summary, not a sentence, and
+    // 「📞 田中太郎」 is what it has always read.
+    final shareCount = alarm.willShare
+        ? liveShareTargetCount(
+            alarm.share,
+            ref.watch(discordWebhookListProvider),
+          )
+        : 0;
+
     final badge = kakugo == null
         ? ''
         : kakugoBadge(kakugo.ratePerMinute, kakugo.cap);
@@ -150,7 +161,7 @@ class _AlarmRow extends ConsumerWidget {
             ),
           ),
           Text(
-            _summary(kakugo, contact),
+            _summary(kakugo, contact, shareCount),
             key: const ValueKey('alarmSummary'),
             style: theme.textTheme.bodyMedium?.copyWith(
               color: kakugo == null
@@ -218,18 +229,29 @@ class _AlarmRow extends ConsumerWidget {
   /// 「覚悟あり ・ 100 コイン/分 ・ 📞 田中太郎」 — the pledge, the price and who
   /// hears about it, in that order and only when there is one.
   ///
+  /// A share-only alarm reads 「覚悟あり ・ … ・ Discord 2件」, and an alarm doing
+  /// both names both. The route icons stay on the person: they say *how* that
+  /// one person is reached, which a count of Discord rooms has no equivalent
+  /// of.
+  ///
   /// The per-minute price is dropped at 0: a 連絡だけ pledge burns nothing by
   /// the minute, and 「0 コイン/分」 on a row is noise.
-  static String _summary(Kakugo? kakugo, OversleepContact? contact) => [
+  static String _summary(
+    Kakugo? kakugo,
+    OversleepContact? contact,
+    int shareCount,
+  ) => [
     kakugo == null ? '覚悟なし' : '覚悟あり',
     if (kakugo != null && kakugo.ratePerMinute > 0)
       kakugoRateLabel(kakugo.ratePerMinute),
     if (contact != null)
       [
         if (contact.willPhone) '📞',
+        if (contact.willSms) '💬',
         if (contact.willEmail) '✉',
         contact.name,
       ].join(' '),
+    if (shareCount > 0) 'Discord $shareCount件',
   ].join(' ・ ');
 }
 

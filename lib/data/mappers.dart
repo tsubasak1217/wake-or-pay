@@ -73,6 +73,44 @@ OversleepContact? _parseContact(String? json) {
   }
 }
 
+/// The oversleep share, on exactly the same terms as [_parseContact].
+OversleepShare? _parseShare(String? json) {
+  if (json == null || json.isEmpty) return null;
+  try {
+    final share = OversleepShare.fromJson(
+      (jsonDecode(json) as Map).cast<String, dynamic>(),
+    );
+    return share.isUsable ? share : null;
+  } on Object {
+    return null;
+  }
+}
+
+/// The delay a **v6** row kept inside its contact blob. Pure.
+///
+/// Until v7 the trigger delay belonged to the contact; now it belongs to the
+/// alarm, because the 共有 uses the same number. A row written before that move
+/// has no column to read, so the number is dug back out of the JSON it was
+/// written into — and only from there. Anything unreadable, absent, or not an
+/// integer gives null, and the caller falls through to the default.
+int? legacyTriggerMinutesIn(Map<String, dynamic>? contactJson) {
+  final value = contactJson?['triggerMinutesAfterGrace'];
+  return value is int ? normalizeContactTriggerMinutes(value) : null;
+}
+
+/// [legacyTriggerMinutesIn] applied to the raw column. Unreadable JSON is not
+/// an error here either: it already read as "no contact" above.
+int? _legacyTriggerMinutes(String? json) {
+  if (json == null || json.isEmpty) return null;
+  try {
+    return legacyTriggerMinutesIn(
+      (jsonDecode(json) as Map).cast<String, dynamic>(),
+    );
+  } on Object {
+    return null;
+  }
+}
+
 extension AlarmRowMapper on AlarmRow {
   Alarm toModel() => Alarm(
     id: id,
@@ -95,6 +133,15 @@ extension AlarmRowMapper on AlarmRow {
       snoozeResetsClock: kakugoSnoozeResetsClock,
     ),
     contact: _parseContact(oversleepContact),
+    share: _parseShare(oversleepShare),
+    // The column first, then the v6 blob that used to hold it, then the
+    // default: a row only ever reads as null once, because the writer below
+    // always fills the column in.
+    oversleepTriggerMinutes: normalizeContactTriggerMinutes(
+      oversleepTriggerMinutes ??
+          _legacyTriggerMinutes(oversleepContact) ??
+          defaultContactTriggerMinutes,
+    ),
   );
 }
 
@@ -126,6 +173,30 @@ extension AlarmMapper on Alarm {
           ? null
           : jsonEncode(contact!.toJson()),
     ),
+    oversleepShare: Value(
+      share == null || !share!.isUsable ? null : jsonEncode(share!.toJson()),
+    ),
+    // Always written, never left null: that is what retires the v6 read-through
+    // above after one save.
+    oversleepTriggerMinutes: Value(triggerMinutes),
+  );
+}
+
+extension DiscordWebhookRowMapper on DiscordWebhookRow {
+  DiscordWebhook toModel() => DiscordWebhook(
+    id: id,
+    url: url,
+    displayName: displayName,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
+  );
+}
+
+extension DiscordWebhookMapper on DiscordWebhook {
+  DiscordWebhookRowsCompanion toCompanion() => DiscordWebhookRowsCompanion(
+    id: Value(id),
+    url: Value(url),
+    displayName: Value(displayName),
+    createdAtMs: Value(createdAt.millisecondsSinceEpoch),
   );
 }
 

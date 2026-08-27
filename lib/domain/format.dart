@@ -101,7 +101,9 @@ String kakugoMood(int ratePerMinute, int cap) =>
 /// How a logged contact reads in the history. Pure.
 String contactChannelLabel(ContactChannel channel) => switch (channel) {
   ContactChannel.phone => '電話',
+  ContactChannel.sms => 'SMS',
   ContactChannel.email => 'メール',
+  ContactChannel.discord => 'Discord',
   ContactChannel.log => '記録のみ',
 };
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,11 +9,10 @@ import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
-import '../../domain/oversleep_contact_rules.dart';
 import '../../domain/sound_library.dart';
 import 'alarm_controller.dart';
 import 'alarm_draft.dart';
-import 'contact_screen.dart';
+import 'contact_share_screen.dart';
 import 'edit_sub_screens.dart';
 import 'sound_screen.dart';
 import 'widgets/settings_island.dart';
@@ -491,7 +492,7 @@ class _KakugoIsland extends ConsumerWidget {
         borderColor: danger,
         header: _MaxLossHeader(seed: seed),
         children: [
-          _ContactRow(seed: seed),
+          _ContactShareRow(seed: seed),
           _RateRow(seed: seed),
           // Only means anything when the alarm can be snoozed at all, so it
           // follows the スヌーズ toggle in the island above. 「スヌーズ中の加算」
@@ -505,41 +506,57 @@ class _KakugoIsland extends ConsumerWidget {
   }
 }
 
-/// 寝坊時連絡先: the one person told when the oversleeping runs long.
-class _ContactRow extends ConsumerWidget {
-  const _ContactRow({required this.seed});
+/// 寝坊時連絡・共有: everything about telling somebody, behind one row.
+///
+/// 設定済み / なし rather than a name: the row now stands for a person, a set
+/// of Discord 共有先, a delay, and two message bodies. Naming only the person
+/// would leave a share-only alarm reading 「なし」 over an alarm that announces
+/// itself to a room.
+class _ContactShareRow extends ConsumerWidget {
+  const _ContactShareRow({required this.seed});
 
   final Alarm seed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // The name as the 連絡帳 has it now, not the copy carried on the draft:
-    // renaming somebody in the book has to show up here without re-picking.
-    final book = ref.watch(contactBookListProvider);
-    // The name, not the contact: `select` compares with `==`, and watching the
-    // object would rebuild this row for a change to any of its six fields.
-    final label = ref.watch(
+    // A bool, not the contact or the share: `select` compares with `==`, and
+    // watching either object would rebuild this row for a change to any of
+    // their fields — including, through the draft, every tick of the time
+    // wheel.
+    final configured = ref.watch(
       alarmDraftProvider(seed).select(
-        (a) => resolveOversleepContactOrNull(a.contact, book)?.name ?? 'なし',
+        (a) => (a.contact?.isUsable ?? false) || (a.share?.isUsable ?? false),
       ),
     );
     return SettingRow(
-      label: '寝坊時連絡先',
-      value: label,
-      onTap: () => pushEditorSubScreen(
-        context,
-        ContactSubScreen(
-          alarmId: seed.id,
-          initial: ref.read(alarmDraftProvider(seed)).contact,
-          onCommit: (v) => ref
-              .read(alarmDraftProvider(seed).notifier)
-              .update(
-                (a) => v == null
-                    ? a.copyWith(clearContact: true)
-                    : a.copyWith(contact: v),
-              ),
-        ),
-      ),
+      key: const ValueKey('contactShareRow'),
+      label: '寝坊時連絡・共有',
+      value: configured ? '設定済み' : 'なし',
+      onTap: () {
+        final draft = ref.read(alarmDraftProvider(seed));
+        unawaited(
+          pushEditorSubScreen(
+            context,
+            ContactShareSubScreen(
+              alarmId: seed.id,
+              contact: draft.contact,
+              share: draft.share,
+              triggerMinutes: draft.triggerMinutes,
+              onCommit: (contact, share, trigger) => ref
+                  .read(alarmDraftProvider(seed).notifier)
+                  .update(
+                    (a) => a.copyWith(
+                      contact: contact,
+                      clearContact: contact == null,
+                      share: share,
+                      clearShare: share == null,
+                      oversleepTriggerMinutes: trigger,
+                    ),
+                  ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

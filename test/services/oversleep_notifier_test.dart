@@ -11,8 +11,9 @@ const contact = OversleepContact(
   name: '田中太郎',
   phone: '090-0000-0000',
   phoneEnabled: true,
-  triggerMinutesAfterGrace: 10,
 );
+
+const share = OversleepShare(webhookIds: {'w1', 'w2'});
 
 const pledged = Alarm(
   id: 'a1',
@@ -20,6 +21,17 @@ const pledged = Alarm(
   minute: 0,
   kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
   contact: contact,
+  oversleepTriggerMinutes: 10,
+);
+
+/// The same alarm with nobody on it and only a room to announce itself to.
+const shareOnly = Alarm(
+  id: 'a1',
+  hour: 7,
+  minute: 0,
+  kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+  share: share,
+  oversleepTriggerMinutes: 10,
 );
 
 final firedAt = DateTime(2026, 8, 27, 7);
@@ -82,20 +94,18 @@ void main() {
               now: at(minutes: 11),
             );
 
-        expect(event!.contactName, '田中太郎');
+        expect(event!.contactName, '田中太郎 さん');
         expect(event.sessionId, r.session.id);
         expect(event.firedAt, at(minutes: 11));
         expect(
           event.channel,
           ContactChannel.phone,
-          reason: 'a number is loudest',
+          reason: 'a call is the loudest thing available',
         );
         expect(
           event.detail,
-          '電話（自動音声）：山田花子 さんは 07:00 のアラームを解除できていません。寝坊しています。',
-          reason:
-              'the route, the mode, and the words — the app user is the '
-              'subject, 田中太郎 is only who hears it',
+          '電話',
+          reason: 'the call plays nothing, so there is no body to write down',
         );
 
         final stored = await r.container
@@ -137,6 +147,53 @@ void main() {
       );
     });
 
+    test('a share-only alarm is every bit as much a notification', () async {
+      final r = await ringing(shareOnly);
+      final dispatcher = r.container.read(contactDispatcherProvider);
+
+      expect(
+        await dispatcher.fireIfDue(
+          alarm: shareOnly,
+          session: r.session,
+          now: at(minutes: 10, seconds: 59),
+        ),
+        isNull,
+        reason: 'the same clock as a contact',
+      );
+
+      final event = await dispatcher.fireIfDue(
+        alarm: shareOnly,
+        session: r.session,
+        now: at(minutes: 11),
+      );
+      expect(event!.contactName, 'Discord 2件');
+      expect(event.channel, ContactChannel.discord);
+      expect(
+        event.detail,
+        'Discord 2件（デフォルト）：07:00 のアラームを解除できていません。',
+      );
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'Discord 2件への連絡が送信されました（開発中：実際には送信していません）',
+      );
+
+      // And still exactly once, on the share half as on the personal one.
+      for (final minute in const [12, 60]) {
+        expect(
+          await dispatcher.fireIfDue(
+            alarm: shareOnly,
+            session: r.session,
+            now: at(minutes: minute),
+          ),
+          isNull,
+        );
+      }
+      expect(
+        await r.container.read(contactEventRepositoryProvider).getRecent(),
+        hasLength(1),
+      );
+    });
+
     test('a plain alarm never contacts anyone, contact or not', () async {
       const plain = Alarm(id: 'a1', hour: 7, minute: 0, contact: contact);
       final r = await ringing(plain);
@@ -150,7 +207,7 @@ void main() {
       );
     });
 
-    test('a pledge with no contact fires nothing', () async {
+    test('a pledge with nobody on it fires nothing', () async {
       const noContact = Alarm(
         id: 'a1',
         hour: 7,
@@ -171,105 +228,218 @@ void main() {
       );
     });
 
-    test(
-      'the channel falls back from phone to mail to a bare record',
-      () async {
-        expect(channelFor(contact), ContactChannel.phone);
-        expect(
-          channelFor(
-            const OversleepContact(
-              name: 'x',
-              email: 'a@b.c',
-              emailEnabled: true,
-            ),
-          ),
-          ContactChannel.email,
-        );
-        expect(
-          channelFor(const OversleepContact(name: 'x')),
-          ContactChannel.log,
-        );
-        expect(
-          channelFor(
-            const OversleepContact(name: 'x', phone: '   ', phoneEnabled: true),
-          ),
-          ContactChannel.log,
-          reason: 'whitespace is not a phone number',
-        );
-        expect(
-          channelFor(
-            const OversleepContact(
-              name: 'x',
+    test('the live 連絡帳 wins over the snapshot at trigger time', () async {
+      const fromBook = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+        contact: OversleepContact(
+          contactId: 'c1',
+          name: '古い名前',
+          phone: '090-0000-0000',
+          phoneEnabled: true,
+        ),
+        oversleepTriggerMinutes: 10,
+      );
+      final r = await ringing(fromBook);
+      await r.container
+          .read(contactBookRepositoryProvider)
+          .save(
+            ContactEntry(
+              id: 'c1',
+              name: '新しい名前',
               phone: '090-0000-0000',
-              email: 'a@b.c',
-              emailEnabled: true,
+              createdAt: DateTime(2026),
             ),
-          ),
-          ContactChannel.email,
-          reason: 'a number nobody switched on is not a route',
-        );
-      },
-    );
+          );
 
-    test('both routes at once are both recorded, each with its mode', () async {
+      final event = await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: fromBook, session: r.session, now: at(minutes: 11));
+      expect(event!.contactName, '新しい名前 さん');
+    });
+  });
+
+  group('channelsFor', () {
+    test('電話 → SMS → メール → Discord, and only what is live', () {
+      expect(channelsFor(contact: contact), [ContactChannel.phone]);
+      expect(
+        channelsFor(
+          contact: const OversleepContact(
+            name: 'x',
+            phone: '090-0000-0000',
+            email: 'a@b.c',
+            phoneEnabled: true,
+            smsEnabled: true,
+            emailEnabled: true,
+          ),
+          share: share,
+        ),
+        [
+          ContactChannel.phone,
+          ContactChannel.sms,
+          ContactChannel.email,
+          ContactChannel.discord,
+        ],
+      );
+      expect(channelsFor(share: share), [ContactChannel.discord]);
+      expect(channelsFor(), isEmpty);
+    });
+
+    test('the row is filed under the loudest route it took', () {
+      expect(channelFor(contact, null), ContactChannel.phone);
+      expect(
+        channelFor(
+          const OversleepContact(name: 'x', email: 'a@b.c', emailEnabled: true),
+          null,
+        ),
+        ContactChannel.email,
+      );
+      expect(
+        channelFor(
+          const OversleepContact(name: 'x', phone: '090', smsEnabled: true),
+          share,
+        ),
+        ContactChannel.sms,
+        reason: 'a text beats a room',
+      );
+      expect(channelFor(null, share), ContactChannel.discord);
+      expect(channelFor(const OversleepContact(name: 'x'), null),
+          ContactChannel.log);
+      expect(
+        channelFor(
+          const OversleepContact(name: 'x', phone: '   ', phoneEnabled: true),
+          null,
+        ),
+        ContactChannel.log,
+        reason: 'whitespace is not a phone number',
+      );
+      expect(
+        channelFor(
+          const OversleepContact(
+            name: 'x',
+            phone: '090-0000-0000',
+            email: 'a@b.c',
+            emailEnabled: true,
+          ),
+          null,
+        ),
+        ContactChannel.email,
+        reason: 'a number nobody switched on is not a route',
+      );
+    });
+  });
+
+  group('detailFor', () {
+    final at = DateTime(2026, 8, 27, 6, 5);
+
+    test('the personal half alone, each route with its mode', () {
       const both = OversleepContact(
         name: '母',
         phone: '090-0000-0000',
         email: 'haha@example.com',
         phoneEnabled: true,
+        smsEnabled: true,
         emailEnabled: true,
-        phoneMode: PhoneMode.custom,
-        recordingPath: '/tmp/a.m4a',
-        mailMode: MailMode.custom,
-        mailMessage: 'おきて',
+        messageMode: MessageMode.custom,
+        message: 'おきて',
       );
-      expect(channelsFor(both), [ContactChannel.phone, ContactChannel.email]);
       expect(
-        detailFor(both, DateTime(2026, 8, 27, 6, 5), userName: userName),
-        '電話（カスタム録音） / メール（カスタムメッセージ）：おきて',
+        detailFor(at, contact: both, userName: userName),
+        '電話 / SMS（カスタムメッセージ）：おきて / メール（カスタムメッセージ）：おきて',
+        reason: 'one message the user wrote once, on both written routes',
       );
     });
 
-    test('the default modes name themselves and carry the app sentence', () {
+    test('the group half alone', () {
+      expect(
+        detailFor(at, share: share, userName: userName),
+        'Discord 2件（デフォルト）：06:05 のアラームを解除できていません。',
+        reason: 'the post already says who it is about on the line above',
+      );
+      expect(
+        detailFor(
+          at,
+          share: share.copyWith(
+            messageMode: MessageMode.custom,
+            message: '起きろ',
+            recordingPath: '/tmp/a.m4a',
+          ),
+          userName: userName,
+        ),
+        'Discord 2件（カスタムメッセージ）：起きろ＋録音',
+      );
+    });
+
+    test('both halves, in the order the routes would be taken', () {
+      expect(
+        detailFor(
+          at,
+          contact: const OversleepContact(
+            name: '母',
+            phone: '090-0000-0000',
+            email: 'haha@example.com',
+            phoneEnabled: true,
+            smsEnabled: true,
+            emailEnabled: true,
+          ),
+          share: share,
+          userName: userName,
+        ),
+        '電話'
+        ' / SMS（デフォルト）：山田花子 さんは 06:05 のアラームを解除できていません。寝坊しています。'
+        ' / メール（デフォルト）：【Wake or Pay】山田花子 さんは 06:05 の'
+        'アラームを解除できていません。寝坊しています。'
+        ' / Discord 2件（デフォルト）：06:05 のアラームを解除できていません。',
+      );
+    });
+
+    test('the default sentence names the app user, never the contact', () {
       const auto = OversleepContact(
         name: '母',
         email: 'haha@example.com',
         emailEnabled: true,
       );
       expect(
-        detailFor(auto, DateTime(2026, 8, 27, 6, 5), userName: userName),
+        detailFor(at, contact: auto, userName: userName),
         'メール（デフォルト）：【Wake or Pay】山田花子 さんは 06:05 の'
         'アラームを解除できていません。寝坊しています。',
         reason: '母 is the one being told, not the one oversleeping',
       );
       expect(
-        detailFor(auto, DateTime(2026, 8, 27, 6, 5), userName: ''),
+        detailFor(at, contact: auto, userName: ''),
         'メール（デフォルト）：【Wake or Pay】$oversleepUserNameFallback さんは 06:05 の'
         'アラームを解除できていません。寝坊しています。',
         reason: 'no name set still must not fall back to the contact',
       );
     });
 
-    test('a contact with no route switched on records nothing sent', () async {
+    test('nothing switched on records nothing sent', () {
       expect(
-        detailFor(
-          const OversleepContact(name: 'x'),
-          DateTime(2026, 8, 27),
-          userName: userName,
-        ),
+        detailFor(at, contact: const OversleepContact(name: 'x'),
+            userName: userName),
         isNull,
       );
       expect(
         detailFor(
-          const OversleepContact(name: 'x', phone: '090-0000-0000'),
-          DateTime(2026, 8, 27),
+          at,
+          contact: const OversleepContact(name: 'x', phone: '090-0000-0000'),
           userName: userName,
         ),
         isNull,
         reason: 'a number with its toggle off goes nowhere',
       );
+      expect(
+        detailFor(at, share: const OversleepShare(), userName: userName),
+        isNull,
+        reason: 'a share with nowhere to post is not a share',
+      );
+      expect(detailFor(at, userName: userName), isNull);
     });
+  });
 
+  group('under snooze', () {
     test('the reset clock mode pushes the trigger out with the ring', () async {
       const resets = Alarm(
         id: 'a1',
@@ -278,6 +448,7 @@ void main() {
         snooze: Snooze(intervalMinutes: 5, maxCount: 3),
         kakugo: Kakugo(ratePerMinute: 100, cap: 2000, snoozeResetsClock: true),
         contact: contact,
+        oversleepTriggerMinutes: 10,
       );
       final r = await ringing(resets);
       final service =
@@ -317,6 +488,7 @@ void main() {
         snooze: Snooze(intervalMinutes: 5, maxCount: 3),
         kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
         contact: contact,
+        oversleepTriggerMinutes: 10,
       );
       final r = await ringing(continuous);
       final service =

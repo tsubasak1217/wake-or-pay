@@ -186,6 +186,28 @@ class $AlarmRowsTable extends AlarmRows
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _oversleepShareMeta = const VerificationMeta(
+    'oversleepShare',
+  );
+  @override
+  late final GeneratedColumn<String> oversleepShare = GeneratedColumn<String>(
+    'oversleep_share',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _oversleepTriggerMinutesMeta =
+      const VerificationMeta('oversleepTriggerMinutes');
+  @override
+  late final GeneratedColumn<int> oversleepTriggerMinutes =
+      GeneratedColumn<int>(
+        'oversleep_trigger_minutes',
+        aliasedName,
+        true,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -204,6 +226,8 @@ class $AlarmRowsTable extends AlarmRows
     kakugoSnoozePenalty,
     kakugoSnoozeResetsClock,
     oversleepContact,
+    oversleepShare,
+    oversleepTriggerMinutes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -342,6 +366,24 @@ class $AlarmRowsTable extends AlarmRows
         ),
       );
     }
+    if (data.containsKey('oversleep_share')) {
+      context.handle(
+        _oversleepShareMeta,
+        oversleepShare.isAcceptableOrUnknown(
+          data['oversleep_share']!,
+          _oversleepShareMeta,
+        ),
+      );
+    }
+    if (data.containsKey('oversleep_trigger_minutes')) {
+      context.handle(
+        _oversleepTriggerMinutesMeta,
+        oversleepTriggerMinutes.isAcceptableOrUnknown(
+          data['oversleep_trigger_minutes']!,
+          _oversleepTriggerMinutesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -415,6 +457,14 @@ class $AlarmRowsTable extends AlarmRows
         DriftSqlType.string,
         data['${effectivePrefix}oversleep_contact'],
       ),
+      oversleepShare: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}oversleep_share'],
+      ),
+      oversleepTriggerMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}oversleep_trigger_minutes'],
+      ),
     );
   }
 
@@ -460,6 +510,18 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
   /// Stage B: the whole OversleepContact as one JSON blob, because it is only
   /// ever read and written whole.
   final String? oversleepContact;
+
+  /// Stage C: the whole OversleepShare, one JSON blob for the same reason the
+  /// contact is one — it is read and written whole and nothing queries into it.
+  final String? oversleepShare;
+
+  /// How many minutes after the grace window the contact and the share go out.
+  ///
+  /// Nullable because a v6 row kept this number inside [oversleepContact]'s
+  /// JSON, where it belonged to the contact alone. Null means "read it out of
+  /// that blob, or take the default"; the writer always fills the column in,
+  /// so a row only ever reads as null once.
+  final int? oversleepTriggerMinutes;
   const AlarmRow({
     required this.id,
     required this.hour,
@@ -477,6 +539,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     this.kakugoSnoozePenalty,
     this.kakugoSnoozeResetsClock,
     this.oversleepContact,
+    this.oversleepShare,
+    this.oversleepTriggerMinutes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -515,6 +579,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     if (!nullToAbsent || oversleepContact != null) {
       map['oversleep_contact'] = Variable<String>(oversleepContact);
     }
+    if (!nullToAbsent || oversleepShare != null) {
+      map['oversleep_share'] = Variable<String>(oversleepShare);
+    }
+    if (!nullToAbsent || oversleepTriggerMinutes != null) {
+      map['oversleep_trigger_minutes'] = Variable<int>(oversleepTriggerMinutes);
+    }
     return map;
   }
 
@@ -552,6 +622,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       oversleepContact: oversleepContact == null && nullToAbsent
           ? const Value.absent()
           : Value(oversleepContact),
+      oversleepShare: oversleepShare == null && nullToAbsent
+          ? const Value.absent()
+          : Value(oversleepShare),
+      oversleepTriggerMinutes: oversleepTriggerMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(oversleepTriggerMinutes),
     );
   }
 
@@ -585,6 +661,10 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
         json['kakugoSnoozeResetsClock'],
       ),
       oversleepContact: serializer.fromJson<String?>(json['oversleepContact']),
+      oversleepShare: serializer.fromJson<String?>(json['oversleepShare']),
+      oversleepTriggerMinutes: serializer.fromJson<int?>(
+        json['oversleepTriggerMinutes'],
+      ),
     );
   }
   @override
@@ -609,6 +689,10 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
         kakugoSnoozeResetsClock,
       ),
       'oversleepContact': serializer.toJson<String?>(oversleepContact),
+      'oversleepShare': serializer.toJson<String?>(oversleepShare),
+      'oversleepTriggerMinutes': serializer.toJson<int?>(
+        oversleepTriggerMinutes,
+      ),
     };
   }
 
@@ -629,6 +713,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     Value<int?> kakugoSnoozePenalty = const Value.absent(),
     Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
     Value<String?> oversleepContact = const Value.absent(),
+    Value<String?> oversleepShare = const Value.absent(),
+    Value<int?> oversleepTriggerMinutes = const Value.absent(),
   }) => AlarmRow(
     id: id ?? this.id,
     hour: hour ?? this.hour,
@@ -660,6 +746,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     oversleepContact: oversleepContact.present
         ? oversleepContact.value
         : this.oversleepContact,
+    oversleepShare: oversleepShare.present
+        ? oversleepShare.value
+        : this.oversleepShare,
+    oversleepTriggerMinutes: oversleepTriggerMinutes.present
+        ? oversleepTriggerMinutes.value
+        : this.oversleepTriggerMinutes,
   );
   AlarmRow copyWithCompanion(AlarmRowsCompanion data) {
     return AlarmRow(
@@ -697,6 +789,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       oversleepContact: data.oversleepContact.present
           ? data.oversleepContact.value
           : this.oversleepContact,
+      oversleepShare: data.oversleepShare.present
+          ? data.oversleepShare.value
+          : this.oversleepShare,
+      oversleepTriggerMinutes: data.oversleepTriggerMinutes.present
+          ? data.oversleepTriggerMinutes.value
+          : this.oversleepTriggerMinutes,
     );
   }
 
@@ -718,7 +816,9 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           ..write('kakugoCap: $kakugoCap, ')
           ..write('kakugoSnoozePenalty: $kakugoSnoozePenalty, ')
           ..write('kakugoSnoozeResetsClock: $kakugoSnoozeResetsClock, ')
-          ..write('oversleepContact: $oversleepContact')
+          ..write('oversleepContact: $oversleepContact, ')
+          ..write('oversleepShare: $oversleepShare, ')
+          ..write('oversleepTriggerMinutes: $oversleepTriggerMinutes')
           ..write(')'))
         .toString();
   }
@@ -741,6 +841,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     kakugoSnoozePenalty,
     kakugoSnoozeResetsClock,
     oversleepContact,
+    oversleepShare,
+    oversleepTriggerMinutes,
   );
   @override
   bool operator ==(Object other) =>
@@ -761,7 +863,9 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           other.kakugoCap == this.kakugoCap &&
           other.kakugoSnoozePenalty == this.kakugoSnoozePenalty &&
           other.kakugoSnoozeResetsClock == this.kakugoSnoozeResetsClock &&
-          other.oversleepContact == this.oversleepContact);
+          other.oversleepContact == this.oversleepContact &&
+          other.oversleepShare == this.oversleepShare &&
+          other.oversleepTriggerMinutes == this.oversleepTriggerMinutes);
 }
 
 class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
@@ -781,6 +885,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
   final Value<int?> kakugoSnoozePenalty;
   final Value<bool?> kakugoSnoozeResetsClock;
   final Value<String?> oversleepContact;
+  final Value<String?> oversleepShare;
+  final Value<int?> oversleepTriggerMinutes;
   final Value<int> rowid;
   const AlarmRowsCompanion({
     this.id = const Value.absent(),
@@ -799,6 +905,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.kakugoSnoozePenalty = const Value.absent(),
     this.kakugoSnoozeResetsClock = const Value.absent(),
     this.oversleepContact = const Value.absent(),
+    this.oversleepShare = const Value.absent(),
+    this.oversleepTriggerMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlarmRowsCompanion.insert({
@@ -818,6 +926,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.kakugoSnoozePenalty = const Value.absent(),
     this.kakugoSnoozeResetsClock = const Value.absent(),
     this.oversleepContact = const Value.absent(),
+    this.oversleepShare = const Value.absent(),
+    this.oversleepTriggerMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        hour = Value(hour),
@@ -840,6 +950,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Expression<int>? kakugoSnoozePenalty,
     Expression<bool>? kakugoSnoozeResetsClock,
     Expression<String>? oversleepContact,
+    Expression<String>? oversleepShare,
+    Expression<int>? oversleepTriggerMinutes,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -863,6 +975,9 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       if (kakugoSnoozeResetsClock != null)
         'kakugo_snooze_resets_clock': kakugoSnoozeResetsClock,
       if (oversleepContact != null) 'oversleep_contact': oversleepContact,
+      if (oversleepShare != null) 'oversleep_share': oversleepShare,
+      if (oversleepTriggerMinutes != null)
+        'oversleep_trigger_minutes': oversleepTriggerMinutes,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -884,6 +999,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Value<int?>? kakugoSnoozePenalty,
     Value<bool?>? kakugoSnoozeResetsClock,
     Value<String?>? oversleepContact,
+    Value<String?>? oversleepShare,
+    Value<int?>? oversleepTriggerMinutes,
     Value<int>? rowid,
   }) {
     return AlarmRowsCompanion(
@@ -905,6 +1022,9 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       kakugoSnoozeResetsClock:
           kakugoSnoozeResetsClock ?? this.kakugoSnoozeResetsClock,
       oversleepContact: oversleepContact ?? this.oversleepContact,
+      oversleepShare: oversleepShare ?? this.oversleepShare,
+      oversleepTriggerMinutes:
+          oversleepTriggerMinutes ?? this.oversleepTriggerMinutes,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -964,6 +1084,14 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     if (oversleepContact.present) {
       map['oversleep_contact'] = Variable<String>(oversleepContact.value);
     }
+    if (oversleepShare.present) {
+      map['oversleep_share'] = Variable<String>(oversleepShare.value);
+    }
+    if (oversleepTriggerMinutes.present) {
+      map['oversleep_trigger_minutes'] = Variable<int>(
+        oversleepTriggerMinutes.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -989,6 +1117,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
           ..write('kakugoSnoozePenalty: $kakugoSnoozePenalty, ')
           ..write('kakugoSnoozeResetsClock: $kakugoSnoozeResetsClock, ')
           ..write('oversleepContact: $oversleepContact, ')
+          ..write('oversleepShare: $oversleepShare, ')
+          ..write('oversleepTriggerMinutes: $oversleepTriggerMinutes, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3928,6 +4058,331 @@ class ContactBookRowsCompanion extends UpdateCompanion<ContactBookRow> {
   }
 }
 
+class $DiscordWebhookRowsTable extends DiscordWebhookRows
+    with TableInfo<$DiscordWebhookRowsTable, DiscordWebhookRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiscordWebhookRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, url, displayName, createdAtMs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'discord_webhook_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DiscordWebhookRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DiscordWebhookRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiscordWebhookRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $DiscordWebhookRowsTable createAlias(String alias) {
+    return $DiscordWebhookRowsTable(attachedDatabase, alias);
+  }
+}
+
+class DiscordWebhookRow extends DataClass
+    implements Insertable<DiscordWebhookRow> {
+  final String id;
+
+  /// The full webhook URL including its token. Never leaves the device except
+  /// to Discord.
+  final String url;
+
+  /// Typed by hand: Discord does not expose the server or channel name through
+  /// a webhook, so this is whatever the user calls it.
+  final String displayName;
+  final int createdAtMs;
+  const DiscordWebhookRow({
+    required this.id,
+    required this.url,
+    required this.displayName,
+    required this.createdAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['url'] = Variable<String>(url);
+    map['display_name'] = Variable<String>(displayName);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    return map;
+  }
+
+  DiscordWebhookRowsCompanion toCompanion(bool nullToAbsent) {
+    return DiscordWebhookRowsCompanion(
+      id: Value(id),
+      url: Value(url),
+      displayName: Value(displayName),
+      createdAtMs: Value(createdAtMs),
+    );
+  }
+
+  factory DiscordWebhookRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiscordWebhookRow(
+      id: serializer.fromJson<String>(json['id']),
+      url: serializer.fromJson<String>(json['url']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'url': serializer.toJson<String>(url),
+      'displayName': serializer.toJson<String>(displayName),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+    };
+  }
+
+  DiscordWebhookRow copyWith({
+    String? id,
+    String? url,
+    String? displayName,
+    int? createdAtMs,
+  }) => DiscordWebhookRow(
+    id: id ?? this.id,
+    url: url ?? this.url,
+    displayName: displayName ?? this.displayName,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+  );
+  DiscordWebhookRow copyWithCompanion(DiscordWebhookRowsCompanion data) {
+    return DiscordWebhookRow(
+      id: data.id.present ? data.id.value : this.id,
+      url: data.url.present ? data.url.value : this.url,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiscordWebhookRow(')
+          ..write('id: $id, ')
+          ..write('url: $url, ')
+          ..write('displayName: $displayName, ')
+          ..write('createdAtMs: $createdAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, url, displayName, createdAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiscordWebhookRow &&
+          other.id == this.id &&
+          other.url == this.url &&
+          other.displayName == this.displayName &&
+          other.createdAtMs == this.createdAtMs);
+}
+
+class DiscordWebhookRowsCompanion extends UpdateCompanion<DiscordWebhookRow> {
+  final Value<String> id;
+  final Value<String> url;
+  final Value<String> displayName;
+  final Value<int> createdAtMs;
+  final Value<int> rowid;
+  const DiscordWebhookRowsCompanion({
+    this.id = const Value.absent(),
+    this.url = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DiscordWebhookRowsCompanion.insert({
+    required String id,
+    required String url,
+    required String displayName,
+    required int createdAtMs,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       url = Value(url),
+       displayName = Value(displayName),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<DiscordWebhookRow> custom({
+    Expression<String>? id,
+    Expression<String>? url,
+    Expression<String>? displayName,
+    Expression<int>? createdAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (url != null) 'url': url,
+      if (displayName != null) 'display_name': displayName,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DiscordWebhookRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? url,
+    Value<String>? displayName,
+    Value<int>? createdAtMs,
+    Value<int>? rowid,
+  }) {
+    return DiscordWebhookRowsCompanion(
+      id: id ?? this.id,
+      url: url ?? this.url,
+      displayName: displayName ?? this.displayName,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiscordWebhookRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('url: $url, ')
+          ..write('displayName: $displayName, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3947,6 +4402,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ContactBookRowsTable contactBookRows = $ContactBookRowsTable(
     this,
   );
+  late final $DiscordWebhookRowsTable discordWebhookRows =
+      $DiscordWebhookRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3960,6 +4417,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     gardenInventoryRows,
     contactEventRows,
     contactBookRows,
+    discordWebhookRows,
   ];
 }
 
@@ -3980,6 +4438,8 @@ typedef $$AlarmRowsTableCreateCompanionBuilder = AlarmRowsCompanion Function({
   Value<int?> kakugoSnoozePenalty,
   Value<bool?> kakugoSnoozeResetsClock,
   Value<String?> oversleepContact,
+  Value<String?> oversleepShare,
+  Value<int?> oversleepTriggerMinutes,
   Value<int> rowid,
 });
 typedef $$AlarmRowsTableUpdateCompanionBuilder = AlarmRowsCompanion Function({
@@ -3999,6 +4459,8 @@ typedef $$AlarmRowsTableUpdateCompanionBuilder = AlarmRowsCompanion Function({
   Value<int?> kakugoSnoozePenalty,
   Value<bool?> kakugoSnoozeResetsClock,
   Value<String?> oversleepContact,
+  Value<String?> oversleepShare,
+  Value<int?> oversleepTriggerMinutes,
   Value<int> rowid,
 });
 
@@ -4088,6 +4550,16 @@ class $$AlarmRowsTableFilterComposer
 
   ColumnFilters<String> get oversleepContact => $composableBuilder(
     column: $table.oversleepContact,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get oversleepShare => $composableBuilder(
+    column: $table.oversleepShare,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get oversleepTriggerMinutes => $composableBuilder(
+    column: $table.oversleepTriggerMinutes,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4180,6 +4652,16 @@ class $$AlarmRowsTableOrderingComposer
     column: $table.oversleepContact,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get oversleepShare => $composableBuilder(
+    column: $table.oversleepShare,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get oversleepTriggerMinutes => $composableBuilder(
+    column: $table.oversleepTriggerMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AlarmRowsTableAnnotationComposer
@@ -4256,6 +4738,16 @@ class $$AlarmRowsTableAnnotationComposer
     column: $table.oversleepContact,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get oversleepShare => $composableBuilder(
+    column: $table.oversleepShare,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get oversleepTriggerMinutes => $composableBuilder(
+    column: $table.oversleepTriggerMinutes,
+    builder: (column) => column,
+  );
 }
 
 class $$AlarmRowsTableTableManager
@@ -4302,6 +4794,8 @@ class $$AlarmRowsTableTableManager
                 Value<int?> kakugoSnoozePenalty = const Value.absent(),
                 Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
                 Value<String?> oversleepContact = const Value.absent(),
+                Value<String?> oversleepShare = const Value.absent(),
+                Value<int?> oversleepTriggerMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmRowsCompanion(
                 id: id,
@@ -4320,6 +4814,8 @@ class $$AlarmRowsTableTableManager
                 kakugoSnoozePenalty: kakugoSnoozePenalty,
                 kakugoSnoozeResetsClock: kakugoSnoozeResetsClock,
                 oversleepContact: oversleepContact,
+                oversleepShare: oversleepShare,
+                oversleepTriggerMinutes: oversleepTriggerMinutes,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4340,6 +4836,8 @@ class $$AlarmRowsTableTableManager
                 Value<int?> kakugoSnoozePenalty = const Value.absent(),
                 Value<bool?> kakugoSnoozeResetsClock = const Value.absent(),
                 Value<String?> oversleepContact = const Value.absent(),
+                Value<String?> oversleepShare = const Value.absent(),
+                Value<int?> oversleepTriggerMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmRowsCompanion.insert(
                 id: id,
@@ -4358,6 +4856,8 @@ class $$AlarmRowsTableTableManager
                 kakugoSnoozePenalty: kakugoSnoozePenalty,
                 kakugoSnoozeResetsClock: kakugoSnoozeResetsClock,
                 oversleepContact: oversleepContact,
+                oversleepShare: oversleepShare,
+                oversleepTriggerMinutes: oversleepTriggerMinutes,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -5968,6 +6468,204 @@ typedef $$ContactBookRowsTableProcessedTableManager =
       ContactBookRow,
       PrefetchHooks Function()
     >;
+typedef $$DiscordWebhookRowsTableCreateCompanionBuilder =
+    DiscordWebhookRowsCompanion Function({
+      required String id,
+      required String url,
+      required String displayName,
+      required int createdAtMs,
+      Value<int> rowid,
+    });
+typedef $$DiscordWebhookRowsTableUpdateCompanionBuilder =
+    DiscordWebhookRowsCompanion Function({
+      Value<String> id,
+      Value<String> url,
+      Value<String> displayName,
+      Value<int> createdAtMs,
+      Value<int> rowid,
+    });
+
+class $$DiscordWebhookRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $DiscordWebhookRowsTable> {
+  $$DiscordWebhookRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DiscordWebhookRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiscordWebhookRowsTable> {
+  $$DiscordWebhookRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DiscordWebhookRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiscordWebhookRowsTable> {
+  $$DiscordWebhookRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+}
+
+class $$DiscordWebhookRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DiscordWebhookRowsTable,
+          DiscordWebhookRow,
+          $$DiscordWebhookRowsTableFilterComposer,
+          $$DiscordWebhookRowsTableOrderingComposer,
+          $$DiscordWebhookRowsTableAnnotationComposer,
+          $$DiscordWebhookRowsTableCreateCompanionBuilder,
+          $$DiscordWebhookRowsTableUpdateCompanionBuilder,
+          (
+            DiscordWebhookRow,
+            BaseReferences<
+              _$AppDatabase,
+              $DiscordWebhookRowsTable,
+              DiscordWebhookRow
+            >,
+          ),
+          DiscordWebhookRow,
+          PrefetchHooks Function()
+        > {
+  $$DiscordWebhookRowsTableTableManager(
+    _$AppDatabase db,
+    $DiscordWebhookRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiscordWebhookRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiscordWebhookRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiscordWebhookRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiscordWebhookRowsCompanion(
+                id: id,
+                url: url,
+                displayName: displayName,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String url,
+                required String displayName,
+                required int createdAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => DiscordWebhookRowsCompanion.insert(
+                id: id,
+                url: url,
+                displayName: displayName,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DiscordWebhookRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DiscordWebhookRowsTable,
+      DiscordWebhookRow,
+      $$DiscordWebhookRowsTableFilterComposer,
+      $$DiscordWebhookRowsTableOrderingComposer,
+      $$DiscordWebhookRowsTableAnnotationComposer,
+      $$DiscordWebhookRowsTableCreateCompanionBuilder,
+      $$DiscordWebhookRowsTableUpdateCompanionBuilder,
+      (
+        DiscordWebhookRow,
+        BaseReferences<
+          _$AppDatabase,
+          $DiscordWebhookRowsTable,
+          DiscordWebhookRow
+        >,
+      ),
+      DiscordWebhookRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5988,4 +6686,6 @@ class $AppDatabaseManager {
       $$ContactEventRowsTableTableManager(_db, _db.contactEventRows);
   $$ContactBookRowsTableTableManager get contactBookRows =>
       $$ContactBookRowsTableTableManager(_db, _db.contactBookRows);
+  $$DiscordWebhookRowsTableTableManager get discordWebhookRows =>
+      $$DiscordWebhookRowsTableTableManager(_db, _db.discordWebhookRows);
 }

@@ -80,6 +80,96 @@ void main() {
     });
   });
 
+  group('OversleepShare', () {
+    const share = OversleepShare(
+      webhookIds: {'w2', 'w1'},
+      messageMode: MessageMode.custom,
+      message: '起きろ',
+      recordingPath: '/tmp/a.m4a',
+      recordingWaveform: [0.5, 1],
+      xEnabled: true,
+    );
+
+    test('json round trip', () {
+      expect(reencode(share.toJson(), OversleepShare.fromJson), share);
+    });
+
+    test('json round trip with nothing on it', () {
+      const empty = OversleepShare();
+      final back = reencode(empty.toJson(), OversleepShare.fromJson);
+      expect(back, empty);
+      expect(back.webhookIds, isEmpty);
+      expect(back.recordingPath, isNull);
+      expect(back.hasRecording, isFalse);
+    });
+
+    test('the waveform is stored at two decimals and clamped', () {
+      // A bar is a few pixels tall and nobody can see the third decimal; a
+      // hand edited row must not be able to paint outside the widget.
+      final back = reencode(
+        const OversleepShare(
+          webhookIds: {'w1'},
+          recordingWaveform: [0.123456, -1, 5],
+        ).toJson(),
+        OversleepShare.fromJson,
+      );
+      expect(back.recordingWaveform, [0.12, 0.0, 1.0]);
+    });
+
+    test('the ids are sorted, so a save that changed nothing looks like it', () {
+      expect(share.toJson()['webhookIds'], ['w1', 'w2']);
+      expect(
+        const OversleepShare(webhookIds: {'w1', 'w2'}),
+        const OversleepShare(webhookIds: {'w2', 'w1'}),
+        reason: 'equality does not read the ordering either',
+      );
+    });
+
+    test('a share with nowhere to post is not a share', () {
+      expect(const OversleepShare().isUsable, isFalse);
+      expect(
+        const OversleepShare(message: '起きろ').isUsable,
+        isFalse,
+        reason: 'a message with no destination never goes out',
+      );
+      expect(const OversleepShare(webhookIds: {'w1'}).isUsable, isTrue);
+    });
+
+    test('a cleared recording takes its waveform with it', () {
+      final cleared = share.copyWith(clearRecordingPath: true);
+      expect(cleared.recordingPath, isNull);
+      expect(cleared.recordingWaveform, isEmpty);
+      expect(cleared.webhookIds, share.webhookIds, reason: 'kept');
+    });
+
+    test('the default line names the time and nobody else', () {
+      final at = DateTime(2026, 8, 27, 7, 5);
+      expect(defaultOversleepShareMessage(at: at), '07:05 のアラームを解除できていません。');
+      expect(
+        oversleepShareBodyFor(const OversleepShare(webhookIds: {'w1'}), at),
+        '07:05 のアラームを解除できていません。',
+      );
+    });
+
+    test('the custom line wins only when there is one', () {
+      final at = DateTime(2026, 8, 27, 7, 5);
+      expect(oversleepShareBodyFor(share, at), '起きろ');
+      expect(
+        oversleepShareBodyFor(
+          share.copyWith(messageMode: MessageMode.standard),
+          at,
+        ),
+        defaultOversleepShareMessage(at: at),
+        reason: 'デフォルト mode ignores the stored custom text',
+      );
+      expect(
+        oversleepShareBodyFor(share.copyWith(message: '   '), at),
+        defaultOversleepShareMessage(at: at),
+        reason: 'an empty post says nothing',
+      );
+    });
+  });
+
   test('Wallet json round trip', () {
     const w = Wallet(coins: 1200, tokens: 30);
     expect(reencode(w.toJson(), Wallet.fromJson), w);

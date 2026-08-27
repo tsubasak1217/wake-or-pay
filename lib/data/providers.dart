@@ -7,6 +7,7 @@ import 'repositories/alarm_repository.dart';
 import 'repositories/alarm_session_repository.dart';
 import 'repositories/contact_book_repository.dart';
 import 'repositories/contact_event_repository.dart';
+import 'repositories/discord_webhook_repository.dart';
 import 'repositories/garden_repository.dart';
 import 'repositories/ojisan_repository.dart';
 import 'repositories/profile_repository.dart';
@@ -39,6 +40,10 @@ final contactEventRepositoryProvider = Provider(
 
 final contactBookRepositoryProvider = Provider(
   (ref) => ContactBookRepository(ref.watch(appDatabaseProvider)),
+);
+
+final discordWebhookRepositoryProvider = Provider(
+  (ref) => DiscordWebhookRepository(ref.watch(appDatabaseProvider)),
 );
 
 final walletRepositoryProvider = Provider(
@@ -113,6 +118,23 @@ final contactBookProvider = StreamProvider<List<ContactEntry>>(
 /// itself one frame later when the rows arrive.
 final contactBookListProvider = Provider<List<ContactEntry>>(
   (ref) => ref.watch(contactBookProvider).valueOrNull ?? const <ContactEntry>[],
+);
+
+/// The app-wide Discord 共有先 list, oldest first.
+final discordWebhooksProvider = StreamProvider<List<DiscordWebhook>>(
+  (ref) => ref.watch(discordWebhookRepositoryProvider).watchAll(),
+);
+
+/// The 共有先 as a plain list, for everything that turns an alarm's stored ids
+/// back into rows — the count on a row, the switches on the 共有先 screen.
+///
+/// Empty while the stream is still loading, which is the same answer as an
+/// empty list: the row reads 「なし」 for one frame and corrects itself when the
+/// rows arrive.
+final discordWebhookListProvider = Provider<List<DiscordWebhook>>(
+  (ref) =>
+      ref.watch(discordWebhooksProvider).valueOrNull ??
+      const <DiscordWebhook>[],
 );
 
 final sessionByIdProvider = FutureProvider.family<AlarmSession?, String>(

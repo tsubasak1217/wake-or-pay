@@ -8,6 +8,7 @@ import 'app/router.dart';
 import 'app/theme_controller.dart';
 import 'data/providers.dart';
 import 'services/alarm_service.dart';
+import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
 import 'services/speaker.dart';
 
@@ -35,6 +36,16 @@ Future<void> main() async {
   // Permission dialogs and the ring-screen jump both want a live UI, so this
   // starts after the first frame is on its way.
   unawaited(container.read(alarmServiceProvider).init());
+
+  // The one-off sweep for the recordings 改訂4 retired. Fire and forget, and
+  // wrapped: it touches the filesystem, it is worth nothing to the user, and
+  // it must never be the reason the first frame is late or the app will not
+  // open.
+  unawaited(
+    container.read(legacyRecordingCleanupProvider).run().catchError(
+      (Object _) => 0,
+    ),
+  );
 }
 
 class WakeOrPayApp extends ConsumerWidget {

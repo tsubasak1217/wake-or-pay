@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,21 +5,24 @@ import '../../app/profile_controller.dart';
 import '../../data/providers.dart';
 import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
-import '../../services/voice_recorder.dart';
+import '../../services/mail_settings.dart';
 import '../profile/profile_overlay.dart';
 import 'contact_book_screen.dart';
-import 'edit_sub_screens.dart';
-import 'widgets/recording_bar.dart';
+import 'widgets/mode_tile.dart';
 import 'widgets/settings_island.dart';
 
 /// 寝坊時の連絡設定: who is told when the oversleeping runs long, on which
 /// routes, and in whose words.
 ///
-/// Three islands, per 改訂2:
+/// Two islands, per spec 11.4:
 ///
-/// * 寝坊時の連絡設定 — the person, when, and the two routes
-/// * メール設定 — only while メール is on
-/// * 電話設定 — only while 電話 is on
+/// * 寝坊時の連絡設定 — the person and the four routes
+/// * メール・SMS設定 — only while メール or SMS is on
+///
+/// The 電話設定 island is gone. A call now rings and plays nothing: the point
+/// is that the contact's own voice comes out of the speaker, so there was
+/// never anything for an automated script to say. 送信タイミング moved up to
+/// 寝坊時連絡・共有, where the 共有 shares it.
 ///
 /// The person is picked from the 連絡帳 and **copied** into the alarm: name,
 /// number and address. Deleting them from the book afterwards leaves this
@@ -30,8 +30,8 @@ import 'widgets/settings_island.dart';
 ///
 /// Like every other editor sub-screen the value is local while the screen is
 /// open and handed back exactly once, when it closes — which covers the app
-/// bar's back button and the system back gesture alike, because both go through
-/// [PopScope].
+/// bar's back button and the system back gesture alike, because both go
+/// through [PopScope].
 class ContactSubScreen extends ConsumerStatefulWidget {
   const ContactSubScreen({
     super.key,
@@ -43,7 +43,8 @@ class ContactSubScreen extends ConsumerStatefulWidget {
   final OversleepContact? initial;
   final ValueChanged<OversleepContact?> onCommit;
 
-  /// Only used to name the recording file, so it is optional.
+  /// Unused now that the recorder has moved to the 共有 screen. Kept so the
+  /// caller does not have to know that.
   final String? alarmId;
 
   @override
@@ -58,23 +59,17 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
 
   late bool _phoneEnabled = widget.initial?.phoneEnabled ?? false;
   late bool _emailEnabled = widget.initial?.emailEnabled ?? false;
+  late bool _smsEnabled = widget.initial?.smsEnabled ?? false;
 
-  late MailMode _mailMode = widget.initial?.mailMode ?? MailMode.standard;
-  late final TextEditingController _mailMessage = TextEditingController(
-    text: widget.initial?.mailMessage ?? '',
-  );
-
-  late PhoneMode _phoneMode = widget.initial?.phoneMode ?? PhoneMode.auto;
-  late String? _recordingPath = widget.initial?.recordingPath;
-  late List<double> _waveform = widget.initial?.recordingWaveform ?? const [];
-
-  late int _trigger = normalizeContactTriggerMinutes(
-    widget.initial?.triggerMinutesAfterGrace ?? defaultContactTriggerMinutes,
+  late MessageMode _messageMode =
+      widget.initial?.messageMode ?? MessageMode.standard;
+  late final TextEditingController _message = TextEditingController(
+    text: widget.initial?.message ?? '',
   );
 
   @override
   void dispose() {
-    _mailMessage.dispose();
+    _message.dispose();
     super.dispose();
   }
 
@@ -90,7 +85,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
   /// the snapshot cannot drift while anyone is looking at it.
   OversleepContact? _contactFor(List<ContactEntry> book) {
     if (!_hasContact) return null;
-    final message = _mailMessage.text.trim();
+    final message = _message.text.trim();
     final live = resolveOversleepContact(
       OversleepContact(
         contactId: _contactId,
@@ -99,12 +94,9 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         email: _email,
         phoneEnabled: _phoneEnabled,
         emailEnabled: _emailEnabled,
-        mailMode: _mailMode,
-        mailMessage: message.isEmpty ? null : message,
-        phoneMode: _phoneMode,
-        recordingPath: _recordingPath,
-        recordingWaveform: _waveform,
-        triggerMinutesAfterGrace: normalizeContactTriggerMinutes(_trigger),
+        smsEnabled: _smsEnabled,
+        messageMode: _messageMode,
+        message: message.isEmpty ? null : message,
       ),
       book,
     );
@@ -113,6 +105,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     return live.copyWith(
       phoneEnabled: live.phoneEnabled && live.hasPhone,
       emailEnabled: live.emailEnabled && live.hasEmail,
+      smsEnabled: live.smsEnabled && live.hasPhone,
     );
   }
 
@@ -131,10 +124,16 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
       _name = picked.name;
       _phone = picked.phone;
       _email = picked.email;
-      // Picking somebody means wanting to reach them: every route they have an
-      // address for starts on, and one they do not have stays off.
+      // Picking somebody means wanting to reach them: the loudest route they
+      // have an address for starts on. SMS does not — a text message is a
+      // different decision from a phone call, and one that is silent at 4am.
       _phoneEnabled = picked.hasPhone;
-      _emailEnabled = picked.hasEmail;
+      // Gated on the same flag the toggle is: switching メール on for somebody
+      // the app cannot mail would put a route in the stored contact — and in
+      // the event log — that the user never enabled and cannot see, let alone
+      // switch back off.
+      _emailEnabled = picked.hasEmail && ref.read(mailSendingConfiguredProvider);
+      _smsEnabled = false;
     });
   }
 
@@ -145,60 +144,48 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     _email = null;
     _phoneEnabled = false;
     _emailEnabled = false;
+    _smsEnabled = false;
   });
 
-  /// Throws the recording away. Called by the panel once the user has said
-  /// yes to the confirmation, so there is nothing left to ask here.
-  Future<void> _deleteRecording() async {
-    final path = _recordingPath;
-    setState(() {
-      _recordingPath = null;
-      _waveform = const [];
-    });
-    if (path == null) return;
-    // The file is the app's own, inside app storage, so deleting it here is
-    // the whole deletion. A file that is already gone is not an error.
-    final file = File(path);
-    if (await file.exists()) await file.delete();
-  }
-
-  String get _triggerLabel => _trigger == 0 ? '猶予後すぐ' : '猶予後 $_trigger分';
-
-  /// The example both previews are drawn against: a fixed 07:00, so the text
-  /// does not move under the user while they read it.
+  /// The example the preview is drawn against: a fixed 07:00, so the text does
+  /// not move under the user while they read it.
   static final _previewAt = DateTime(2026, 1, 1, 7);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // The subject of the default sentence. Watched, so coming back from the
-    // editor redraws the row and both previews.
+    // editor redraws the row and the preview.
     final userName = ref.watch(profileProvider).userName;
+
+    // The one flag behind every メール control on this screen, per spec 11.5.
+    // False for the whole of stage C: there is no SMTP account yet, so there
+    // is nothing to send with.
+    //
+    // It greys the toggle; it does **not** switch the stored value off. An
+    // alarm written under an earlier version with メール on has said what its
+    // owner wants, and unsetting that because the sending half is not built
+    // yet would quietly lose a choice they made — and would take an extra tap
+    // to get back the day stage D lands.
+    final mailConfigured = ref.watch(mailSendingConfiguredProvider);
 
     // Watched, not read: editing this person inside the 連絡帳 — which is a
     // route pushed on top of this screen — has to land on the 連絡先 row and
-    // on both route toggles the moment it pops.
+    // on every route toggle the moment it pops.
     final live = _contactFor(ref.watch(contactBookListProvider));
     final hasContact = live != null;
     final hasPhone = live?.hasPhone ?? false;
     final hasEmail = live?.hasEmail ?? false;
     final phoneOn = live?.phoneEnabled ?? false;
     final emailOn = live?.emailEnabled ?? false;
+    final smsOn = live?.smsEnabled ?? false;
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) return;
-        // Leaving mid-recording discards it: the file is still being written
-        // and there is nothing to await it on the way out, so committing a
-        // path that may never be finished would be worse than dropping it.
-        // Unconditional because the panel below owns whether it is recording,
-        // and stopping a recorder that is not running is not an error.
-        unawaited(ref.read(voiceRecorderProvider).stop());
-        unawaited(ref.read(voicePlayerProvider).stop());
-        widget.onCommit(_value);
+        if (didPop) widget.onCommit(_value);
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('寝坊時連絡先')),
+        appBar: AppBar(title: const Text('寝坊時の連絡設定')),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
@@ -223,38 +210,41 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                   value: live?.name ?? 'なし',
                   onTap: _pickContact,
                 ),
-                SettingRow(
-                  key: const ValueKey('contactTriggerRow'),
-                  label: '送信タイミング',
-                  value: _triggerLabel,
-                  onTap: () => pushEditorSubScreen(
-                    context,
-                    NumberSubScreen(
-                      title: '送信タイミング',
-                      initial: _trigger,
-                      min: minContactTriggerMinutes,
-                      max: maxContactTriggerMinutes,
-                      suffix: '分',
-                      description:
-                          '起床猶予が切れてから何分後に連絡するかです。鳴り始めからではありません。'
-                          '0分なら、猶予が切れたその瞬間に連絡します。',
-                      onCommit: (v) => setState(() => _trigger = v),
-                    ),
-                  ),
-                ),
                 SettingSwitchRow(
                   label: '電話',
                   value: phoneOn,
                   enabled: hasPhone,
-                  subtitle: hasPhone ? null : 'この連絡先には電話番号がありません',
+                  subtitle: hasPhone
+                      ? '相手の電話が鳴ります。音声は流れません'
+                      : 'この連絡先には電話番号がありません',
                   onChanged: (v) => setState(() => _phoneEnabled = v),
                 ),
                 SettingSwitchRow(
                   label: 'メール',
-                  value: emailOn,
-                  enabled: hasEmail,
-                  subtitle: hasEmail ? null : 'この連絡先にはメールアドレスがありません',
+                  value: emailOn && mailConfigured,
+                  enabled: hasEmail && mailConfigured,
+                  subtitle: !hasEmail
+                      ? 'この連絡先にはメールアドレスがありません'
+                      : (mailConfigured ? null : mailSendingUnconfiguredNote),
                   onChanged: (v) => setState(() => _emailEnabled = v),
+                ),
+                SettingSwitchRow(
+                  label: 'SMS',
+                  value: smsOn,
+                  enabled: hasPhone,
+                  subtitle: hasPhone ? null : 'この連絡先には電話番号がありません',
+                  onChanged: (v) => setState(() => _smsEnabled = v),
+                ),
+                // Modelled nowhere and offered nowhere: the row exists so the
+                // list of routes is the whole list, and the note says why it
+                // cannot be pressed rather than leaving the user to guess.
+                const SettingSwitchRow(
+                  key: ValueKey('contactLineRow'),
+                  label: 'LINE',
+                  value: false,
+                  enabled: false,
+                  subtitle: 'まだ実装しない',
+                  onChanged: _ignoreToggle,
                 ),
               ],
             ),
@@ -270,8 +260,13 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                   ),
                 ),
               ),
-            if (emailOn) _mailIsland(theme, userName),
-            if (phoneOn) _phoneIsland(theme, userName),
+            // One island for both written routes, because they carry one body.
+            if ((emailOn && mailConfigured) || smsOn)
+              _messageIsland(
+                theme,
+                userName,
+                mailOn: emailOn && mailConfigured,
+              ),
             if (hasContact)
               Align(
                 alignment: Alignment.centerLeft,
@@ -284,8 +279,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
               ),
             const SizedBox(height: 16),
             Text(
-              '現在は実際の送信は行いません。発火した記録がアプリ内に残るだけです'
-              '（次のフェーズでサーバー送信に対応予定）。',
+              '現在は実際の送信は行いません。発火した記録がアプリ内に残るだけです。',
               style: theme.textTheme.bodySmall,
             ),
           ],
@@ -294,29 +288,36 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     );
   }
 
-  Widget _mailIsland(ThemeData theme, String userName) => SettingsIsland(
-    title: 'メール設定',
+  /// [mailOn] is メール as it stands *right now* — enabled and sendable — not
+  /// the stored flag: it picks which default sentence the preview shows.
+  Widget _messageIsland(
+    ThemeData theme,
+    String userName, {
+    required bool mailOn,
+  }) => SettingsIsland(
+    key: const ValueKey('messageIsland'),
+    title: 'メール・SMS設定',
     children: [
-      _ModeTile(
-        key: const ValueKey('mailModeStandard'),
+      ModeTile(
+        key: const ValueKey('messageModeStandard'),
         label: 'デフォルト',
         description: 'アプリが用意した文面を送ります。',
-        selected: _mailMode == MailMode.standard,
-        onTap: () => setState(() => _mailMode = MailMode.standard),
+        selected: _messageMode == MessageMode.standard,
+        onTap: () => setState(() => _messageMode = MessageMode.standard),
       ),
-      _ModeTile(
-        key: const ValueKey('mailModeCustom'),
+      ModeTile(
+        key: const ValueKey('messageModeCustom'),
         label: 'カスタムメッセージ',
-        description: '自分の言葉で書いた文面を送ります。',
-        selected: _mailMode == MailMode.custom,
-        onTap: () => setState(() => _mailMode = MailMode.custom),
+        description: '自分の言葉で書いた文面を送ります。メールと SMS で同じ文面です。',
+        selected: _messageMode == MessageMode.custom,
+        onTap: () => setState(() => _messageMode = MessageMode.custom),
       ),
-      if (_mailMode == MailMode.custom)
+      if (_messageMode == MessageMode.custom)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: TextField(
-            key: const ValueKey('contactMailMessage'),
-            controller: _mailMessage,
+            key: const ValueKey('contactMessage'),
+            controller: _message,
             maxLines: 4,
             decoration: const InputDecoration(
               labelText: 'メッセージ',
@@ -328,85 +329,22 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Text(
-            '例：${defaultOversleepMailMessage(userName: userName, at: _previewAt)}',
-            key: const ValueKey('contactMailPreview'),
+            // The route that is actually on decides which default is shown.
+            // The two differ by the 【Wake or Pay】 subject tag — mail has an
+            // inbox to be recognised in and SMS does not — so previewing the
+            // mail body beside an SMS-only island would show a sentence that
+            // could never be sent. In stage C that is the *only* way this
+            // island appears, because メール cannot be switched on at all.
+            '例：${mailOn ? defaultOversleepMailMessage(userName: userName, at: _previewAt) : defaultOversleepSmsMessage(userName: userName, at: _previewAt)}',
+            key: const ValueKey('contactMessagePreview'),
             style: theme.textTheme.bodySmall,
           ),
         ),
     ],
   );
-
-  Widget _phoneIsland(ThemeData theme, String userName) {
-    return SettingsIsland(
-      title: '電話設定',
-      children: [
-        _ModeTile(
-          key: const ValueKey('phoneModeAuto'),
-          label: '自動音声',
-          description: 'アプリが用意した文面を合成音声で読み上げます。',
-          selected: _phoneMode == PhoneMode.auto,
-          onTap: () => setState(() => _phoneMode = PhoneMode.auto),
-        ),
-        _ModeTile(
-          key: const ValueKey('phoneModeCustom'),
-          label: 'カスタム録音',
-          description: '自分の声で録音したものを流します。',
-          selected: _phoneMode == PhoneMode.custom,
-          onTap: () => setState(() => _phoneMode = PhoneMode.custom),
-        ),
-        if (_phoneMode == PhoneMode.custom)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: ContactRecorderPanel(
-              alarmId: widget.alarmId,
-              recordingPath: _recordingPath,
-              waveform: _waveform,
-              onRecorded: (path, waveform) => setState(() {
-                _recordingPath = path;
-                _waveform = waveform;
-              }),
-              onDeleted: _deleteRecording,
-            ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Text(
-              '読み上げる文：${defaultOversleepVoiceScript(userName: userName, at: _previewAt)}',
-              key: const ValueKey('contactVoicePreview'),
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-      ],
-    );
-  }
 }
 
-/// One of the two modes an island offers. A radio in everything but the
-/// widget: [Radio] would need a group above it, and the row is already the
-/// group.
-class _ModeTile extends StatelessWidget {
-  const _ModeTile({
-    super.key,
-    required this.label,
-    required this.description,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final String description;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    onTap: onTap,
-    leading: Icon(
-      selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-      color: selected ? Theme.of(context).colorScheme.primary : null,
-    ),
-    title: Text(label),
-    subtitle: Text(description),
-  );
-}
+/// A disabled switch still needs a callback to name. It is never reached —
+/// [SettingSwitchRow] hands `null` to the switch when the row is disabled,
+/// which is what draws it grey and makes it untappable.
+void _ignoreToggle(bool _) {}

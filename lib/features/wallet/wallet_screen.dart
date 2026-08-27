@@ -141,7 +141,10 @@ class _ContactEventSection extends ConsumerWidget {
               contactChannelIcon(event.channel),
               color: theme.colorScheme.error,
             ),
-            title: Text('${event.contactName} さんへ'),
+            // The name already carries its honorific — or is 「Discord 2件」,
+            // which takes none — because it is the same phrase the countdown
+            // said out loud.
+            title: Text('${event.contactName}へ'),
             subtitle: Text(
               [
                 formatDateTime(event.firedAt),
@@ -157,6 +160,8 @@ class _ContactEventSection extends ConsumerWidget {
 
 IconData contactChannelIcon(ContactChannel channel) => switch (channel) {
   ContactChannel.phone => Icons.phone_outlined,
+  ContactChannel.sms => Icons.sms_outlined,
   ContactChannel.email => Icons.mail_outline,
+  ContactChannel.discord => Icons.forum_outlined,
   ContactChannel.log => Icons.receipt_long_outlined,
 };

@@ -88,21 +88,31 @@ class _RingingScreenState extends ConsumerState<RingingScreen> {
     if (session == null || !session.isRinging) return;
 
     final alarm = ref.read(alarmByIdProvider(session.alarmId)).valueOrNull;
-    if (alarm == null || !alarm.willContact) return;
+    // Either half is enough: a share-only alarm counts down and speaks too.
+    if (alarm == null || !alarm.willNotify) return;
     // The 連絡帳 as it stands now: the name said out loud has to be the one the
     // user last typed, not the copy taken when the alarm was written.
-    final contact = resolveOversleepContact(
-      alarm.contact!,
+    final target = oversleepTargetLabelForAlarm(
+      alarm,
       ref.read(contactBookListProvider),
+      webhooks: ref.read(discordWebhookListProvider),
     );
 
-    final remaining = contactRemaining(now, session, contact);
+    final remaining = contactRemaining(now, session, alarm);
     if (remaining == null) return;
 
     // The opening line first, then whichever countdown mark has been reached.
     for (final cue in [ContactSpeechCue.start, ?cueFor(remaining)]) {
       if (_spoken.add(cue)) {
-        unawaited(_speaker.speak(contactSpeechText(cue, contact)));
+        unawaited(
+          _speaker.speak(
+            contactSpeechText(
+              cue,
+              target,
+              triggerMinutes: alarm.triggerMinutes,
+            ),
+          ),
+        );
       }
     }
 
@@ -239,19 +249,18 @@ class _RingingBody extends ConsumerWidget {
               // Who is about to hear about this, and when. Only ever shown
               // when there is somebody to tell.
               alarm.maybeWhen(
-                data: (data) => data != null && data.willContact
+                data: (data) => data != null && data.willNotify
                     ? _ContactPanel(
                         // Resolved against the live 連絡帳, so a name edited in
-                        // the book reads correctly on the countdown too.
-                        contact: resolveOversleepContact(
-                          data.contact!,
+                        // the book reads correctly on the countdown too. A
+                        // share-only alarm gets 「Discord 2件」 here and needs no
+                        // other plumbing.
+                        target: oversleepTargetLabelForAlarm(
+                          data,
                           ref.watch(contactBookListProvider),
+                          webhooks: ref.watch(discordWebhookListProvider),
                         ),
-                        remaining: contactRemaining(
-                          now,
-                          session,
-                          data.contact,
-                        )!,
+                        remaining: contactRemaining(now, session, data)!,
                       )
                     : const SizedBox.shrink(),
                 orElse: () => const SizedBox.shrink(),
@@ -312,9 +321,11 @@ Widget _wakeCheckFor(WakeCheckType type, VoidCallback onCleared) =>
 /// 「あと 2:30 で 田中太郎 さんに連絡が行きます」 — the same sentence the synthesised
 /// voice says, so the screen and the speech never disagree.
 class _ContactPanel extends StatelessWidget {
-  const _ContactPanel({required this.contact, required this.remaining});
+  const _ContactPanel({required this.target, required this.remaining});
 
-  final OversleepContact contact;
+  /// [oversleepTargetLabel]'s phrase — a person, some Discord 共有先, or both.
+  final String target;
+
   final Duration remaining;
 
   @override
@@ -334,7 +345,7 @@ class _ContactPanel extends StatelessWidget {
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              contactCountdownLine(remaining, contact),
+              contactCountdownLine(remaining, target),
               key: const ValueKey('contactCountdown'),
               textAlign: TextAlign.center,
               style: theme.textTheme.titleMedium?.copyWith(

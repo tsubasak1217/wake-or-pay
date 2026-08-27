@@ -11,7 +11,8 @@ import 'models.dart';
 ///
 /// So the snapshot is a **fallback**, not the truth: while the entry still
 /// exists the live one wins. A route the edited entry can no longer reach is
-/// switched off here too — an alarm cannot mail an address that was deleted.
+/// switched off here too — an alarm cannot mail an address that was deleted,
+/// and cannot text a number that was.
 ///
 /// Pure: the caller supplies the book. A contact that never came from the book
 /// ([OversleepContact.contactId] null), or one whose entry has since been
@@ -32,6 +33,7 @@ OversleepContact resolveOversleepContact(
       clearEmail: entry.email == null,
       phoneEnabled: contact.phoneEnabled && entry.hasPhone,
       emailEnabled: contact.emailEnabled && entry.hasEmail,
+      smsEnabled: contact.smsEnabled && entry.hasPhone,
     );
   }
   return contact;
@@ -50,48 +52,103 @@ Alarm resolveAlarmContact(Alarm alarm, Iterable<ContactEntry> book) {
   return alarm.copyWith(contact: resolveOversleepContact(contact, book));
 }
 
-/// When the contact for [session] is triggered, or null if there is nobody to
-/// contact. Pure, per spec 5.
+/// Who hears about this alarm, as one phrase. Pure.
+///
+/// 「田中太郎 さん」 / 「Discord 2件」 / 「田中太郎 さん と Discord 2件」, and the empty
+/// string when nobody does. Every sentence about the notification — the
+/// countdown on the ringing screen, each spoken cue, the row on the alarm
+/// list, the log entry — is built on this one phrase, so the screen and the
+/// voice can never name different recipients.
+///
+/// The honorific rides along with the name because the group half takes none:
+/// 「Discord 2件 さん」 would be nonsense.
+String oversleepTargetLabel({String? contactName, int webhookCount = 0}) {
+  final name = contactName?.trim() ?? '';
+  final parts = [
+    if (name.isNotEmpty) '$name さん',
+    if (webhookCount > 0) 'Discord $webhookCount件',
+  ];
+  return parts.join(' と ');
+}
+
+/// How many of [share]'s targets still exist. Pure.
+///
+/// An alarm stores webhook **ids**, and there is deliberately no foreign key
+/// behind them: deleting a 共有先 must never break an alarm that pointed at it.
+/// The price is dangling ids, and this is where they stop counting — a share
+/// that named two rooms and lost one announces itself to one room, and every
+/// screen has to say one.
+///
+/// [known] is the app-wide list. A caller that does not have it passes nothing
+/// and gets the stored count, which is the best answer available before the
+/// rows arrive.
+int liveShareTargetCount(
+  OversleepShare? share,
+  Iterable<DiscordWebhook>? known,
+) {
+  final ids = share?.webhookIds ?? const <String>{};
+  if (known == null) return ids.length;
+  return ids.where((id) => known.any((w) => w.id == id)).length;
+}
+
+/// [oversleepTargetLabel] for a whole alarm, with the contact resolved against
+/// the live 連絡帳. Pure.
+///
+/// Reads the alarm's `will…` rules rather than the raw fields, so a contact
+/// on an alarm with no pledge — or a share with no targets left — is named
+/// nowhere, exactly as it is notified nowhere.
+///
+/// [webhooks] is the app-wide 共有先 list when the caller has it; without it
+/// the stored ids are counted as they stand. See [liveShareTargetCount].
+String oversleepTargetLabelForAlarm(
+  Alarm alarm,
+  Iterable<ContactEntry> book, {
+  Iterable<DiscordWebhook>? webhooks,
+}) => oversleepTargetLabel(
+  contactName: alarm.willContact
+      ? resolveOversleepContact(alarm.contact!, book).name
+      : null,
+  webhookCount: alarm.willShare
+      ? liveShareTargetCount(alarm.share, webhooks)
+      : 0,
+);
+
+/// When the notification for [session] goes out, or null if nobody is told.
+/// Pure, per spec 5 as revised by 11.3.
 ///
 /// Counted from the same clock the loss is billed on: the grace window first,
 /// then the user's chosen delay. Under 「次に鳴る時刻を起点にし直す」 that clock is
 /// the current ring, so snoozing pushes the trigger out with everything else;
 /// under 「規定時刻から加算し続ける」 it is the scheduled time, so snoozing does not
 /// stop the timer any more than it stops the burn.
-DateTime? contactTriggerAt(AlarmSession session, OversleepContact? contact) {
-  if (contact == null || !contact.isUsable) return null;
+///
+/// The delay lives on the **alarm** since 改訂4, because one number drives both
+/// the personal contact and the group share.
+DateTime? contactTriggerAt(AlarmSession session, Alarm? alarm) {
+  if (alarm == null || !alarm.willNotify) return null;
   return lossClockBase(session).add(
     Duration(
       minutes:
-          normalizeGraceMinutes(session.graceMinutes) +
-          normalizeContactTriggerMinutes(contact.triggerMinutesAfterGrace),
+          normalizeGraceMinutes(session.graceMinutes) + alarm.triggerMinutes,
     ),
   );
 }
 
-/// How long until the contact goes out. Zero once it is due, null when there
-/// is nobody to contact. Pure.
-Duration? contactRemaining(
-  DateTime now,
-  AlarmSession session,
-  OversleepContact? contact,
-) {
-  final triggerAt = contactTriggerAt(session, contact);
+/// How long until the notification goes out. Zero once it is due, null when
+/// nobody is told. Pure.
+Duration? contactRemaining(DateTime now, AlarmSession session, Alarm? alarm) {
+  final triggerAt = contactTriggerAt(session, alarm);
   if (triggerAt == null) return null;
   final left = triggerAt.difference(now);
   return left.isNegative ? Duration.zero : left;
 }
 
-/// Whether the contact is due at [now]. Pure.
+/// Whether the notification is due at [now]. Pure.
 ///
 /// Says nothing about whether it has *already* been sent — that is one per
 /// session and is tracked by the caller.
-bool contactIsDue(
-  DateTime now,
-  AlarmSession session,
-  OversleepContact? contact,
-) {
-  final triggerAt = contactTriggerAt(session, contact);
+bool contactIsDue(DateTime now, AlarmSession session, Alarm? alarm) {
+  final triggerAt = contactTriggerAt(session, alarm);
   return triggerAt != null && !now.isBefore(triggerAt);
 }
 
@@ -131,32 +188,36 @@ String contactCountdown(Duration remaining) {
 }
 
 /// The line on the ringing screen. Pure.
-String contactCountdownLine(Duration remaining, OversleepContact contact) =>
+///
+/// [target] is [oversleepTargetLabel]'s phrase, so a share-only alarm reads
+/// 「あと 2:30 で Discord 2件に連絡が行きます」 with no further plumbing.
+String contactCountdownLine(Duration remaining, String target) =>
     remaining <= Duration.zero
-    ? '${contact.name} さんに連絡が行きました'
-    : 'あと ${contactCountdown(remaining)} で ${contact.name} さんに連絡が行きます';
+    ? '$targetに連絡が行きました'
+    : 'あと ${contactCountdown(remaining)} で $targetに連絡が行きます';
 
 /// What the synthesised voice says for [cue]. Pure.
 ///
 /// Deliberately plain sentences with no numerals a TTS engine has to guess at:
 /// 「3分」 and 「30秒」 read correctly in Japanese, 「2:30」 does not.
-String contactSpeechText(ContactSpeechCue cue, OversleepContact contact) {
-  final name = contact.name;
-  return switch (cue) {
-    ContactSpeechCue.start =>
-      'このまま寝ていると、'
-          '${normalizeContactTriggerMinutes(contact.triggerMinutesAfterGrace)}'
-          '分後に $name さんに連絡が行きます',
-    ContactSpeechCue.threeMinutes => 'あと3分で $name さんに連絡が行きます',
-    ContactSpeechCue.oneMinute => 'あと1分で $name さんに連絡が行きます',
-    ContactSpeechCue.thirtySeconds => 'あと30秒で $name さんに連絡が行きます',
-    ContactSpeechCue.sent => '$name さんに連絡しました',
-  };
-}
+String contactSpeechText(
+  ContactSpeechCue cue,
+  String target, {
+  int triggerMinutes = defaultContactTriggerMinutes,
+}) => switch (cue) {
+  ContactSpeechCue.start =>
+    'このまま寝ていると、'
+        '${normalizeContactTriggerMinutes(triggerMinutes)}'
+        '分後に $targetに連絡が行きます',
+  ContactSpeechCue.threeMinutes => 'あと3分で $targetに連絡が行きます',
+  ContactSpeechCue.oneMinute => 'あと1分で $targetに連絡が行きます',
+  ContactSpeechCue.thirtySeconds => 'あと30秒で $targetに連絡が行きます',
+  ContactSpeechCue.sent => '$targetに連絡しました',
+};
 
 /// The notification posted when the contact fires, per spec 5. Pure.
 ///
 /// It says out loud that nothing was actually sent. Letting a user believe a
 /// message went out when it did not would be worse than not having the feature.
-({String title, String body}) contactSentNotificationText(String name) =>
-    (title: '$name さんへの連絡', body: '$name さんへの連絡が送信されました（開発中：実際には送信していません）');
+({String title, String body}) contactSentNotificationText(String target) =>
+    (title: '$targetへの連絡', body: '$targetへの連絡が送信されました（開発中：実際には送信していません）');

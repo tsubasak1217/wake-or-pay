@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
+import 'package:wake_or_pay/domain/oversleep_contact_rules.dart';
 import 'package:wake_or_pay/main.dart';
+import 'package:wake_or_pay/services/mail_settings.dart';
 import 'package:wake_or_pay/services/oversleep_notifier.dart';
 
 import '../helpers.dart';
@@ -55,6 +57,13 @@ Future<void> scrollTo(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
+/// 覚悟の設定 → 寝坊時連絡・共有. The caller walks back out itself.
+Future<void> openContactShare(WidgetTester tester) async {
+  await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
+  await tester.tap(find.byKey(const ValueKey('contactShareRow')));
+  await tester.pumpAndSettle();
+}
+
 Future<ProviderContainer> openEditor(WidgetTester tester) async {
   final container = await testContainer(extra: [fakeAlarmServiceOverride()]);
   await container.read(contactBookRepositoryProvider).save(taro());
@@ -94,8 +103,6 @@ void main() {
     tester,
   ) async {
     final container = await openEditor(tester);
-    await scrollTo(tester, find.text('寝坊時連絡先'));
-    expect(find.text('田中太郎'), findsOneWidget);
 
     // The edit the 連絡帳 form would make.
     await container
@@ -103,18 +110,22 @@ void main() {
         .save(taro(name: '田中太郎（部長）'));
     await tester.pumpAndSettle();
 
-    await scrollTo(tester, find.text('寝坊時連絡先'));
+    // The 覚悟 row stands for the whole notification now, so the name shows up
+    // one screen in — on the 寝坊時連絡先 row of 寝坊時連絡・共有.
+    await openContactShare(tester);
     expect(
       find.text('田中太郎（部長）'),
       findsOneWidget,
-      reason: 'the editor row reads the book, not the snapshot',
+      reason: 'the row reads the book, not the snapshot',
     );
     expect(find.text('田中太郎'), findsNothing);
 
-    // And inside the sub-screen, on the 連絡先 row.
-    await tester.tap(find.text('寝坊時連絡先'));
+    // And one deeper again, on the 連絡先 row of 寝坊時の連絡設定.
+    await tester.tap(find.byKey(const ValueKey('contactRow')));
     await tester.pumpAndSettle();
     expect(find.text('田中太郎（部長）'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
   });
@@ -143,8 +154,8 @@ void main() {
     tester,
   ) async {
     final container = await openEditor(tester);
-    await scrollTo(tester, find.text('寝坊時連絡先'));
-    await tester.tap(find.text('寝坊時連絡先'));
+    await openContactShare(tester);
+    await tester.tap(find.byKey(const ValueKey('contactRow')));
     await tester.pumpAndSettle();
 
     expect(
@@ -169,15 +180,26 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    final phone = tester.widget<SwitchListTile>(
-      find.widgetWithText(SwitchListTile, '電話'),
+    // Both routes that ride on the number die with it.
+    for (final label in const ['電話', 'SMS']) {
+      final row = tester.widget<SwitchListTile>(
+        find.widgetWithText(SwitchListTile, label),
+      );
+      expect(row.onChanged, isNull, reason: '$label: the number is gone');
+      expect(row.value, isFalse);
+    }
+    expect(find.text('この連絡先には電話番号がありません'), findsNWidgets(2));
+    // メール is untouched by the edit: it is greyed for the app-wide reason,
+    // not because this contact lost anything.
+    expect(
+      find.text(mailSendingUnconfiguredNote),
+      findsOneWidget,
+      reason: 'the address is still there; sending is what is unbuilt',
     );
-    expect(phone.onChanged, isNull, reason: 'the number is gone');
-    expect(phone.value, isFalse);
-    expect(find.text('この連絡先には電話番号がありません'), findsOneWidget);
-    expect(find.text('電話設定'), findsNothing);
-    expect(find.text('メール設定'), findsOneWidget, reason: 'mail still works');
+    expect(find.text('この連絡先にはメールアドレスがありません'), findsNothing);
 
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.byType(FloatingActionButton));
@@ -216,7 +238,11 @@ void main() {
           now: DateTime(2026, 8, 27, 7, 30),
         );
     expect(event, isNotNull);
-    expect(event!.contactName, '田中太郎（部長）');
+    expect(
+      event!.contactName,
+      oversleepTargetLabel(contactName: '田中太郎（部長）'),
+      reason: 'the log names the recipient with the phrase everything uses',
+    );
     expect(await events.forSession('s1'), hasLength(1));
   });
 }

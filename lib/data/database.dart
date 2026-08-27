@@ -46,6 +46,18 @@ class AlarmRows extends Table {
   /// ever read and written whole.
   TextColumn get oversleepContact => text().nullable()();
 
+  /// Stage C: the whole OversleepShare, one JSON blob for the same reason the
+  /// contact is one — it is read and written whole and nothing queries into it.
+  TextColumn get oversleepShare => text().nullable()();
+
+  /// How many minutes after the grace window the contact and the share go out.
+  ///
+  /// Nullable because a v6 row kept this number inside [oversleepContact]'s
+  /// JSON, where it belonged to the contact alone. Null means "read it out of
+  /// that blob, or take the default"; the writer always fills the column in,
+  /// so a row only ever reads as null once.
+  IntColumn get oversleepTriggerMinutes => integer().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -120,6 +132,29 @@ class ContactBookRows extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// The app-wide Discord 共有先 list, added in v7.
+///
+/// App-wide rather than per alarm: one server is worth registering once, and
+/// each alarm ticks the ones it posts to. As with the 連絡帳 there is
+/// deliberately **no foreign key** — an alarm holds ids, and an id with no row
+/// behind it is simply skipped when the list is read, so deleting a 共有先 can
+/// never break an alarm that pointed at it.
+class DiscordWebhookRows extends Table {
+  TextColumn get id => text()();
+
+  /// The full webhook URL including its token. Never leaves the device except
+  /// to Discord.
+  TextColumn get url => text()();
+
+  /// Typed by hand: Discord does not expose the server or channel name through
+  /// a webhook, so this is whatever the user calls it.
+  TextColumn get displayName => text()();
+  IntColumn get createdAtMs => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 /// Single-row tables. `id` is always 0.
 class WalletRows extends Table {
   IntColumn get id => integer()();
@@ -178,6 +213,7 @@ class GardenInventoryRows extends Table {
     GardenInventoryRows,
     ContactEventRows,
     ContactBookRows,
+    DiscordWebhookRows,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -190,7 +226,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(inMemoryExecutor());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   /// v1 → v2 adds the per alarm grace window. Both columns default to 1, which
   /// is the rule every existing row was written under, so no stored session's
@@ -211,6 +247,14 @@ class AppDatabase extends _$AppDatabase {
   /// ring could not remember the terms it fired under. Both columns are
   /// nullable and read as the pre-stage-B rule, so again no stored session's
   /// loss or outcome changes.
+  ///
+  /// v6 → v7 is the 実送信フェーズ1 schema change: the share blob, the shared
+  /// trigger delay, and the Discord 共有先 table. Every v6 row reads back under
+  /// exactly the rule it was written under — a null share is "announce this
+  /// nowhere", which is what a v6 alarm did, and a null delay is read out of
+  /// the contact blob that used to own it, so an alarm set to 猶予後7分 still
+  /// fires at seven minutes. The new table starts empty, so no alarm gains a
+  /// 共有先 it never had. No stored session's loss or outcome changes.
   ///
   /// v5 → v6 adds the 連絡帳 table. It is created empty and nothing else is
   /// touched: an alarm's contact stays exactly the JSON blob it already was,
@@ -251,6 +295,11 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 6) {
         await m.createTable(contactBookRows);
+      }
+      if (from < 7) {
+        await m.addColumn(alarmRows, alarmRows.oversleepShare);
+        await m.addColumn(alarmRows, alarmRows.oversleepTriggerMinutes);
+        await m.createTable(discordWebhookRows);
       }
     },
   );

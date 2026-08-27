@@ -54,6 +54,69 @@ void main() {
     });
   });
 
+  group('DiscordWebhookRepository', () {
+    DiscordWebhook webhook(String id, String name, {int day = 1}) =>
+        DiscordWebhook(
+          id: id,
+          url: 'https://discord.com/api/webhooks/$id/token',
+          displayName: name,
+          createdAt: DateTime(2026, 1, day),
+        );
+
+    test('save, read back in registration order, update and delete', () async {
+      final repo = (await testContainer()).read(
+        discordWebhookRepositoryProvider,
+      );
+
+      await repo.save(webhook('w2', '仕事用', day: 2));
+      await repo.save(webhook('w1', 'みんなのサーバー/#一般'));
+      expect(
+        (await repo.getAll()).map((w) => w.id),
+        ['w1', 'w2'],
+        reason: 'oldest first — a list that never moves is easier to search',
+      );
+      expect((await repo.getById('w1'))!.displayName, 'みんなのサーバー/#一般');
+      expect(await repo.getById('nope'), isNull);
+
+      await repo.save(
+        (await repo.getById('w1'))!.copyWith(displayName: '別のサーバー'),
+      );
+      expect((await repo.getById('w1'))!.displayName, '別のサーバー');
+      expect(
+        (await repo.getAll()).map((w) => w.id),
+        ['w1', 'w2'],
+        reason: 'renaming a row does not reorder the list',
+      );
+
+      await repo.delete('w1');
+      expect(await repo.getById('w1'), isNull);
+      expect((await repo.getAll()).single.id, 'w2');
+    });
+
+    test('the URL and its token survive the round trip', () async {
+      final repo = (await testContainer()).read(
+        discordWebhookRepositoryProvider,
+      );
+      await repo.save(webhook('w1', 'x'));
+      expect(
+        (await repo.getById('w1'))!.url,
+        'https://discord.com/api/webhooks/w1/token',
+      );
+      expect((await repo.getById('w1'))!.createdAt, DateTime(2026, 1));
+    });
+
+    test('watchAll emits on change', () async {
+      final repo = (await testContainer()).read(
+        discordWebhookRepositoryProvider,
+      );
+      expect(await repo.watchAll().first, isEmpty);
+
+      final done = expectLater(repo.watchAll(), emitsThrough(hasLength(1)));
+      await repo.save(webhook('w1', 'x'));
+      await done;
+    });
+  });
+
   group('AlarmRepository', () {
     test('save, read back, update and delete', () async {
       final repo = (await testContainer()).read(alarmRepositoryProvider);
@@ -65,6 +128,9 @@ void main() {
         repeatDays: {1, 3, 5},
         wakeCheck: WakeCheckType.math,
         kakugo: kakugo,
+        // Spelled out because the column is always written: a saved alarm
+        // never reads back with a null delay. The null case has its own test.
+        oversleepTriggerMinutes: defaultContactTriggerMinutes,
       );
       await repo.save(alarm);
 
@@ -91,6 +157,52 @@ void main() {
         const Alarm(id: 'slow', hour: 7, minute: 0, graceMinutes: 5),
       );
       expect((await repo.getById('slow'))!.graceMinutes, 5);
+    });
+
+    test('the share, the contact and the one delay round trip', () async {
+      final repo = (await testContainer()).read(alarmRepositoryProvider);
+      const alarm = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: kakugo,
+        contact: OversleepContact(
+          name: '母',
+          phone: '090-0000-0000',
+          phoneEnabled: true,
+          smsEnabled: true,
+          messageMode: MessageMode.custom,
+          message: '起きて',
+        ),
+        share: OversleepShare(
+          webhookIds: {'w1', 'w2'},
+          recordingPath: '/tmp/a.m4a',
+          recordingWaveform: [0.5],
+        ),
+        oversleepTriggerMinutes: 7,
+      );
+      await repo.save(alarm);
+      expect(await repo.getById('a1'), alarm);
+    });
+
+    test('a share with nowhere to post reads back as no share', () async {
+      final repo = (await testContainer()).read(alarmRepositoryProvider);
+      await repo.save(
+        const Alarm(id: 'a1', hour: 7, minute: 0, share: OversleepShare()),
+      );
+      expect((await repo.getById('a1'))!.share, isNull);
+    });
+
+    test('an alarm with no delay of its own reads back at the default', () async {
+      final repo = (await testContainer()).read(alarmRepositoryProvider);
+      await repo.save(const Alarm(id: 'a1', hour: 7, minute: 0));
+      final back = await repo.getById('a1');
+      expect(back!.oversleepTriggerMinutes, defaultContactTriggerMinutes);
+      expect(
+        back.triggerMinutes,
+        defaultContactTriggerMinutes,
+        reason: 'the writer always fills the column in',
+      );
     });
 
     test('every wake check, ノーマル included, round trips by name', () async {

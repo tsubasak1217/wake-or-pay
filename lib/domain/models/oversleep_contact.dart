@@ -17,8 +17,8 @@ int normalizeContactTriggerMinutes(int minutes) =>
 
 /// The longest a custom recording may run.
 ///
-/// A fixed limit rather than a setting: the recording is played down a phone
-/// line to somebody who is being told to go and wake a person up, and half a
+/// A fixed limit rather than a setting: the recording is attached to a message
+/// somebody reads while being told to go and wake a person up, and half a
 /// minute is already more than that takes. It also bounds the file, the
 /// waveform, and — more to the point — how long the recorder can sit open on
 /// the microphone if the user walks away from it.
@@ -46,12 +46,12 @@ List<double> normalizeWaveform(Iterable<double> samples) => [
     sample.isFinite ? sample.clamp(0.0, 1.0).toDouble() : 0.0,
 ];
 
-/// What the mail says: the app's own sentence, or the user's.
-enum MailMode { standard, custom }
-
-/// What the call says: a synthesised reading of the app's sentence, or the
-/// user's own recorded voice.
-enum PhoneMode { auto, custom }
+/// What the written message says: the app's own sentence, or the user's.
+///
+/// One mode for both mail and SMS since 改訂4. They carry the same body — a
+/// user who has written their own words has written them once — so two modes
+/// would only ever be a way for the two routes to disagree.
+enum MessageMode { standard, custom }
 
 String _hhmm(DateTime t) =>
     '${t.hour.toString().padLeft(2, '0')}:'
@@ -83,28 +83,33 @@ String defaultOversleepMessage({
     '${oversleepSubjectName(userName)} さんは ${_hhmm(at)} の'
     'アラームを解除できていません。寝坊しています。';
 
-/// The default mail body. The same sentence as the voice, under a subject tag
-/// so it is recognisable in an inbox.
+/// The default mail body. The same sentence as the SMS, under a subject tag so
+/// it is recognisable in an inbox.
 String defaultOversleepMailMessage({
   required String userName,
   required DateTime at,
 }) => '【Wake or Pay】${defaultOversleepMessage(userName: userName, at: at)}';
 
-/// The script the automated voice reads when there is no recording. No tag: a
-/// spoken 「【Wake or Pay】」 is noise.
-String defaultOversleepVoiceScript({
+/// The default SMS body. No tag: an SMS has no subject line to recognise it
+/// by, and 「【Wake or Pay】」 in the middle of a text message is noise.
+String defaultOversleepSmsMessage({
   required String userName,
   required DateTime at,
 }) => defaultOversleepMessage(userName: userName, at: at);
 
-/// One person to tell about one alarm's oversleeping, per spec 5 as revised.
+/// One person to tell about one alarm's oversleeping, per spec 11.4.
 ///
-/// One per alarm. Nothing is actually sent yet — [OversleepNotifier] logs the
+/// One per alarm. Nothing is actually sent yet — `OversleepNotifier` logs the
 /// trigger instead.
 ///
 /// The name and the two addresses are a **snapshot** of a 連絡帳 entry, kept
 /// here on purpose: deleting that entry from the book leaves this alarm still
 /// knowing who to call.
+///
+/// Since 改訂4 the phone route places a call and plays nothing — the point is
+/// that the contact's own voice comes out of the speaker — so the automated
+/// voice and its recording are gone, and the delay moved up to the alarm,
+/// which shares it with the 寝坊の共有.
 @immutable
 class OversleepContact {
   const OversleepContact({
@@ -114,12 +119,9 @@ class OversleepContact {
     this.email,
     this.phoneEnabled = false,
     this.emailEnabled = false,
-    this.mailMode = MailMode.standard,
-    this.mailMessage,
-    this.phoneMode = PhoneMode.auto,
-    this.recordingPath,
-    this.recordingWaveform = const [],
-    this.triggerMinutesAfterGrace = defaultContactTriggerMinutes,
+    this.smsEnabled = false,
+    this.messageMode = MessageMode.standard,
+    this.message,
   });
 
   /// The 連絡帳 entry this was copied from, when it came from the book. null
@@ -135,28 +137,14 @@ class OversleepContact {
   final bool phoneEnabled;
   final bool emailEnabled;
 
-  final MailMode mailMode;
+  /// SMS, to the same number [phoneEnabled] would ring.
+  final bool smsEnabled;
 
-  /// The user's own words, used only under [MailMode.custom].
-  final String? mailMessage;
+  final MessageMode messageMode;
 
-  final PhoneMode phoneMode;
-
-  /// A recording copied into the app's own storage, so it survives the
-  /// original file being deleted. Used only under [PhoneMode.custom].
-  final String? recordingPath;
-
-  /// The loudness of [recordingPath], 0..1, one reading every
-  /// [contactWaveformInterval]. Drawn behind the seek bar so the recording has
-  /// a shape and not just a length.
-  ///
-  /// Empty is a real and ordinary value: a device that will not report the
-  /// microphone level still records perfectly well, and the bar is simply
-  /// drawn flat. Nothing reads this except the drawing.
-  final List<double> recordingWaveform;
-
-  /// 0-60. Counted from the end of the grace window, not from the ring.
-  final int triggerMinutesAfterGrace;
+  /// The user's own words, used only under [MessageMode.custom]. One body for
+  /// both mail and SMS.
+  final String? message;
 
   bool get hasPhone => (phone ?? '').trim().isNotEmpty;
 
@@ -166,6 +154,8 @@ class OversleepContact {
   bool get willPhone => phoneEnabled && hasPhone;
 
   bool get willEmail => emailEnabled && hasEmail;
+
+  bool get willSms => smsEnabled && hasPhone;
 
   /// A contact with no name is not a contact. The editor refuses to save one,
   /// and this is the same rule for anything read back off disk.
@@ -181,14 +171,10 @@ class OversleepContact {
     bool clearEmail = false,
     bool? phoneEnabled,
     bool? emailEnabled,
-    MailMode? mailMode,
-    String? mailMessage,
-    bool clearMailMessage = false,
-    PhoneMode? phoneMode,
-    String? recordingPath,
-    bool clearRecordingPath = false,
-    List<double>? recordingWaveform,
-    int? triggerMinutesAfterGrace,
+    bool? smsEnabled,
+    MessageMode? messageMode,
+    String? message,
+    bool clearMessage = false,
   }) => OversleepContact(
     contactId: clearContactId ? null : (contactId ?? this.contactId),
     name: name ?? this.name,
@@ -196,19 +182,9 @@ class OversleepContact {
     email: clearEmail ? null : (email ?? this.email),
     phoneEnabled: phoneEnabled ?? this.phoneEnabled,
     emailEnabled: emailEnabled ?? this.emailEnabled,
-    mailMode: mailMode ?? this.mailMode,
-    mailMessage: clearMailMessage ? null : (mailMessage ?? this.mailMessage),
-    phoneMode: phoneMode ?? this.phoneMode,
-    recordingPath: clearRecordingPath
-        ? null
-        : (recordingPath ?? this.recordingPath),
-    // A cleared recording takes its waveform with it: there is nothing left
-    // for those bars to be the shape of.
-    recordingWaveform: clearRecordingPath
-        ? const []
-        : (recordingWaveform ?? this.recordingWaveform),
-    triggerMinutesAfterGrace:
-        triggerMinutesAfterGrace ?? this.triggerMinutesAfterGrace,
+    smsEnabled: smsEnabled ?? this.smsEnabled,
+    messageMode: messageMode ?? this.messageMode,
+    message: clearMessage ? null : (message ?? this.message),
   );
 
   Map<String, dynamic> toJson() => {
@@ -218,38 +194,35 @@ class OversleepContact {
     'email': email,
     'phoneEnabled': phoneEnabled,
     'emailEnabled': emailEnabled,
-    'mailMode': mailMode.name,
-    'mailMessage': mailMessage,
-    'phoneMode': phoneMode.name,
-    'recordingPath': recordingPath,
-    // Two decimals: a bar is a few pixels tall and nobody can see the third.
-    'recordingWaveform': [
-      for (final sample in recordingWaveform)
-        double.parse(sample.toStringAsFixed(2)),
-    ],
-    'triggerMinutesAfterGrace': normalizeContactTriggerMinutes(
-      triggerMinutesAfterGrace,
-    ),
+    'smsEnabled': smsEnabled,
+    'messageMode': messageMode.name,
+    'message': message,
   };
 
-  /// Reads both shapes of the JSON blob.
+  /// Reads every shape of the JSON blob this column has ever held.
   ///
   /// The pre-改訂2 shape had one `message` doing double duty as the mail body
-  /// and the voice script, and a `recordingPath` that replaced the script when
-  /// present. Those become **custom** mail and a **custom** recording, which is
-  /// what they meant; the routes are switched on for whichever address exists,
-  /// which is what the old app would have done with them.
+  /// and the voice script; 改訂2 split it into `mailMode`/`mailMessage` beside
+  /// a `phoneMode`/`recordingPath`. Both collapse back into the one body and
+  /// the one mode this class now has.
   ///
-  /// Like every other bound in this app the trigger window is re-clamped on the
-  /// way in, so a hand edited row cannot push it past an hour.
+  /// `phoneMode`, `recordingPath` and `recordingWaveform` are **read and
+  /// discarded**, per spec 11.4: the automated voice is gone, so a recording
+  /// made for it has nothing left to play on. The files themselves are swept
+  /// up at startup by `LegacyRecordingCleanup`.
+  ///
+  /// `triggerMinutesAfterGrace` is likewise not a field here any more — it
+  /// belongs to the alarm, which shares it with the 共有. The mapper digs it
+  /// out of the raw map on the way in; see `legacyTriggerMinutesIn`.
+  ///
+  /// SMS defaults to **off** for an old row: nobody who wrote one was asked
+  /// whether they wanted a text message, so the app must not decide they were.
   factory OversleepContact.fromJson(Map<String, dynamic> json) {
     final phone = json['phone'] as String?;
     final email = json['email'] as String?;
-    final mailMessage =
-        json['mailMessage'] as String? ?? json['message'] as String?;
-    final recordingPath = json['recordingPath'] as String?;
-    final hasMail = (mailMessage ?? '').trim().isNotEmpty;
-    final hasRecording = (recordingPath ?? '').trim().isNotEmpty;
+    final message =
+        json['message'] as String? ?? json['mailMessage'] as String?;
+    final hasMessage = (message ?? '').trim().isNotEmpty;
 
     return OversleepContact(
       contactId: json['contactId'] as String?,
@@ -260,24 +233,13 @@ class OversleepContact {
           json['phoneEnabled'] as bool? ?? (phone ?? '').trim().isNotEmpty,
       emailEnabled:
           json['emailEnabled'] as bool? ?? (email ?? '').trim().isNotEmpty,
-      mailMode:
-          _byName(MailMode.values, json['mailMode'] as String?) ??
-          (hasMail ? MailMode.custom : MailMode.standard),
-      mailMessage: mailMessage,
-      phoneMode:
-          _byName(PhoneMode.values, json['phoneMode'] as String?) ??
-          (hasRecording ? PhoneMode.custom : PhoneMode.auto),
-      recordingPath: recordingPath,
-      recordingWaveform: normalizeWaveform(
-        (json['recordingWaveform'] as List?)?.map(
-              (v) => (v as num?)?.toDouble() ?? 0.0,
-            ) ??
-            const <double>[],
-      ),
-      triggerMinutesAfterGrace: normalizeContactTriggerMinutes(
-        json['triggerMinutesAfterGrace'] as int? ??
-            defaultContactTriggerMinutes,
-      ),
+      smsEnabled: json['smsEnabled'] as bool? ?? false,
+      messageMode:
+          messageModeByName(
+            json['messageMode'] as String? ?? json['mailMode'] as String?,
+          ) ??
+          (hasMessage ? MessageMode.custom : MessageMode.standard),
+      message: message,
     );
   }
 
@@ -290,12 +252,9 @@ class OversleepContact {
       other.email == email &&
       other.phoneEnabled == phoneEnabled &&
       other.emailEnabled == emailEnabled &&
-      other.mailMode == mailMode &&
-      other.mailMessage == mailMessage &&
-      other.phoneMode == phoneMode &&
-      other.recordingPath == recordingPath &&
-      listEquals(other.recordingWaveform, recordingWaveform) &&
-      other.triggerMinutesAfterGrace == triggerMinutesAfterGrace;
+      other.smsEnabled == smsEnabled &&
+      other.messageMode == messageMode &&
+      other.message == message;
 
   @override
   int get hashCode => Object.hash(
@@ -305,64 +264,61 @@ class OversleepContact {
     email,
     phoneEnabled,
     emailEnabled,
-    mailMode,
-    mailMessage,
-    phoneMode,
-    recordingPath,
-    Object.hashAll(recordingWaveform),
-    triggerMinutesAfterGrace,
+    smsEnabled,
+    messageMode,
+    message,
   );
 
   @override
   String toString() =>
-      'OversleepContact($name, +${triggerMinutesAfterGrace}m after grace, '
-      'phone $phoneEnabled/$phoneMode, mail $emailEnabled/$mailMode)';
+      'OversleepContact($name, phone $phoneEnabled, sms $smsEnabled, '
+      'mail $emailEnabled, $messageMode)';
 }
 
 /// null in, null out; an unknown name also gives null, so a row written by a
 /// future version cannot crash a read.
-T? _byName<T extends Enum>(List<T> values, String? name) {
+MessageMode? messageModeByName(String? name) {
   if (name == null) return null;
-  for (final value in values) {
+  for (final value in MessageMode.values) {
     if (value.name == name) return value;
   }
   return null;
+}
+
+/// The custom body [contact] holds, or null when there is nothing usable
+/// there — an empty custom message is the same as never having written one.
+String? _customBody(OversleepContact contact) {
+  if (contact.messageMode != MessageMode.custom) return null;
+  final custom = contact.message?.trim() ?? '';
+  return custom.isEmpty ? null : custom;
 }
 
 /// The body of the mail that would go out at [at]. Pure.
 ///
 /// [userName] is only reached for by the default body; a custom one is the
 /// user's own words and is used exactly as written.
-String mailBodyFor(
+String oversleepMailBodyFor(
   OversleepContact contact,
   DateTime at, {
   required String userName,
-}) {
-  final custom = contact.mailMessage?.trim() ?? '';
-  return contact.mailMode == MailMode.custom && custom.isNotEmpty
-      ? custom
-      : defaultOversleepMailMessage(userName: userName, at: at);
-}
+}) =>
+    _customBody(contact) ??
+    defaultOversleepMailMessage(userName: userName, at: at);
 
-/// What the call would play: the recording's path under
-/// [PhoneMode.custom], and otherwise the script the voice reads. Pure.
-({String? recordingPath, String? script}) callContentFor(
+/// The body of the SMS that would go out at [at]. Pure.
+///
+/// The same custom words as the mail — the user wrote one message — and the
+/// untagged default when they wrote none.
+String oversleepSmsBodyFor(
   OversleepContact contact,
   DateTime at, {
   required String userName,
-}) {
-  final path = contact.recordingPath?.trim() ?? '';
-  if (contact.phoneMode == PhoneMode.custom && path.isNotEmpty) {
-    return (recordingPath: path, script: null);
-  }
-  return (
-    recordingPath: null,
-    script: defaultOversleepVoiceScript(userName: userName, at: at),
-  );
-}
+}) =>
+    _customBody(contact) ??
+    defaultOversleepSmsMessage(userName: userName, at: at);
 
 /// How the app reached out — or would have, while delivery is stubbed.
-enum ContactChannel { phone, email, log }
+enum ContactChannel { phone, sms, email, discord, log }
 
 /// One record of the app deciding to contact someone about an overslept alarm.
 @immutable
@@ -379,6 +335,9 @@ class ContactEvent {
   final String id;
   final String sessionId;
   final DateTime firedAt;
+
+  /// Who — or what — was told. A share-only alarm files this under the same
+  /// label the countdown said out loud, e.g. 「Discord 2件」.
   final String contactName;
   final ContactChannel channel;
 

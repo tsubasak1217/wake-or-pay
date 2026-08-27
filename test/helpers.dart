@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wake_or_pay/data/database.dart';
@@ -8,6 +11,7 @@ import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
+import 'package:wake_or_pay/services/discord_sender.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
 
 /// Overrides backing the app with an in-memory database and in-memory
@@ -165,3 +169,39 @@ class FakeVoicePlayer implements VoicePlayer {
     await _position.close();
   }
 }
+
+/// An HTTP client that never reaches the network.
+///
+/// Every registration form in this app talks to Discord, and a test that
+/// actually posted to a webhook would post into somebody's real channel. This
+/// answers from a table instead, and remembers what was asked for.
+class FakeHttpClient extends http.BaseClient {
+  FakeHttpClient({this.responses = const {}, this.throws = false});
+
+  /// URL → the body to answer with. A URL that is not in here answers 404.
+  final Map<String, String> responses;
+
+  /// True makes every request throw, which is what being offline looks like.
+  final bool throws;
+
+  final requested = <String>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final url = request.url.toString();
+    requested.add(url);
+    if (throws) throw const SocketException('offline');
+    final body = responses[url];
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body ?? '{}')),
+      body == null ? 404 : 200,
+      // Discord sends this, and without it `http` falls back to latin1 and
+      // turns a Japanese webhook name into mojibake — a fault in the fake, not
+      // in the code under test.
+      headers: const {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+}
+
+Override fakeHttpClientOverride(FakeHttpClient client) =>
+    httpClientProvider.overrideWithValue(client);

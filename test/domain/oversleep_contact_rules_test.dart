@@ -6,15 +6,34 @@ final firedAt = DateTime(2026, 8, 27, 7);
 DateTime at({int minutes = 0, int seconds = 0}) =>
     firedAt.add(Duration(minutes: minutes, seconds: seconds));
 
-const contact = OversleepContact(
-  name: '田中太郎',
-  phone: '090-0000-0000',
-  triggerMinutesAfterGrace: 10,
+const taro = OversleepContact(name: '田中太郎', phone: '090-0000-0000');
+
+/// The phrase every sentence below is built on, spelled out once so a test
+/// reads the same way the screen does.
+const target = '田中太郎 さん';
+
+const pledge = Kakugo(ratePerMinute: 100, cap: 1000);
+
+/// The alarm the rules are read off since 改訂4: the delay lives here, and so
+/// does the pledge without which nobody is told anything.
+Alarm alarm({
+  OversleepContact? contact = taro,
+  OversleepShare? share,
+  Kakugo? kakugo = pledge,
+  int? triggerMinutes = 10,
+}) => Alarm(
+  id: 'a1',
+  hour: 7,
+  minute: 0,
+  kakugo: kakugo,
+  contact: contact,
+  share: share,
+  oversleepTriggerMinutes: triggerMinutes,
 );
 
 AlarmSession session({
   int graceMinutes = 1,
-  Kakugo? kakugo = const Kakugo(ratePerMinute: 100, cap: 1000),
+  Kakugo? kakugo = pledge,
   List<DateTime> snoozes = const [],
   DateTime? currentRingAt,
 }) => AlarmSession(
@@ -31,9 +50,9 @@ void main() {
   group('contactTriggerAt', () {
     test('grace first, then the chosen delay', () {
       // 7:00 + 1 minute of grace + 10 = 7:11.
-      expect(contactTriggerAt(session(), contact), at(minutes: 11));
+      expect(contactTriggerAt(session(), alarm()), at(minutes: 11));
       expect(
-        contactTriggerAt(session(graceMinutes: 5), contact),
+        contactTriggerAt(session(graceMinutes: 5), alarm()),
         at(minutes: 15),
       );
     });
@@ -41,26 +60,40 @@ void main() {
     test('nobody to contact, nothing to schedule', () {
       expect(contactTriggerAt(session(), null), isNull);
       expect(
-        contactTriggerAt(session(), const OversleepContact(name: '  ')),
+        contactTriggerAt(session(), alarm(contact: null)),
+        isNull,
+        reason: 'a pledge with nobody on it tells nobody',
+      );
+      expect(
+        contactTriggerAt(
+          session(),
+          alarm(contact: const OversleepContact(name: '  ')),
+        ),
         isNull,
         reason: 'a nameless contact is not a contact',
+      );
+      expect(
+        contactTriggerAt(session(), alarm(kakugo: null)),
+        isNull,
+        reason: 'contacting is part of 覚悟の設定',
       );
     });
 
     test('a hand edited delay cannot escape 0-60', () {
       expect(
-        contactTriggerAt(
-          session(),
-          const OversleepContact(name: 'x', triggerMinutesAfterGrace: 9999),
-        ),
+        contactTriggerAt(session(), alarm(triggerMinutes: 9999)),
         at(minutes: 1 + maxContactTriggerMinutes),
       );
       expect(
-        contactTriggerAt(
-          session(),
-          const OversleepContact(name: 'x', triggerMinutesAfterGrace: -5),
-        ),
+        contactTriggerAt(session(), alarm(triggerMinutes: -5)),
         at(minutes: 1 + minContactTriggerMinutes),
+      );
+    });
+
+    test('a row with no delay of its own falls back to the default', () {
+      expect(
+        contactTriggerAt(session(), alarm(triggerMinutes: null)),
+        at(minutes: 1 + defaultContactTriggerMinutes),
       );
     });
 
@@ -68,18 +101,35 @@ void main() {
       expect(minContactTriggerMinutes, 0);
       // 7:00 + 1 minute of grace + 0 = 7:01, the first billable second.
       expect(
-        contactTriggerAt(
-          session(),
-          const OversleepContact(name: 'x', triggerMinutesAfterGrace: 0),
-        ),
+        contactTriggerAt(session(), alarm(triggerMinutes: 0)),
         at(minutes: 1),
       );
       expect(
-        contactTriggerAt(
-          session(graceMinutes: 5),
-          const OversleepContact(name: 'x', triggerMinutesAfterGrace: 0),
-        ),
+        contactTriggerAt(session(graceMinutes: 5), alarm(triggerMinutes: 0)),
         at(minutes: 5),
+      );
+    });
+
+    test('a share with no contact is scheduled just the same', () {
+      // 改訂4: an alarm that only announces itself to a Discord room is every
+      // bit as much a notification as one that calls a person.
+      expect(
+        contactTriggerAt(
+          session(),
+          alarm(
+            contact: null,
+            share: const OversleepShare(webhookIds: {'w1'}),
+          ),
+        ),
+        at(minutes: 11),
+      );
+      expect(
+        contactTriggerAt(
+          session(),
+          alarm(contact: null, share: const OversleepShare()),
+        ),
+        isNull,
+        reason: 'a share with nowhere to post is not a share',
       );
     });
 
@@ -90,7 +140,7 @@ void main() {
       test('規定時刻から加算し続ける: the timer does not stop', () {
         final s = session(snoozes: snoozed, currentRingAt: reRing);
         expect(
-          contactTriggerAt(s, contact),
+          contactTriggerAt(s, alarm()),
           at(minutes: 11),
           reason: 'still counted from the scheduled time',
         );
@@ -106,7 +156,7 @@ void main() {
           snoozes: snoozed,
           currentRingAt: reRing,
         );
-        expect(contactTriggerAt(s, contact), at(minutes: 18));
+        expect(contactTriggerAt(s, alarm()), at(minutes: 18));
       });
 
       test('a plain alarm always counts from firedAt', () {
@@ -115,7 +165,7 @@ void main() {
           snoozes: snoozed,
           currentRingAt: reRing,
         );
-        expect(contactTriggerAt(s, contact), at(minutes: 11));
+        expect(contactTriggerAt(s, alarm()), at(minutes: 11));
       });
     });
   });
@@ -123,19 +173,19 @@ void main() {
   group('contactRemaining and contactIsDue', () {
     test('counts down and then sits at zero', () {
       expect(
-        contactRemaining(firedAt, session(), contact),
+        contactRemaining(firedAt, session(), alarm()),
         const Duration(minutes: 11),
       );
       expect(
-        contactRemaining(at(minutes: 8, seconds: 30), session(), contact),
+        contactRemaining(at(minutes: 8, seconds: 30), session(), alarm()),
         const Duration(minutes: 2, seconds: 30),
       );
       expect(
-        contactRemaining(at(minutes: 11), session(), contact),
+        contactRemaining(at(minutes: 11), session(), alarm()),
         Duration.zero,
       );
       expect(
-        contactRemaining(at(minutes: 90), session(), contact),
+        contactRemaining(at(minutes: 90), session(), alarm()),
         Duration.zero,
       );
       expect(contactRemaining(firedAt, session(), null), isNull);
@@ -143,10 +193,10 @@ void main() {
 
     test('due exactly on the minute, not a second before', () {
       expect(
-        contactIsDue(at(minutes: 10, seconds: 59), session(), contact),
+        contactIsDue(at(minutes: 10, seconds: 59), session(), alarm()),
         isFalse,
       );
-      expect(contactIsDue(at(minutes: 11), session(), contact), isTrue);
+      expect(contactIsDue(at(minutes: 11), session(), alarm()), isTrue);
       expect(contactIsDue(at(minutes: 600), session(), null), isFalse);
     });
   });
@@ -197,13 +247,108 @@ void main() {
     });
   });
 
+  group('oversleepTargetLabel', () {
+    test('the person, the room, or both', () {
+      expect(oversleepTargetLabel(contactName: '田中太郎'), '田中太郎 さん');
+      expect(oversleepTargetLabel(webhookCount: 2), 'Discord 2件');
+      expect(
+        oversleepTargetLabel(contactName: '田中太郎', webhookCount: 2),
+        '田中太郎 さん と Discord 2件',
+      );
+    });
+
+    test('nobody at all is the empty phrase', () {
+      expect(oversleepTargetLabel(), '');
+      expect(oversleepTargetLabel(contactName: '   '), '');
+      expect(oversleepTargetLabel(webhookCount: 0), '');
+    });
+
+    test('the honorific rides with the name and never with the room', () {
+      expect(
+        oversleepTargetLabel(webhookCount: 1),
+        isNot(contains('さん')),
+        reason: '「Discord 1件 さん」 would be nonsense',
+      );
+    });
+
+    test('an alarm names only what it would actually notify', () {
+      const share = OversleepShare(webhookIds: {'w1', 'w2'});
+      expect(
+        oversleepTargetLabelForAlarm(alarm(share: share), const []),
+        '田中太郎 さん と Discord 2件',
+      );
+      expect(
+        oversleepTargetLabelForAlarm(alarm(contact: null, share: share), const [
+        ]),
+        'Discord 2件',
+      );
+      expect(oversleepTargetLabelForAlarm(alarm(), const []), '田中太郎 さん');
+      expect(
+        oversleepTargetLabelForAlarm(alarm(kakugo: null, share: share), const []),
+        '',
+        reason: 'no pledge, no notification, so nobody to name',
+      );
+    });
+
+    test('the label reads the live 連絡帳, not the snapshot', () {
+      final book = [
+        ContactEntry(
+          id: 'c1',
+          name: '田中太郎（部長）',
+          phone: '090-0000-0000',
+          createdAt: DateTime(2026),
+        ),
+      ];
+      final withId = alarm(
+        contact: const OversleepContact(
+          contactId: 'c1',
+          name: '古い名前',
+          phone: '090-0000-0000',
+        ),
+      );
+      expect(oversleepTargetLabelForAlarm(withId, book), '田中太郎（部長） さん');
+    });
+  });
+
   group('wording', () {
     test('the countdown line matches the spec sentence', () {
       expect(
-        contactCountdownLine(const Duration(minutes: 2, seconds: 30), contact),
+        contactCountdownLine(const Duration(minutes: 2, seconds: 30), target),
         'あと 2:30 で 田中太郎 さんに連絡が行きます',
       );
-      expect(contactCountdownLine(Duration.zero, contact), '田中太郎 さんに連絡が行きました');
+      expect(contactCountdownLine(Duration.zero, target), '田中太郎 さんに連絡が行きました');
+    });
+
+    test('a share-only alarm needs no further plumbing to read right', () {
+      final shareOnly = oversleepTargetLabelForAlarm(
+        alarm(contact: null, share: const OversleepShare(webhookIds: {'w1',
+          'w2'})),
+        const [],
+      );
+      expect(
+        contactCountdownLine(const Duration(minutes: 2, seconds: 30),
+            shareOnly),
+        'あと 2:30 で Discord 2件に連絡が行きます',
+      );
+      expect(
+        contactSpeechText(ContactSpeechCue.sent, shareOnly),
+        'Discord 2件に連絡しました',
+      );
+    });
+
+    test('both halves are named in one sentence', () {
+      final both = oversleepTargetLabelForAlarm(
+        alarm(share: const OversleepShare(webhookIds: {'w1'})),
+        const [],
+      );
+      expect(
+        contactCountdownLine(const Duration(minutes: 1), both),
+        'あと 1:00 で 田中太郎 さん と Discord 1件に連絡が行きます',
+      );
+      expect(
+        contactSpeechText(ContactSpeechCue.start, both, triggerMinutes: 7),
+        'このまま寝ていると、7分後に 田中太郎 さん と Discord 1件に連絡が行きます',
+      );
     });
 
     test('long delays read as hours and minutes, not as 65:00', () {
@@ -214,29 +359,37 @@ void main() {
 
     test('the spoken lines avoid numerals a TTS engine has to guess at', () {
       expect(
-        contactSpeechText(ContactSpeechCue.threeMinutes, contact),
+        contactSpeechText(ContactSpeechCue.threeMinutes, target),
         'あと3分で 田中太郎 さんに連絡が行きます',
       );
       expect(
-        contactSpeechText(ContactSpeechCue.oneMinute, contact),
+        contactSpeechText(ContactSpeechCue.oneMinute, target),
         'あと1分で 田中太郎 さんに連絡が行きます',
       );
       expect(
-        contactSpeechText(ContactSpeechCue.thirtySeconds, contact),
+        contactSpeechText(ContactSpeechCue.thirtySeconds, target),
         'あと30秒で 田中太郎 さんに連絡が行きます',
       );
       expect(
-        contactSpeechText(ContactSpeechCue.sent, contact),
+        contactSpeechText(ContactSpeechCue.sent, target),
         '田中太郎 さんに連絡しました',
       );
       expect(
-        contactSpeechText(ContactSpeechCue.start, contact),
+        contactSpeechText(ContactSpeechCue.start, target, triggerMinutes: 10),
         contains('10分後に 田中太郎 さんに連絡が行きます'),
       );
     });
 
+    test('the opening line cannot promise a delay the alarm cannot hold', () {
+      expect(
+        contactSpeechText(ContactSpeechCue.start, target, triggerMinutes: 9999),
+        contains('$maxContactTriggerMinutes分後に'),
+      );
+    });
+
     test('the notification admits that nothing was sent', () {
-      final text = contactSentNotificationText('田中太郎');
+      final text = contactSentNotificationText(target);
+      expect(text.title, '田中太郎 さんへの連絡');
       expect(text.body, '田中太郎 さんへの連絡が送信されました（開発中：実際には送信していません）');
     });
   });
@@ -278,16 +431,12 @@ void main() {
         contactId: 'c1',
         name: '古い名前',
         phone: '090-0000-0000',
-        mailMode: MailMode.custom,
-        mailMessage: '起こして',
-        phoneMode: PhoneMode.custom,
-        recordingPath: '/tmp/a.m4a',
-        triggerMinutesAfterGrace: 12,
+        messageMode: MessageMode.custom,
+        message: '起こして',
       );
       final live = resolveOversleepContact(rich, [entry()]);
-      expect(live.mailMessage, '起こして');
-      expect(live.recordingPath, '/tmp/a.m4a');
-      expect(live.triggerMinutesAfterGrace, 12);
+      expect(live.messageMode, MessageMode.custom);
+      expect(live.message, '起こして');
     });
 
     test('a deleted entry leaves the snapshot alone', () {
@@ -307,6 +456,18 @@ void main() {
       expect(live.willPhone, isFalse);
     });
 
+    test('a number deleted in the book takes the SMS with it', () {
+      const texting = OversleepContact(
+        contactId: 'c1',
+        name: '田中太郎',
+        phone: '090-0000-0000',
+        smsEnabled: true,
+      );
+      final live = resolveOversleepContact(texting, [entry(phone: null)]);
+      expect(live.smsEnabled, isFalse, reason: 'nothing left to text');
+      expect(live.willSms, isFalse);
+    });
+
     test('an address added in the book does not switch its route on', () {
       const mailOnly = OversleepContact(
         contactId: 'c1',
@@ -317,17 +478,21 @@ void main() {
       final live = resolveOversleepContact(mailOnly, [entry()]);
       expect(live.phone, '090-0000-0000', reason: 'now reachable');
       expect(live.phoneEnabled, isFalse, reason: 'but the user never asked');
+      expect(live.smsEnabled, isFalse);
     });
 
     test('resolveAlarmContact leaves a contactless alarm alone', () {
-      const alarm = Alarm(id: 'a', hour: 7, minute: 0);
-      expect(resolveAlarmContact(alarm, [entry()]), alarm);
+      const plain = Alarm(id: 'a', hour: 7, minute: 0);
+      expect(resolveAlarmContact(plain, [entry()]), plain);
     });
 
     test('the countdown line reads the resolved name', () {
       final live = resolveOversleepContact(snapshot, [entry(name: '新しい名前')]);
       expect(
-        contactCountdownLine(const Duration(minutes: 1), live),
+        contactCountdownLine(
+          const Duration(minutes: 1),
+          oversleepTargetLabel(contactName: live.name),
+        ),
         'あと 1:00 で 新しい名前 さんに連絡が行きます',
       );
     });

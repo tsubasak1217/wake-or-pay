@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'kakugo.dart';
 import 'oversleep_contact.dart';
+import 'oversleep_share.dart';
 import 'snooze.dart';
 
 /// How the user proves they are actually awake.
@@ -75,6 +76,8 @@ class Alarm {
     this.soundId = defaultSoundId,
     this.kakugo,
     this.contact,
+    this.share,
+    this.oversleepTriggerMinutes,
   });
 
   final String id;
@@ -101,13 +104,38 @@ class Alarm {
   /// Who to tell if this alarm is slept through. One per alarm, null = nobody.
   final OversleepContact? contact;
 
+  /// Where to announce it, per spec 11.6. null = nowhere.
+  final OversleepShare? share;
+
+  /// Minutes after the grace window before both the contact and the share go
+  /// out, 0-60. **One number for both**, per spec 11.3.
+  ///
+  /// Nullable because a v6 row kept it inside the contact JSON: null means
+  /// "whatever that row said, or the default". Everything that reads it goes
+  /// through [triggerMinutes], and the mapper fills the column in on the way
+  /// out, so a row only reads as null once.
+  final int? oversleepTriggerMinutes;
+
   bool get isKakugo => kakugo != null;
 
   bool get canSnooze => snooze != null;
 
+  /// The delay actually used, clamped. Pure.
+  int get triggerMinutes => normalizeContactTriggerMinutes(
+    oversleepTriggerMinutes ?? defaultContactTriggerMinutes,
+  );
+
   /// A contact only means anything under a pledge — it is part of 覚悟の設定 —
   /// and only when it names someone.
   bool get willContact => isKakugo && (contact?.isUsable ?? false);
+
+  /// The same rule for the group half: a pledge, and at least one 共有先.
+  bool get willShare => isKakugo && (share?.isUsable ?? false);
+
+  /// Whether anybody at all hears about this alarm being slept through. The
+  /// countdown, the speech and the dispatcher all key off this rather than off
+  /// [willContact]: a share-only alarm is every bit as much a notification.
+  bool get willNotify => willContact || willShare;
 
   Alarm copyWith({
     String? id,
@@ -124,6 +152,9 @@ class Alarm {
     bool clearKakugo = false,
     OversleepContact? contact,
     bool clearContact = false,
+    OversleepShare? share,
+    bool clearShare = false,
+    int? oversleepTriggerMinutes,
   }) => Alarm(
     id: id ?? this.id,
     hour: hour ?? this.hour,
@@ -136,6 +167,9 @@ class Alarm {
     soundId: soundId ?? this.soundId,
     kakugo: clearKakugo ? null : (kakugo ?? this.kakugo),
     contact: clearContact ? null : (contact ?? this.contact),
+    share: clearShare ? null : (share ?? this.share),
+    oversleepTriggerMinutes:
+        oversleepTriggerMinutes ?? this.oversleepTriggerMinutes,
   );
 
   Map<String, dynamic> toJson() => {
@@ -150,6 +184,8 @@ class Alarm {
     'soundId': soundId,
     'kakugo': kakugo?.toJson(),
     'contact': contact?.toJson(),
+    'share': share?.toJson(),
+    'oversleepTriggerMinutes': oversleepTriggerMinutes,
   };
 
   factory Alarm.fromJson(Map<String, dynamic> json) => Alarm(
@@ -177,6 +213,18 @@ class Alarm {
         : OversleepContact.fromJson(
             (json['contact'] as Map).cast<String, dynamic>(),
           ),
+    share: json['share'] == null
+        ? null
+        : OversleepShare.fromJson(
+            (json['share'] as Map).cast<String, dynamic>(),
+          ),
+    // The v6 shape kept this inside the contact blob, so an alarm read from
+    // that JSON falls back to it before the default.
+    oversleepTriggerMinutes:
+        (json['oversleepTriggerMinutes'] as int?) ??
+        (json['contact'] is Map
+            ? (json['contact'] as Map)['triggerMinutesAfterGrace'] as int?
+            : null),
   );
 
   @override
@@ -192,7 +240,9 @@ class Alarm {
       other.snooze == snooze &&
       other.soundId == soundId &&
       other.kakugo == kakugo &&
-      other.contact == contact;
+      other.contact == contact &&
+      other.share == share &&
+      other.oversleepTriggerMinutes == oversleepTriggerMinutes;
 
   @override
   int get hashCode => Object.hash(
@@ -207,11 +257,13 @@ class Alarm {
     soundId,
     kakugo,
     contact,
+    share,
+    oversleepTriggerMinutes,
   );
 
   @override
   String toString() =>
       'Alarm($id, $hour:$minute, days $repeatDays, enabled $enabled, '
       '$wakeCheck, grace ${graceMinutes}m, $snooze, $soundId, $kakugo, '
-      '$contact)';
+      '$contact, $share, +${triggerMinutes}m)';
 }

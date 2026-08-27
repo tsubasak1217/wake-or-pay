@@ -14,16 +14,27 @@ import '../helpers.dart';
 const contact = OversleepContact(
   name: '田中太郎',
   phone: '090-0000-0000',
-  triggerMinutesAfterGrace: 1,
+  phoneEnabled: true,
 );
 
+/// The delay lives on the alarm since 改訂4, because one number drives both the
+/// personal contact and the group share.
 const withContact = Alarm(
   id: 'a1',
   hour: 7,
   minute: 0,
   kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
   contact: contact,
+  oversleepTriggerMinutes: 1,
 );
+
+/// Every sentence about the notification names the recipient with this one
+/// phrase, so the screen and the voice can never disagree about who is told.
+final target = oversleepTargetLabel(contactName: contact.name);
+
+/// The opening line is drawn against the alarm's own delay, not the default.
+String speech(ContactSpeechCue cue) =>
+    contactSpeechText(cue, target, triggerMinutes: 1);
 
 /// The ring screen ticks every second, so pumpAndSettle would never settle.
 Future<void> settle(WidgetTester tester, {int frames = 12}) async {
@@ -90,10 +101,10 @@ void main() {
     );
 
     expect(countdownText(tester), startsWith('あと '));
-    expect(countdownText(tester), endsWith('で 田中太郎 さんに連絡が行きます'));
+    expect(countdownText(tester), endsWith('で $targetに連絡が行きます'));
     expect(
       r.speaker.spoken.first,
-      contactSpeechText(ContactSpeechCue.start, contact),
+      speech(ContactSpeechCue.start),
       reason: 'the opening line lands at ring start, not on a later tick',
     );
   });
@@ -119,7 +130,13 @@ void main() {
   testWidgets('a plain alarm never contacts anyone', (tester) async {
     final r = await openRinging(
       tester,
-      alarm: const Alarm(id: 'a1', hour: 7, minute: 0, contact: contact),
+      alarm: const Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        contact: contact,
+        oversleepTriggerMinutes: 1,
+      ),
       ringingFor: const Duration(seconds: 20),
     );
 
@@ -137,8 +154,8 @@ void main() {
     );
 
     expect(r.speaker.spoken, [
-      contactSpeechText(ContactSpeechCue.start, contact),
-      contactSpeechText(ContactSpeechCue.thirtySeconds, contact),
+      speech(ContactSpeechCue.start),
+      speech(ContactSpeechCue.thirtySeconds),
     ], reason: 'only the mark actually reached is spoken, not the ones passed');
   });
 
@@ -152,22 +169,26 @@ void main() {
     // The dispatch is asynchronous; a few more ticks let it land.
     await tick(tester, seconds: 3);
 
-    expect(countdownText(tester), '田中太郎 さんに連絡が行きました');
+    expect(countdownText(tester), '$targetに連絡が行きました');
     expect(
       r.speaker.spoken,
-      contains(contactSpeechText(ContactSpeechCue.sent, contact)),
+      contains(speech(ContactSpeechCue.sent)),
     );
 
     final events = await r.container
         .read(contactEventRepositoryProvider)
         .getRecent();
     expect(events, hasLength(1), reason: 'once per session');
-    expect(events.single.contactName, '田中太郎');
+    expect(
+      events.single.contactName,
+      target,
+      reason: 'the log names the recipient with the same phrase the voice did',
+    );
 
     final posted = notifierOf(r.container).posted;
     expect(
       posted.map((p) => p.body),
-      contains('田中太郎 さんへの連絡が送信されました（開発中：実際には送信していません）'),
+      contains('$targetへの連絡が送信されました（開発中：実際には送信していません）'),
     );
 
     // Ticking on does not send a second one.

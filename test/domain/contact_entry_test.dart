@@ -75,29 +75,61 @@ void main() {
   });
 
   group('OversleepContact', () {
-    test(
-      'the pre-改訂2 JSON shape reads as custom mail and custom recording',
-      () {
-        final old = OversleepContact.fromJson(const {
-          'name': '母',
-          'phone': '090-0000-0000',
-          'email': null,
-          'triggerMinutesAfterGrace': 5,
-          'message': '起きて',
-          'recordingPath': '/tmp/a.m4a',
-        });
+    test('the 改訂2 JSON shape collapses into one message and one mode', () {
+      // What a v6 row actually held: a mail mode beside a phone mode, a
+      // recording for the automated voice, and the trigger delay. Only the
+      // first survives 改訂4; the rest are read and discarded here, and the
+      // delay is dug back out by the mapper, not by this model.
+      final old = OversleepContact.fromJson(const {
+        'name': '母',
+        'phone': '090-0000-0000',
+        'mailMode': 'custom',
+        'mailMessage': '起きて',
+        'phoneMode': 'custom',
+        'recordingPath': '/tmp/a.m4a',
+        'recordingWaveform': [0.5],
+        'triggerMinutesAfterGrace': 7,
+      });
 
-        expect(old.name, '母');
-        expect(old.contactId, isNull);
-        expect(old.phoneEnabled, isTrue, reason: 'it had a number');
-        expect(old.emailEnabled, isFalse);
-        expect(old.mailMode, MailMode.custom);
-        expect(old.mailMessage, '起きて');
-        expect(old.phoneMode, PhoneMode.custom);
-        expect(old.recordingPath, '/tmp/a.m4a');
-        expect(old.triggerMinutesAfterGrace, 5);
-      },
-    );
+      expect(old.name, '母');
+      expect(old.contactId, isNull);
+      expect(old.phoneEnabled, isTrue, reason: 'it had a number');
+      expect(old.emailEnabled, isFalse);
+      expect(
+        old.smsEnabled,
+        isFalse,
+        reason: 'nobody who wrote that row was asked about SMS',
+      );
+      expect(old.messageMode, MessageMode.custom);
+      expect(old.message, '起きて');
+      for (final gone in const [
+        'recordingPath',
+        'recordingWaveform',
+        'phoneMode',
+        'triggerMinutesAfterGrace',
+      ]) {
+        expect(
+          old.toJson().containsKey(gone),
+          isFalse,
+          reason: 'the retired 電話設定 leaves no $gone behind',
+        );
+      }
+    });
+
+    test('the pre-改訂2 shape had one bare 「message」 doing both jobs', () {
+      final old = OversleepContact.fromJson(const {
+        'name': '母',
+        'phone': '090-0000-0000',
+        'email': null,
+        'triggerMinutesAfterGrace': 5,
+        'message': '起きて',
+        'recordingPath': '/tmp/a.m4a',
+      });
+      expect(old.messageMode, MessageMode.custom);
+      expect(old.message, '起きて');
+      expect(old.phoneEnabled, isTrue);
+      expect(old.smsEnabled, isFalse);
+    });
 
     test(
       'an old contact with neither message nor recording is all defaults',
@@ -107,10 +139,11 @@ void main() {
           'email': 'haha@example.com',
           'triggerMinutesAfterGrace': 2,
         });
-        expect(old.mailMode, MailMode.standard);
-        expect(old.phoneMode, PhoneMode.auto);
+        expect(old.messageMode, MessageMode.standard);
+        expect(old.message, isNull);
         expect(old.emailEnabled, isTrue);
         expect(old.phoneEnabled, isFalse);
+        expect(old.smsEnabled, isFalse);
       },
     );
 
@@ -122,11 +155,9 @@ void main() {
         email: 'taro@example.com',
         phoneEnabled: true,
         emailEnabled: false,
-        mailMode: MailMode.custom,
-        mailMessage: 'おきて',
-        phoneMode: PhoneMode.custom,
-        recordingPath: '/tmp/a.m4a',
-        triggerMinutesAfterGrace: 0,
+        smsEnabled: true,
+        messageMode: MessageMode.custom,
+        message: 'おきて',
       );
       expect(OversleepContact.fromJson(contact.toJson()), contact);
     });
@@ -144,6 +175,21 @@ void main() {
       expect(live.willPhone, isTrue);
     });
 
+    test('the SMS rides on the same number the call would ring', () {
+      const texting = OversleepContact(
+        name: 'x',
+        phone: '090',
+        smsEnabled: true,
+      );
+      expect(texting.willSms, isTrue);
+      expect(texting.willPhone, isFalse, reason: 'a separate toggle');
+      expect(
+        const OversleepContact(name: 'x', smsEnabled: true).willSms,
+        isFalse,
+        reason: 'no number to text',
+      );
+    });
+
     test('the default message names the app user and the alarm time', () {
       expect(
         defaultOversleepMailMessage(
@@ -153,12 +199,12 @@ void main() {
         '【Wake or Pay】田中太郎 さんは 07:05 のアラームを解除できていません。寝坊しています。',
       );
       expect(
-        defaultOversleepVoiceScript(
+        defaultOversleepSmsMessage(
           userName: '山田花子',
           at: DateTime(2026, 8, 27, 6),
         ),
         '山田花子 さんは 06:00 のアラームを解除できていません。寝坊しています。',
-        reason: 'the voice does not read the subject tag out loud',
+        reason: 'an SMS has no subject line to tag',
       );
     });
 
@@ -174,7 +220,7 @@ void main() {
         'アラームを解除できていません。寝坊しています。',
       );
       expect(
-        defaultOversleepVoiceScript(userName: '  ', at: at),
+        defaultOversleepSmsMessage(userName: '  ', at: at),
         '$oversleepUserNameFallback さんは 07:05 のアラームを解除できていません。寝坊しています。',
       );
     });
@@ -184,12 +230,12 @@ void main() {
       const contact = OversleepContact(name: '田中太郎', email: 'a@b.c');
       for (final userName in ['山田花子', '']) {
         expect(
-          mailBodyFor(contact, at, userName: userName),
+          oversleepMailBodyFor(contact, at, userName: userName),
           isNot(contains('田中太郎')),
           reason: 'Tanaka receives the mail; it is not about Tanaka',
         );
         expect(
-          callContentFor(contact, at, userName: userName).script,
+          oversleepSmsBodyFor(contact, at, userName: userName),
           isNot(contains('田中太郎')),
         );
       }
@@ -199,20 +245,20 @@ void main() {
       final at = DateTime(2026, 8, 27, 7);
       const blank = OversleepContact(
         name: 'x',
-        mailMode: MailMode.custom,
-        mailMessage: '   ',
+        messageMode: MessageMode.custom,
+        message: '   ',
       );
       expect(
-        mailBodyFor(blank, at, userName: 'u'),
+        oversleepMailBodyFor(blank, at, userName: 'u'),
         defaultOversleepMailMessage(userName: 'u', at: at),
         reason: 'an empty custom message is not a message',
       );
       expect(
-        mailBodyFor(
+        oversleepMailBodyFor(
           const OversleepContact(
             name: 'x',
-            mailMode: MailMode.custom,
-            mailMessage: 'おきて',
+            messageMode: MessageMode.custom,
+            message: 'おきて',
           ),
           at,
           userName: 'u',
@@ -220,8 +266,8 @@ void main() {
         'おきて',
       );
       expect(
-        mailBodyFor(
-          const OversleepContact(name: 'x', mailMessage: 'おきて'),
+        oversleepMailBodyFor(
+          const OversleepContact(name: 'x', message: 'おきて'),
           at,
           userName: 'u',
         ),
@@ -230,22 +276,25 @@ void main() {
       );
     });
 
-    test('the call plays the recording only under カスタム録音', () {
+    test('the mail and the SMS carry the one body the user wrote', () {
       final at = DateTime(2026, 8, 27, 7);
       const custom = OversleepContact(
         name: 'x',
-        phoneMode: PhoneMode.custom,
-        recordingPath: '/tmp/a.m4a',
+        messageMode: MessageMode.custom,
+        message: 'おきて',
       );
+      expect(oversleepSmsBodyFor(custom, at, userName: 'u'), 'おきて');
       expect(
-        callContentFor(custom, at, userName: 'u').recordingPath,
-        '/tmp/a.m4a',
+        oversleepSmsBodyFor(custom, at, userName: 'u'),
+        oversleepMailBodyFor(custom, at, userName: 'u'),
+        reason: 'one message, written once',
       );
-      expect(callContentFor(custom, at, userName: 'u').script, isNull);
-
-      const auto = OversleepContact(name: 'x', recordingPath: '/tmp/a.m4a');
-      expect(callContentFor(auto, at, userName: 'u').recordingPath, isNull);
-      expect(callContentFor(auto, at, userName: 'u').script, isNotNull);
+      // The defaults differ only by the subject tag the inbox needs.
+      const plain = OversleepContact(name: 'x');
+      expect(
+        oversleepMailBodyFor(plain, at, userName: 'u'),
+        '【Wake or Pay】${oversleepSmsBodyFor(plain, at, userName: 'u')}',
+      );
     });
   });
 }
