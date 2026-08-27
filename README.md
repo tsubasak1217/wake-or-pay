@@ -5,7 +5,65 @@
 寝坊した分だけアラームコインが燃え、その額が「おじさん」の収益として表示される目覚まし。
 Phase 0（端末内完結・サーバーなし・Android のみ）の実装。
 
-仕様は [`docs/MVP_SPEC.md`](docs/MVP_SPEC.md) が正。
+仕様は [`docs/MVP_SPEC.md`](docs/MVP_SPEC.md) が正。お庭は [`docs/GARDEN_SPEC.md`](docs/GARDEN_SPEC.md)。
+
+## 画面構成（下タブ 3 つ）
+
+**アラーム**（既存のホーム、初期表示）／**お庭**／**ウォレット**（履歴と設定への入口）。
+鳴動画面とリザルト画面はタブの外の全画面ルートなので、鳴っている間はタブバーが出ない。
+模様替え・種屋・設定・アラーム編集も同じく全画面で開く。
+
+## お庭（起床テラリウム）
+
+起床の積み重ねを眺められる箱庭。ガラス容器の中に 8×6 の地面があり、そこにアイテムを飾る。
+
+- **積み重ねの帯**：`🔥 連続起床 N日（最高 M日）` と `👨 寝坊 K回`
+- **連続起床日数**はセッション履歴から純粋関数 `computeStreak` で毎回導出する。**保存しない。**
+  その日のセッションが全部 success の日だけ成功日。**アラームを設定しなかった日は途切れない**
+  （休日に 0 に戻らない）が、failed が 1 つでもあればその日で途切れる。
+- **植物は連続起床で育つ**：0 芽 → 1 若葉（3日）→ 2 つぼみ（7日）→ 3 開花（14日）。
+  途切れた日に **1 段階だけ**戻り、0 より下には行かない（枯れない）。判定はその株を**置いた日から**
+  の記録だけを畳み込むので、長いストリークの途中に置いた新しい株がいきなり開花することはない。
+- **おじさんの小屋は寝坊回数で豪華になる**：`hutStageFor(totalOversleeps)` が
+  0〜2 / 3〜9 / 10〜19 / 20〜 で 🛖 → 👞 → 🏠 → 🏰。境界は `ojisanLine` と同一で、
+  ずれないことをテストで固定している。
+- **住人**：おじさんが空きセルを数秒ごとに歩く。タップで現在のセリフを吹き出しで言う。
+  当たり判定には関与しない（模様替え中は `IgnorePointer` で完全に外れる）。
+- **模様替え**：棚からドラッグして置く／置いたものをドラッグで動かす／棚へ戻すとしまう。
+  置けないセルは赤、置けるセルは緑。**「完了」を押すまで保存されない**（下書きを 1 トランザクションで書く）。
+- **種屋**：ご褒美トークンでカタログのアイテムと交換する。**コイン残高は表示しないし使えない。**
+- 初回起動時に無料配布：苔1・小石2・小さな植物1（植物は地面の中央に配置済み）。
+
+### プレースホルダーの差し替え方針
+
+いまの見た目はすべて仮で、差し替え先は 3 か所に閉じている。
+
+| いまの実装 | 差し替え先 |
+|---|---|
+| `lib/features/garden/terrarium_painter.dart` | ガラス容器と土。`CustomPainter` を丸ごと絵に置き換える。レイアウトはここに依存していない |
+| `GardenItemTile`（`garden_board.dart`） | アイテム 1 個の見た目（色付き角丸矩形＋絵文字＋名前）。スプライトに置き換える |
+| `GardenItemDef.emoji`（`garden_catalog.dart`） | 仮の絵文字。アセット名に置き換える。`id` だけが DB に入るので、名前・価格・見た目は自由に変えてよい |
+
+小屋（🛖👞🏠🏰）と住人（👨）の絵文字も同じく仮。小屋は**アイテムではない**ので地面の 8×6 には
+乗らず、地面の上のせりに常設で描いている（配置ルールをアイテムだけの話に保つため）。
+
+### 入手ロジックの差し替えポイント
+
+**アイテムの入手は仮実装。** 種屋でトークンと交換できるだけで、今後ゲーム性のある仕組みに
+差し替える前提になっている。差し替え対象は 1 か所だけ：
+
+```
+lib/features/garden/item_source.dart   abstract class GardenItemSource
+```
+
+`offers()` / `canAcquire()` / `acquire()` の 3 つだけが入手の入口で、棚も地面も種屋も
+**在庫を読むだけ**。実装（`SeedShopItemSource`）を差し替えれば入手方法ごと変わる。
+差し替えるときも次の 2 つは維持すること：
+
+1. **コインでは何も買えない**（コインは人質であって通貨ではない）。
+2. **広告視聴・スタミナ・ルーレット・課金で解放される要素を持ち込まない。**
+   `test/features/garden_test.dart` などがこの 5 語（広告・スタミナ・ルーレット・課金・コインで購入）
+   が UI に出ないことを回帰テストしている。
 
 ## 起床猶予（graceMinutes）
 
@@ -59,10 +117,19 @@ drift のコード生成物 `lib/data/database.g.dart` はリポジトリにコ�
 dart run build_runner build
 ```
 
-現在のスキーマは **v2**。v1 → v2 で `alarm_rows` と `alarm_session_rows` に `grace_minutes`
-（既定 1）を追加した。既存の行はすべて「猶予 1 分」＝従来と同じルールで書かれているので、
-移行によって過去のセッションの損失額が変わることはない。
-`test/data/migration_test.dart` が v1 のスキーマを手で作って移行を通し、これを検証している。
+現在のスキーマは **v3**。
+
+- **v1 → v2**：`alarm_rows` と `alarm_session_rows` に `grace_minutes`（既定 1）を追加。
+  既存の行はすべて「猶予 1 分」＝従来と同じルールで書かれているので、移行によって過去の
+  セッションの損失額が変わることはない。
+- **v2 → v3**：お庭の 2 テーブル `garden_placement_rows`（配置済み）と
+  `garden_inventory_rows`（手持ち）を追加。**移行では空のまま作る**だけで、初回配布は
+  `GardenRepository.grantInitialIfNeeded` が行う。こうすると更新してきた既存インストールも
+  新規インストールと同じ無料アイテムを受け取る。配布済みフラグは shared_preferences
+  （`garden.initialGrantDone`）にあるので、庭を意図的に空にしても再配布されない。
+
+`test/data/migration_test.dart` が v1 と v2 のスキーマを手で作って移行を通し、
+既存の行が変わらないことと新しいテーブルが書けることを検証している。
 
 ## ビルドと実行
 
@@ -108,8 +175,11 @@ APK は `build/app/outputs/flutter-apk/app-debug.apk` に出力される。
 ```
 lib/
   main.dart              起動、Riverpod コンテナ、AlarmService の起動
-  app/                   router.dart, theme.dart, theme_controller.dart
+  app/                   router.dart（下タブ）, shell_scaffold.dart, theme.dart,
+                         theme_controller.dart
   domain/                models/ と純粋ロジック
+    garden.dart          computeStreak / growthStageFor / hutStageFor / canPlace / exchange
+    garden_catalog.dart  アイテム定義の静的カタログと初回配布
     loss_calculator.dart lossAt / billableMinutes / graceRemaining / judgeStatus
                          / finalizeSession / recoverSession
     ojisan.dart          成長セリフ
@@ -123,6 +193,10 @@ lib/
     session_service.dart セッションの開始と確定（ウォレット／おじさんの更新）
     alarm_settings_builder.dart  純粋関数：Alarm → AlarmSettings、予約判断
   features/              alarms / ringing / result / wallet / settings
+    garden/              garden_screen（表示）, garden_edit_screen（模様替え）,
+                         seed_shop_screen（種屋）, garden_board（容器と地面）,
+                         terrarium_painter, garden_controller,
+                         item_source.dart ← 入手ロジックの差し替え口
 test/                    domain・data・services・features のテスト
 ```
 
@@ -136,6 +210,16 @@ test/                    domain・data・services・features のテスト
 - [x] step 6 Home / AlarmEdit / Wallet / Settings（テーマ交換）
 - [x] step 7 README
 
+お庭（Phase 0.5、`docs/GARDEN_SPEC.md` の実装順）：
+
+- [x] 1 下タブ 3 つ化（既存ルートのパスは変更なし）
+- [x] 2 ドメイン（カタログ・ストリーク・成長・配置可否・交換）＋単体テスト
+- [x] 3 永続化（schemaVersion 3）＋初回配布
+- [x] 4 お庭画面（容器・帯・住人）
+- [x] 5 模様替え
+- [x] 6 種屋
+- [x] 7 README
+
 エミュレータで「実機で確認すべきこと」の 5 項目を確認済み（クラッシュなし）。
 その際に見つかった不具合（60分の安全弁で自動確定した**一回限り**アラームが ON のまま翌日に
 再武装される）は修正済みだが、**この修正後の復旧経路は単体テストでしか検証していない**
@@ -145,10 +229,10 @@ test/                    domain・data・services・features のテスト
 
 | ファイル | 内容 |
 |---|---|
-| `test/domain/` | 損失計算・成功失敗判定・復旧・成長セリフ・トークン・次回鳴動時刻・起床確認・表示整形 |
-| `test/data/` | 5 リポジトリ（インメモリ DB ＋ モック preferences） |
+| `test/domain/` | 損失計算・成功失敗判定・復旧・成長セリフ・トークン・次回鳴動時刻・起床確認・表示整形／お庭（ストリーク・成長段階・小屋段階・配置可否・交換） |
+| `test/data/` | 6 リポジトリ（インメモリ DB ＋ モック preferences）、v1→v2→v3 のマイグレーション |
 | `test/services/` | `buildAlarmSettings` / `platformAlarmId` / `scheduleActionFor` / セッション確定と復旧 / 鳴動後のアラーム後始末 |
-| `test/features/` | 鳴動〜解除〜リザルトの通し、AlarmEdit 保存 → Home 反映、ウォレット、テーマ交換 |
+| `test/features/` | 鳴動〜解除〜リザルトの通し、AlarmEdit 保存 → Home 反映、ウォレット、テーマ交換、下タブ遷移、お庭の表示・模様替えのドラッグ・種屋の交換、売り物文言の回帰 |
 | `test/app/` | テーマ切替と永続化 |
 
 ## 既知の制約
@@ -168,6 +252,13 @@ test/                    domain・data・services・features のテスト
   再武装は解除時（`AlarmService.stopRinging`）に行う。
 - 通知アイコンは指定していないため、アプリアイコンが使われる（`alarm` パッケージのフォールバック）。
 - ローカライズ基盤（arb）は未導入。文言は日本語のハードコード。
+- **お庭の絵はすべて仮**（単色図形＋絵文字）。上の「プレースホルダーの差し替え方針」を参照。
+- **お庭のドロップ位置は指を置いたセルが左下**になる。2×2 のアイテムは指の位置から右上に伸びるので、
+  見た目より半セルぶんずれて感じることがある。1×1 では起きない。
+- **模様替えに「元に戻す」はない**（仕様どおり）。完了を押さずに戻れば下書きごと捨てられる。
+- **地面から棚に戻したアイテムは成長がリセットされる。** 配置 ID ごと消えるので、置き直すと芽から。
+- おじさんの小屋は地面の 8×6 の外（上のせり）に描いている。配置ルールをアイテムだけの話に
+  保つための単純化で、仕様の「常設」は満たしている。
 
 ## 今後（Phase 1 以降、本 MVP のスコープ外）
 
