@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/router.dart';
 import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
@@ -54,6 +56,14 @@ class WalletScreen extends ConsumerWidget {
               '課金は未実装です。このボタンは開発用で、製品版には入りません。',
               style: theme.textTheme.bodySmall,
             ),
+          ),
+          const Divider(height: 32),
+          // Settings live on this tab; Home keeps its own shortcut too.
+          ListTile(
+            leading: const Icon(Icons.tune),
+            title: const Text('設定・テーマ'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(AppRoute.settings),
           ),
           const Divider(height: 32),
           Padding(

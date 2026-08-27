@@ -4,16 +4,19 @@ import 'package:go_router/go_router.dart';
 
 import '../features/alarms/alarm_edit_screen.dart';
 import '../features/alarms/home_screen.dart';
+import '../features/garden/garden_screen.dart';
 import '../features/result/result_screen.dart';
 import '../features/ringing/ringing_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/wallet/wallet_screen.dart';
+import 'shell_scaffold.dart';
 
 class AppRoute {
   const AppRoute._();
 
   static const home = '/';
   static const alarmNew = '/alarm/new';
+  static const garden = '/garden';
   static const wallet = '/wallet';
   static const settings = '/settings';
 
@@ -32,10 +35,37 @@ GoRouter createAppRouter() => GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: AppRoute.home,
   routes: [
-    GoRoute(
-      path: AppRoute.home,
-      builder: (context, state) => const HomeScreen(),
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          ShellScaffold(navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoute.home,
+              builder: (context, state) => const HomeScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoute.garden,
+              builder: (context, state) => const GardenScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoute.wallet,
+              builder: (context, state) => const WalletScreen(),
+            ),
+          ],
+        ),
+      ],
     ),
+    // Outside the shell: full screen, no tab bar.
     GoRoute(
       path: '/alarm/new',
       builder: (context, state) => const AlarmEditScreen(),
@@ -54,10 +84,6 @@ GoRouter createAppRouter() => GoRouter(
       path: '/result/:sessionId',
       builder: (context, state) =>
           ResultScreen(sessionId: state.pathParameters['sessionId']!),
-    ),
-    GoRoute(
-      path: AppRoute.wallet,
-      builder: (context, state) => const WalletScreen(),
     ),
     GoRoute(
       path: AppRoute.settings,

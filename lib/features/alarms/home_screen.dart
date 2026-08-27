@@ -56,8 +56,10 @@ class _BalanceBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final wallet = ref.watch(walletProvider).valueOrNull ?? const Wallet();
+    // The wallet is a tab now, so this bar only shows the balance and hands
+    // over to that tab rather than pushing a second copy of the screen.
     return InkWell(
-      onTap: () => context.push(AppRoute.wallet),
+      onTap: () => context.go(AppRoute.wallet),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
         child: Row(
@@ -66,7 +68,6 @@ class _BalanceBar extends ConsumerWidget {
             const SizedBox(width: 24),
             Text('🎁 ${wallet.tokens}'),
             const Spacer(),
-            const Text('ウォレット'),
             const Icon(Icons.chevron_right),
           ],
         ),
