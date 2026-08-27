@@ -46,9 +46,7 @@ void main() {
 
     test('the button goes away on the last allowed press', () {
       for (var used = 0; used <= 4; used++) {
-        final s = session(
-          snoozes: [for (var i = 0; i < used; i++) firedAt],
-        );
+        final s = session(snoozes: [for (var i = 0; i < used; i++) firedAt]);
         expect(canSnoozeNow(alarm, s), used < 3, reason: '$used used');
         expect(snoozesRemaining(alarm, s), used < 3 ? 3 - used : 0);
       }
@@ -61,9 +59,7 @@ void main() {
         minute: 0,
         snooze: Snooze(maxCount: 99),
       );
-      final used = session(
-        snoozes: [for (var i = 0; i < 10; i++) firedAt],
-      );
+      final used = session(snoozes: [for (var i = 0; i < 10; i++) firedAt]);
       expect(canSnoozeNow(cheat, used), isFalse, reason: 'clamped to 10');
     });
   });
@@ -140,10 +136,10 @@ void main() {
     test('the re-ring time reads as a clock, zero padded', () {
       expect(snoozeUntilLabel(DateTime(2026, 8, 27, 7, 5)), 'スヌーズ中 7:05');
       expect(snoozeUntilLabel(DateTime(2026, 8, 27, 23, 0)), 'スヌーズ中 23:00');
-      expect(
-        snoozeNotificationText(DateTime(2026, 8, 27, 7, 5)),
-        (title: 'スヌーズ中', body: '7:05 に再鳴動'),
-      );
+      expect(snoozeNotificationText(DateTime(2026, 8, 27, 7, 5)), (
+        title: 'スヌーズ中',
+        body: '7:05 に再鳴動',
+      ));
     });
 
     test('a pledge with a penalty puts the price on the button', () {

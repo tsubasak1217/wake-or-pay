@@ -29,14 +29,11 @@ DateTime nextRingAt(DateTime now, Snooze snooze) =>
 /// The press time goes in the list — that is what the penalty counts — and
 /// `currentRingAt` becomes the re-ring, which is what the reset clock mode
 /// bills from and what the contact timer follows.
-AlarmSession applySnooze(
-  AlarmSession session,
-  DateTime now,
-  Snooze snooze,
-) => session.copyWith(
-  snoozes: [...session.snoozes, now],
-  currentRingAt: nextRingAt(now, snooze),
-);
+AlarmSession applySnooze(AlarmSession session, DateTime now, Snooze snooze) =>
+    session.copyWith(
+      snoozes: [...session.snoozes, now],
+      currentRingAt: nextRingAt(now, snooze),
+    );
 
 /// A session that is snoozed and not yet back: still ringing as far as the
 /// database is concerned, but silent, and not something to put on screen. Pure.
@@ -54,10 +51,8 @@ String snoozeUntilLabel(DateTime ringAt) =>
     'スヌーズ中 ${snoozeRingAtLabel(ringAt)}';
 
 /// The notification posted when the button is pressed, per spec 4. Pure.
-({String title, String body}) snoozeNotificationText(DateTime ringAt) => (
-  title: 'スヌーズ中',
-  body: '${snoozeRingAtLabel(ringAt)} に再鳴動',
-);
+({String title, String body}) snoozeNotificationText(DateTime ringAt) =>
+    (title: 'スヌーズ中', body: '${snoozeRingAtLabel(ringAt)} に再鳴動');
 
 /// What the snooze button says. Pure.
 ///

@@ -273,8 +273,7 @@ class _RingingBody extends ConsumerWidget {
               // wake check above is the way out of this screen, and snoozing
               // is the thing you do instead of getting up.
               alarm.maybeWhen(
-                data: (data) =>
-                    data != null && canSnoozeNow(data, session)
+                data: (data) => data != null && canSnoozeNow(data, session)
                     ? _SnoozeButton(session: session, onSnooze: onSnooze)
                     : const SizedBox.shrink(),
                 orElse: () => const SizedBox.shrink(),

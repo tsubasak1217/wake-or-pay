@@ -181,10 +181,7 @@ void main() {
   testWidgets('clearing the wake check cancels a contact that had not fired', (
     tester,
   ) async {
-    final r = await openRinging(
-      tester,
-      ringingFor: const Duration(seconds: 5),
-    );
+    final r = await openRinging(tester, ringingFor: const Duration(seconds: 5));
 
     await tester.longPress(find.text('解除'));
     await tester.pump(const Duration(seconds: 6));

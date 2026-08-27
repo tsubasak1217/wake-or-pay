@@ -6,18 +6,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models.dart';
 import '../../services/voice_recorder.dart';
-import 'widgets/slider_number_field.dart';
+import 'contact_book_screen.dart';
+import 'edit_sub_screens.dart';
+import 'widgets/settings_island.dart';
 
-/// 寝坊時連絡先: who is told when the oversleeping runs long, and what they are
-/// told.
+/// 寝坊時の連絡設定: who is told when the oversleeping runs long, on which
+/// routes, and in whose words.
+///
+/// Three islands, per 改訂2:
+///
+/// * 寝坊時の連絡設定 — the person, when, and the two routes
+/// * メール設定 — only while メール is on
+/// * 電話設定 — only while 電話 is on
+///
+/// The person is picked from the 連絡帳 and **copied** into the alarm: name,
+/// number and address. Deleting them from the book afterwards leaves this
+/// alarm still able to reach them.
 ///
 /// Like every other editor sub-screen the value is local while the screen is
 /// open and handed back exactly once, when it closes — which covers the app
 /// bar's back button and the system back gesture alike, because both go through
 /// [PopScope].
-///
-/// A contact with no name is not a contact, so an empty 名前 commits null: that
-/// is how the user removes one.
 class ContactSubScreen extends ConsumerStatefulWidget {
   const ContactSubScreen({
     super.key,
@@ -37,24 +46,25 @@ class ContactSubScreen extends ConsumerStatefulWidget {
 }
 
 class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
-  late final TextEditingController _name = TextEditingController(
-    text: widget.initial?.name ?? '',
+  late String? _contactId = widget.initial?.contactId;
+  late String _name = widget.initial?.name ?? '';
+  late String? _phone = widget.initial?.phone;
+  late String? _email = widget.initial?.email;
+
+  late bool _phoneEnabled = widget.initial?.phoneEnabled ?? false;
+  late bool _emailEnabled = widget.initial?.emailEnabled ?? false;
+
+  late MailMode _mailMode = widget.initial?.mailMode ?? MailMode.standard;
+  late final TextEditingController _mailMessage = TextEditingController(
+    text: widget.initial?.mailMessage ?? '',
   );
-  late final TextEditingController _phone = TextEditingController(
-    text: widget.initial?.phone ?? '',
-  );
-  late final TextEditingController _email = TextEditingController(
-    text: widget.initial?.email ?? '',
-  );
-  late final TextEditingController _message = TextEditingController(
-    text: widget.initial?.message ?? '',
-  );
+
+  late PhoneMode _phoneMode = widget.initial?.phoneMode ?? PhoneMode.auto;
+  late String? _recordingPath = widget.initial?.recordingPath;
 
   late int _trigger = normalizeContactTriggerMinutes(
-    widget.initial?.triggerMinutesAfterGrace ?? minContactTriggerMinutes,
+    widget.initial?.triggerMinutesAfterGrace ?? defaultContactTriggerMinutes,
   );
-
-  late String? _recordingPath = widget.initial?.recordingPath;
 
   bool _recording = false;
   bool _playing = false;
@@ -66,42 +76,71 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
   @override
   void initState() {
     super.initState();
-    _playbackSubscription = ref
-        .read(voicePlayerProvider)
-        .playing
-        .listen((on) {
-          if (mounted) setState(() => _playing = on);
-        });
+    _playbackSubscription = ref.read(voicePlayerProvider).playing.listen((on) {
+      if (mounted) setState(() => _playing = on);
+    });
   }
 
   @override
   void dispose() {
     _playbackSubscription?.cancel();
-    _name.dispose();
-    _phone.dispose();
-    _email.dispose();
-    _message.dispose();
+    _mailMessage.dispose();
     super.dispose();
   }
 
-  /// Empty is null throughout: a blank field means "not given", never "".
-  String? _trimmedOrNull(TextEditingController controller) {
-    final text = controller.text.trim();
-    return text.isEmpty ? null : text;
-  }
+  bool get _hasPhone => (_phone ?? '').trim().isNotEmpty;
+
+  bool get _hasEmail => (_email ?? '').trim().isNotEmpty;
+
+  bool get _hasContact => _name.trim().isNotEmpty;
 
   OversleepContact? get _value {
-    final name = _name.text.trim();
-    if (name.isEmpty) return null;
+    if (!_hasContact) return null;
+    final message = _mailMessage.text.trim();
     return OversleepContact(
-      name: name,
-      phone: _trimmedOrNull(_phone),
-      email: _trimmedOrNull(_email),
-      triggerMinutesAfterGrace: normalizeContactTriggerMinutes(_trigger),
-      message: _trimmedOrNull(_message),
+      contactId: _contactId,
+      name: _name.trim(),
+      phone: _phone,
+      email: _email,
+      // A route can never be on without an address behind it, whatever the
+      // stored value said: the toggle for it is not even reachable.
+      phoneEnabled: _phoneEnabled && _hasPhone,
+      emailEnabled: _emailEnabled && _hasEmail,
+      mailMode: _mailMode,
+      mailMessage: message.isEmpty ? null : message,
+      phoneMode: _phoneMode,
       recordingPath: _recordingPath,
+      triggerMinutesAfterGrace: normalizeContactTriggerMinutes(_trigger),
     );
   }
+
+  Future<void> _pickContact() async {
+    final picked = await Navigator.of(context).push<ContactEntry>(
+      MaterialPageRoute(
+        builder: (_) => ContactBookScreen(selectedId: _contactId),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _contactId = picked.id;
+      _name = picked.name;
+      _phone = picked.phone;
+      _email = picked.email;
+      // Picking somebody means wanting to reach them: every route they have an
+      // address for starts on, and one they do not have stays off.
+      _phoneEnabled = picked.hasPhone;
+      _emailEnabled = picked.hasEmail;
+    });
+  }
+
+  void _clearContact() => setState(() {
+    _contactId = null;
+    _name = '';
+    _phone = null;
+    _email = null;
+    _phoneEnabled = false;
+    _emailEnabled = false;
+  });
 
   void _showError(String message) {
     setState(() => _error = message);
@@ -168,10 +207,11 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     return '録音なし';
   }
 
+  String get _triggerLabel => _trigger == 0 ? '猶予後すぐ' : '猶予後 $_trigger分';
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasRecording = _recordingPath != null;
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -188,133 +228,63 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
-            TextField(
-              key: const ValueKey('contactName'),
-              controller: _name,
-              decoration: const InputDecoration(
-                labelText: '名前',
-                helperText: '名前を消すと連絡先そのものが外れます',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey('contactPhone'),
-              controller: _phone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: '電話番号',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey('contactEmail'),
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'メールアドレス',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text('連絡するタイミング', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              '起床猶予が切れてから何分後に連絡するかです。鳴り始めからではありません。',
-              style: theme.textTheme.bodyMedium,
-            ),
-            SliderNumberField(
-              value: _trigger,
-              min: minContactTriggerMinutes,
-              max: maxContactTriggerMinutes,
-              suffix: '分',
-              semanticLabel: '連絡するタイミング',
-              onChanged: (v) => setState(() => _trigger = v),
-            ),
-            Text(
-              '$minContactTriggerMinutes〜$maxContactTriggerMinutes分',
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              key: const ValueKey('contactMessage'),
-              controller: _message,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'メッセージ',
-                helperText: 'メールの本文、そして自動音声で読み上げる原稿になります',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text('録音', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              '自分の声で伝えたいときに録音します。文章の代わりにこの音声が流れます。',
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 8),
-            Row(
+            SettingsIsland(
+              title: '寝坊時の連絡設定',
               children: [
-                Icon(
-                  _recording ? Icons.fiber_manual_record : Icons.mic_none,
-                  color: _recording ? theme.colorScheme.error : null,
+                SettingRow(
+                  key: const ValueKey('contactPickRow'),
+                  label: '連絡先',
+                  value: _hasContact ? _name : 'なし',
+                  onTap: _pickContact,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _recordingStatus,
-                  key: const ValueKey('contactRecordingStatus'),
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: _recording ? theme.colorScheme.error : null,
+                SettingRow(
+                  key: const ValueKey('contactTriggerRow'),
+                  label: '送信タイミング',
+                  value: _triggerLabel,
+                  onTap: () => pushEditorSubScreen(
+                    context,
+                    NumberSubScreen(
+                      title: '送信タイミング',
+                      initial: _trigger,
+                      min: minContactTriggerMinutes,
+                      max: maxContactTriggerMinutes,
+                      suffix: '分',
+                      description:
+                          '起床猶予が切れてから何分後に連絡するかです。鳴り始めからではありません。'
+                          '0分なら、猶予が切れたその瞬間に連絡します。',
+                      onCommit: (v) => setState(() => _trigger = v),
+                    ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  key: const ValueKey('contactRecordStart'),
-                  onPressed: _recording ? null : _startRecording,
-                  icon: const Icon(Icons.mic),
-                  label: const Text('録音開始'),
+                SettingSwitchRow(
+                  label: '電話',
+                  value: _phoneEnabled && _hasPhone,
+                  enabled: _hasPhone,
+                  subtitle: _hasPhone ? null : 'この連絡先には電話番号がありません',
+                  onChanged: (v) => setState(() => _phoneEnabled = v),
                 ),
-                OutlinedButton.icon(
-                  key: const ValueKey('contactRecordStop'),
-                  onPressed: _recording ? _stopRecording : null,
-                  icon: const Icon(Icons.stop),
-                  label: const Text('停止'),
-                ),
-                OutlinedButton.icon(
-                  key: const ValueKey('contactRecordPlay'),
-                  onPressed: hasRecording && !_recording ? _play : null,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('再生'),
-                ),
-                OutlinedButton.icon(
-                  key: const ValueKey('contactRecordDelete'),
-                  onPressed: hasRecording && !_recording
-                      ? _deleteRecording
-                      : null,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('削除'),
+                SettingSwitchRow(
+                  label: 'メール',
+                  value: _emailEnabled && _hasEmail,
+                  enabled: _hasEmail,
+                  subtitle: _hasEmail ? null : 'この連絡先にはメールアドレスがありません',
+                  onChanged: (v) => setState(() => _emailEnabled = v),
                 ),
               ],
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.error,
+            if (_emailEnabled && _hasEmail) _mailIsland(theme),
+            if (_phoneEnabled && _hasPhone) _phoneIsland(theme),
+            if (_hasContact)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('contactClear'),
+                  onPressed: _clearContact,
+                  icon: const Icon(Icons.person_off_outlined),
+                  label: const Text('連絡先を外す'),
                 ),
               ),
-            ],
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
             Text(
               '現在は実際の送信は行いません。発火した記録がアプリ内に残るだけです'
               '（次のフェーズでサーバー送信に対応予定）。',
@@ -325,4 +295,174 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
       ),
     );
   }
+
+  Widget _mailIsland(ThemeData theme) => SettingsIsland(
+    title: 'メール設定',
+    children: [
+      _ModeTile(
+        key: const ValueKey('mailModeStandard'),
+        label: 'デフォルト',
+        description: 'アプリが用意した文面を送ります。',
+        selected: _mailMode == MailMode.standard,
+        onTap: () => setState(() => _mailMode = MailMode.standard),
+      ),
+      _ModeTile(
+        key: const ValueKey('mailModeCustom'),
+        label: 'カスタムメッセージ',
+        description: '自分の言葉で書いた文面を送ります。',
+        selected: _mailMode == MailMode.custom,
+        onTap: () => setState(() => _mailMode = MailMode.custom),
+      ),
+      if (_mailMode == MailMode.custom)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: TextField(
+            key: const ValueKey('contactMailMessage'),
+            controller: _mailMessage,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'メッセージ',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        )
+      else
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Text(
+            '例：${defaultOversleepMailMessage(name: _hasContact ? _name : '田中太郎', at: DateTime(2026, 1, 1, 7))}',
+            key: const ValueKey('contactMailPreview'),
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+    ],
+  );
+
+  Widget _phoneIsland(ThemeData theme) {
+    final hasRecording = _recordingPath != null;
+    return SettingsIsland(
+      title: '電話設定',
+      children: [
+        _ModeTile(
+          key: const ValueKey('phoneModeAuto'),
+          label: '自動音声',
+          description: 'アプリが用意した文面を合成音声で読み上げます。',
+          selected: _phoneMode == PhoneMode.auto,
+          onTap: () => setState(() => _phoneMode = PhoneMode.auto),
+        ),
+        _ModeTile(
+          key: const ValueKey('phoneModeCustom'),
+          label: 'カスタム録音',
+          description: '自分の声で録音したものを流します。',
+          selected: _phoneMode == PhoneMode.custom,
+          onTap: () => setState(() => _phoneMode = PhoneMode.custom),
+        ),
+        if (_phoneMode == PhoneMode.custom)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      _recording ? Icons.fiber_manual_record : Icons.mic_none,
+                      color: _recording ? theme.colorScheme.error : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _recordingStatus,
+                      key: const ValueKey('contactRecordingStatus'),
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: _recording ? theme.colorScheme.error : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      key: const ValueKey('contactRecordStart'),
+                      onPressed: _recording ? null : _startRecording,
+                      icon: const Icon(Icons.mic),
+                      label: const Text('録音開始'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('contactRecordStop'),
+                      onPressed: _recording ? _stopRecording : null,
+                      icon: const Icon(Icons.stop),
+                      label: const Text('停止'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('contactRecordPlay'),
+                      onPressed: hasRecording && !_recording ? _play : null,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('再生'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('contactRecordDelete'),
+                      onPressed: hasRecording && !_recording
+                          ? _deleteRecording
+                          : null,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('削除'),
+                    ),
+                  ],
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Text(
+              '読み上げる文：${defaultOversleepVoiceScript(name: _hasContact ? _name : '田中太郎', at: DateTime(2026, 1, 1, 7))}',
+              key: const ValueKey('contactVoicePreview'),
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One of the two modes an island offers. A radio in everything but the
+/// widget: [Radio] would need a group above it, and the row is already the
+/// group.
+class _ModeTile extends StatelessWidget {
+  const _ModeTile({
+    super.key,
+    required this.label,
+    required this.description,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String description;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    onTap: onTap,
+    leading: Icon(
+      selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+      color: selected ? Theme.of(context).colorScheme.primary : null,
+    ),
+    title: Text(label),
+    subtitle: Text(description),
+  );
 }

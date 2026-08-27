@@ -5,6 +5,7 @@ import '../domain/models.dart';
 import 'database.dart';
 import 'repositories/alarm_repository.dart';
 import 'repositories/alarm_session_repository.dart';
+import 'repositories/contact_book_repository.dart';
 import 'repositories/contact_event_repository.dart';
 import 'repositories/garden_repository.dart';
 import 'repositories/ojisan_repository.dart';
@@ -33,6 +34,10 @@ final alarmSessionRepositoryProvider = Provider(
 
 final contactEventRepositoryProvider = Provider(
   (ref) => ContactEventRepository(ref.watch(appDatabaseProvider)),
+);
+
+final contactBookRepositoryProvider = Provider(
+  (ref) => ContactBookRepository(ref.watch(appDatabaseProvider)),
 );
 
 final walletRepositoryProvider = Provider(
@@ -88,6 +93,11 @@ final ringingSessionsProvider = StreamProvider<List<AlarmSession>>(
 /// The oversleep contact log, newest first. Shown in the wallet history.
 final contactEventsProvider = StreamProvider<List<ContactEvent>>(
   (ref) => ref.watch(contactEventRepositoryProvider).watchRecent(),
+);
+
+/// The 連絡帳, already in よみがな order.
+final contactBookProvider = StreamProvider<List<ContactEntry>>(
+  (ref) => ref.watch(contactBookRepositoryProvider).watchAll(),
 );
 
 final sessionByIdProvider = FutureProvider.family<AlarmSession?, String>(

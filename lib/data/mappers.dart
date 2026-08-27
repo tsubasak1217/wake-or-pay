@@ -151,6 +151,28 @@ extension ContactEventMapper on ContactEvent {
   );
 }
 
+extension ContactBookRowMapper on ContactBookRow {
+  ContactEntry toModel() => ContactEntry(
+    id: id,
+    name: name,
+    reading: reading,
+    phone: phone,
+    email: email,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
+  );
+}
+
+extension ContactEntryMapper on ContactEntry {
+  ContactBookRowsCompanion toCompanion() => ContactBookRowsCompanion(
+    id: Value(id),
+    name: Value(name),
+    reading: Value(reading),
+    phone: Value(phone),
+    email: Value(email),
+    createdAtMs: Value(createdAt.millisecondsSinceEpoch),
+  );
+}
+
 extension AlarmSessionRowMapper on AlarmSessionRow {
   AlarmSession toModel() => AlarmSession(
     id: id,

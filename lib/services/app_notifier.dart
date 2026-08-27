@@ -132,9 +132,7 @@ class LocalAppNotifier implements AppNotifier {
 /// Overridden in tests with a [RecordingNotifier], and in `main()` with the
 /// real one — so widget tests never reach the plugin, and a plugin failure on
 /// device is swallowed by [SafeNotifier] rather than aborting a snooze.
-final appNotifierProvider = Provider<AppNotifier>(
-  (ref) => RecordingNotifier(),
-);
+final appNotifierProvider = Provider<AppNotifier>((ref) => RecordingNotifier());
 
 Override localAppNotifierOverride() =>
     appNotifierProvider.overrideWithValue(SafeNotifier(LocalAppNotifier()));

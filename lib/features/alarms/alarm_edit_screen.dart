@@ -339,10 +339,7 @@ class _KakugoToggleRow extends ConsumerWidget {
           .read(alarmDraftProvider(seed).notifier)
           .update(
             (a) => v
-                ? a.copyWith(
-                    kakugo:
-                        a.kakugo ?? defaultKakugo,
-                  )
+                ? a.copyWith(kakugo: a.kakugo ?? defaultKakugo)
                 : a.copyWith(clearKakugo: true),
           ),
     );
@@ -724,9 +721,9 @@ class _RateRow extends ConsumerWidget {
               .read(alarmDraftProvider(seed).notifier)
               .update(
                 (a) => a.copyWith(
-                  kakugo:
-                      (a.kakugo ?? defaultKakugo)
-                          .copyWith(ratePerMinute: v),
+                  kakugo: (a.kakugo ?? defaultKakugo).copyWith(
+                    ratePerMinute: v,
+                  ),
                 ),
               ),
         ),
@@ -770,9 +767,7 @@ class _CapRow extends ConsumerWidget {
               .read(alarmDraftProvider(seed).notifier)
               .update(
                 (a) => a.copyWith(
-                  kakugo:
-                      (a.kakugo ?? defaultKakugo)
-                          .copyWith(cap: v),
+                  kakugo: (a.kakugo ?? defaultKakugo).copyWith(cap: v),
                 ),
               ),
         ),

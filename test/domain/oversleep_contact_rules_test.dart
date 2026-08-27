@@ -47,7 +47,7 @@ void main() {
       );
     });
 
-    test('a hand edited delay cannot escape 1-60', () {
+    test('a hand edited delay cannot escape 0-60', () {
       expect(
         contactTriggerAt(
           session(),
@@ -58,9 +58,28 @@ void main() {
       expect(
         contactTriggerAt(
           session(),
-          const OversleepContact(name: 'x', triggerMinutesAfterGrace: 0),
+          const OversleepContact(name: 'x', triggerMinutesAfterGrace: -5),
         ),
         at(minutes: 1 + minContactTriggerMinutes),
+      );
+    });
+
+    test('0 means the moment the grace runs out', () {
+      expect(minContactTriggerMinutes, 0);
+      // 7:00 + 1 minute of grace + 0 = 7:01, the first billable second.
+      expect(
+        contactTriggerAt(
+          session(),
+          const OversleepContact(name: 'x', triggerMinutesAfterGrace: 0),
+        ),
+        at(minutes: 1),
+      );
+      expect(
+        contactTriggerAt(
+          session(graceMinutes: 5),
+          const OversleepContact(name: 'x', triggerMinutesAfterGrace: 0),
+        ),
+        at(minutes: 5),
       );
     });
 
@@ -140,10 +159,7 @@ void main() {
         isNull,
         reason: 'not yet at three minutes',
       );
-      expect(
-        cueFor(const Duration(minutes: 3)),
-        ContactSpeechCue.threeMinutes,
-      );
+      expect(cueFor(const Duration(minutes: 3)), ContactSpeechCue.threeMinutes);
       expect(
         cueFor(const Duration(minutes: 1, seconds: 1)),
         ContactSpeechCue.threeMinutes,
@@ -154,7 +170,10 @@ void main() {
         cueFor(const Duration(seconds: 30)),
         ContactSpeechCue.thirtySeconds,
       );
-      expect(cueFor(const Duration(seconds: 1)), ContactSpeechCue.thirtySeconds);
+      expect(
+        cueFor(const Duration(seconds: 1)),
+        ContactSpeechCue.thirtySeconds,
+      );
       expect(cueFor(Duration.zero), ContactSpeechCue.sent);
       expect(cueFor(const Duration(seconds: -5)), ContactSpeechCue.sent);
     });
@@ -184,10 +203,7 @@ void main() {
         contactCountdownLine(const Duration(minutes: 2, seconds: 30), contact),
         'あと 2:30 で 田中太郎 さんに連絡が行きます',
       );
-      expect(
-        contactCountdownLine(Duration.zero, contact),
-        '田中太郎 さんに連絡が行きました',
-      );
+      expect(contactCountdownLine(Duration.zero, contact), '田中太郎 さんに連絡が行きました');
     });
 
     test('long delays read as hours and minutes, not as 65:00', () {

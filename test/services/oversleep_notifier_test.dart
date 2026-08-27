@@ -10,7 +10,7 @@ import '../helpers.dart';
 const contact = OversleepContact(
   name: '田中太郎',
   phone: '090-0000-0000',
-  message: '起きられませんでした',
+  phoneEnabled: true,
   triggerMinutesAfterGrace: 10,
 );
 
@@ -61,31 +61,43 @@ void main() {
       expect(notifierOf(r.container).posted, isEmpty);
     });
 
-    test('at the trigger it logs the event and says nothing was sent', () async {
-      final r = await ringing(pledged);
+    test(
+      'at the trigger it logs the event and says nothing was sent',
+      () async {
+        final r = await ringing(pledged);
 
-      final event = await r.container
-          .read(contactDispatcherProvider)
-          .fireIfDue(
-            alarm: pledged,
-            session: r.session,
-            now: at(minutes: 11),
-          );
+        final event = await r.container
+            .read(contactDispatcherProvider)
+            .fireIfDue(
+              alarm: pledged,
+              session: r.session,
+              now: at(minutes: 11),
+            );
 
-      expect(event!.contactName, '田中太郎');
-      expect(event.sessionId, r.session.id);
-      expect(event.firedAt, at(minutes: 11));
-      expect(event.channel, ContactChannel.phone, reason: 'a number is loudest');
-      expect(event.detail, '起きられませんでした');
+        expect(event!.contactName, '田中太郎');
+        expect(event.sessionId, r.session.id);
+        expect(event.firedAt, at(minutes: 11));
+        expect(
+          event.channel,
+          ContactChannel.phone,
+          reason: 'a number is loudest',
+        );
+        expect(
+          event.detail,
+          '電話（自動音声）：田中太郎 さんは 07:00 のアラームを解除できていません。寝坊しています。',
+          reason:
+              'the route, the mode, and the words — filled at the alarm time',
+        );
 
-      final stored = await r.container
-          .read(contactEventRepositoryProvider)
-          .getRecent();
-      expect(stored.single, event);
+        final stored = await r.container
+            .read(contactEventRepositoryProvider)
+            .getRecent();
+        expect(stored.single, event);
 
-      final posted = notifierOf(r.container).posted.single;
-      expect(posted.body, '田中太郎 さんへの連絡が送信されました（開発中：実際には送信していません）');
-    });
+        final posted = notifierOf(r.container).posted.single;
+        expect(posted.body, '田中太郎 さんへの連絡が送信されました（開発中：実際には送信していません）');
+      },
+    );
 
     test('once per session, however many times it is asked', () async {
       final r = await ringing(pledged);
@@ -139,44 +151,101 @@ void main() {
       final r = await ringing(noContact);
 
       expect(
-        await r.container.read(contactDispatcherProvider).fireIfDue(
-          alarm: noContact,
-          session: r.session,
-          now: at(minutes: 60),
-        ),
+        await r.container
+            .read(contactDispatcherProvider)
+            .fireIfDue(
+              alarm: noContact,
+              session: r.session,
+              now: at(minutes: 60),
+            ),
         isNull,
       );
     });
 
-    test('the channel falls back from phone to mail to a bare record', () async {
-      expect(channelFor(contact), ContactChannel.phone);
-      expect(
-        channelFor(const OversleepContact(name: 'x', email: 'a@b.c')),
-        ContactChannel.email,
+    test(
+      'the channel falls back from phone to mail to a bare record',
+      () async {
+        expect(channelFor(contact), ContactChannel.phone);
+        expect(
+          channelFor(
+            const OversleepContact(
+              name: 'x',
+              email: 'a@b.c',
+              emailEnabled: true,
+            ),
+          ),
+          ContactChannel.email,
+        );
+        expect(
+          channelFor(const OversleepContact(name: 'x')),
+          ContactChannel.log,
+        );
+        expect(
+          channelFor(
+            const OversleepContact(name: 'x', phone: '   ', phoneEnabled: true),
+          ),
+          ContactChannel.log,
+          reason: 'whitespace is not a phone number',
+        );
+        expect(
+          channelFor(
+            const OversleepContact(
+              name: 'x',
+              phone: '090-0000-0000',
+              email: 'a@b.c',
+              emailEnabled: true,
+            ),
+          ),
+          ContactChannel.email,
+          reason: 'a number nobody switched on is not a route',
+        );
+      },
+    );
+
+    test('both routes at once are both recorded, each with its mode', () async {
+      const both = OversleepContact(
+        name: '母',
+        phone: '090-0000-0000',
+        email: 'haha@example.com',
+        phoneEnabled: true,
+        emailEnabled: true,
+        phoneMode: PhoneMode.custom,
+        recordingPath: '/tmp/a.m4a',
+        mailMode: MailMode.custom,
+        mailMessage: 'おきて',
       );
+      expect(channelsFor(both), [ContactChannel.phone, ContactChannel.email]);
       expect(
-        channelFor(const OversleepContact(name: 'x')),
-        ContactChannel.log,
-      );
-      expect(
-        channelFor(const OversleepContact(name: 'x', phone: '   ')),
-        ContactChannel.log,
-        reason: 'whitespace is not a phone number',
+        detailFor(both, DateTime(2026, 8, 27, 6, 5)),
+        '電話（カスタム録音） / メール（カスタムメッセージ）：おきて',
       );
     });
 
-    test('a recording is noted in the detail', () async {
+    test('the default modes name themselves and carry the app sentence', () {
+      const auto = OversleepContact(
+        name: '母',
+        email: 'haha@example.com',
+        emailEnabled: true,
+      );
+      expect(
+        detailFor(auto, DateTime(2026, 8, 27, 6, 5)),
+        'メール（デフォルト）：母 さんは 06:05 のアラームを解除できていません。寝坊しています。',
+      );
+    });
+
+    test('a contact with no route switched on records nothing sent', () async {
+      expect(
+        detailFor(const OversleepContact(name: 'x'), DateTime(2026, 8, 27)),
+        isNull,
+      );
       expect(
         detailFor(
-          const OversleepContact(
-            name: 'x',
-            message: 'おきて',
-            recordingPath: '/tmp/a.m4a',
-          ),
+          const OversleepContact(name: 'x', phone: '090-0000-0000'),
+          DateTime(2026, 8, 27),
         ),
-        'おきて （録音あり）',
+        isNull,
+        reason: 'a number with its toggle off goes nowhere',
       );
-      expect(detailFor(const OversleepContact(name: 'x')), isNull);
     });
 
     test('the reset clock mode pushes the trigger out with the ring', () async {
@@ -185,15 +254,12 @@ void main() {
         hour: 7,
         minute: 0,
         snooze: Snooze(intervalMinutes: 5, maxCount: 3),
-        kakugo: Kakugo(
-          ratePerMinute: 100,
-          cap: 2000,
-          snoozeResetsClock: true,
-        ),
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000, snoozeResetsClock: true),
         contact: contact,
       );
       final r = await ringing(resets);
-      final service = r.container.read(alarmServiceProvider) as FakeAlarmService;
+      final service =
+          r.container.read(alarmServiceProvider) as FakeAlarmService;
       await service.snooze(r.session.id, now: at(minutes: 2));
 
       final snoozed = (await r.container
@@ -231,7 +297,8 @@ void main() {
         contact: contact,
       );
       final r = await ringing(continuous);
-      final service = r.container.read(alarmServiceProvider) as FakeAlarmService;
+      final service =
+          r.container.read(alarmServiceProvider) as FakeAlarmService;
       await service.snooze(r.session.id, now: at(minutes: 2));
 
       final snoozed = (await r.container
@@ -239,11 +306,13 @@ void main() {
           .getById(r.session.id))!;
 
       expect(
-        await r.container.read(contactDispatcherProvider).fireIfDue(
-          alarm: continuous,
-          session: snoozed,
-          now: at(minutes: 11),
-        ),
+        await r.container
+            .read(contactDispatcherProvider)
+            .fireIfDue(
+              alarm: continuous,
+              session: snoozed,
+              now: at(minutes: 11),
+            ),
         isNotNull,
         reason: 'still 7:11, snooze or no snooze',
       );

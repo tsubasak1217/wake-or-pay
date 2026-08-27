@@ -28,8 +28,7 @@ class RecoveryOutcome {
   /// go on screen. Their platform alarm needs re-arming, and nothing else.
   final List<AlarmSession> snoozing;
 
-  bool get isEmpty =>
-      resumed == null && settled.isEmpty && snoozing.isEmpty;
+  bool get isEmpty => resumed == null && settled.isEmpty && snoozing.isEmpty;
 }
 
 /// Owns the money side of a ring: opening a session, and settling it exactly

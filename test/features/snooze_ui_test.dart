@@ -90,10 +90,7 @@ void main() {
   testWidgets('an alarm with snooze off never shows the button', (
     tester,
   ) async {
-    await openRinging(
-      tester,
-      const Alarm(id: 'a1', hour: 7, minute: 0),
-    );
+    await openRinging(tester, const Alarm(id: 'a1', hour: 7, minute: 0));
 
     expect(find.byKey(const ValueKey('snoozeButton')), findsNothing);
   });
@@ -124,8 +121,8 @@ void main() {
       expect(posted.title, 'スヌーズ中');
       expect(posted.body, contains('に再鳴動'));
 
-      final service = r.container.read(alarmServiceProvider)
-          as FakeAlarmService;
+      final service =
+          r.container.read(alarmServiceProvider) as FakeAlarmService;
       expect(service.rearmed.single.alarmId, 'a1');
 
       // And the alarm list says so.

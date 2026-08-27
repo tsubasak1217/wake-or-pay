@@ -8,6 +8,52 @@ import '../helpers.dart';
 void main() {
   const kakugo = Kakugo(ratePerMinute: 100, cap: 2000);
 
+  group('ContactBookRepository', () {
+    ContactEntry entry(
+      String id,
+      String name, {
+      String? reading,
+      int day = 1,
+    }) => ContactEntry(
+      id: id,
+      name: name,
+      reading: reading,
+      phone: '090-0000-0000',
+      createdAt: DateTime(2026, 1, day),
+    );
+
+    test('save, read back in よみがな order, update and delete', () async {
+      final repo = (await testContainer()).read(contactBookRepositoryProvider);
+
+      await repo.save(entry('c1', '田中太郎', reading: 'たなかたろう'));
+      await repo.save(entry('c2', '佐藤花子', reading: 'さとうはなこ', day: 2));
+      expect((await repo.getAll()).map((e) => e.id), ['c2', 'c1']);
+      expect((await repo.getById('c1'))!.name, '田中太郎');
+
+      await repo.save(
+        (await repo.getById('c1'))!.copyWith(name: '田中', clearReading: true),
+      );
+      final updated = await repo.getById('c1');
+      expect(updated!.name, '田中');
+      expect(updated.reading, isNull);
+      expect(await repo.getAll(), hasLength(2));
+
+      await repo.delete('c1');
+      expect(await repo.getById('c1'), isNull);
+      expect((await repo.getAll()).single.id, 'c2');
+    });
+
+    test('an entry with no よみがな sorts by its name', () async {
+      final repo = (await testContainer()).read(contactBookRepositoryProvider);
+      await repo.save(entry('c1', 'あ'));
+      await repo.save(entry('c2', 'い', reading: 'あああ'));
+      expect((await repo.getAll()).map((e) => e.id), [
+        'c1',
+        'c2',
+      ], reason: '「あ」 before 「あああ」');
+    });
+  });
+
   group('AlarmRepository', () {
     test('save, read back, update and delete', () async {
       final repo = (await testContainer()).read(alarmRepositoryProvider);

@@ -86,8 +86,9 @@ class _AlarmTile extends ConsumerWidget {
   /// The re-ring time of this alarm's snoozed session, if it has one waiting.
   DateTime? _snoozedUntil(WidgetRef ref) {
     final now = DateTime.now();
-    for (final session in ref.watch(ringingSessionsProvider).valueOrNull ??
-        const <AlarmSession>[]) {
+    for (final session
+        in ref.watch(ringingSessionsProvider).valueOrNull ??
+            const <AlarmSession>[]) {
       if (session.alarmId == alarm.id && isSnoozePending(session, now)) {
         return session.currentRingAt;
       }

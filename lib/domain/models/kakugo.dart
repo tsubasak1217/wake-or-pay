@@ -91,8 +91,13 @@ class Kakugo {
       other.snoozeResetsClock == snoozeResetsClock;
 
   @override
-  int get hashCode =>
-      Object.hash(hostage, ratePerMinute, cap, snoozePenalty, snoozeResetsClock);
+  int get hashCode => Object.hash(
+    hostage,
+    ratePerMinute,
+    cap,
+    snoozePenalty,
+    snoozeResetsClock,
+  );
 
   @override
   String toString() =>
@@ -101,8 +106,4 @@ class Kakugo {
 }
 
 /// What the editor puts up the first time 覚悟 is switched on.
-const defaultKakugo = Kakugo(
-  ratePerMinute: 100,
-  cap: 1000,
-  snoozePenalty: 50,
-);
+const defaultKakugo = Kakugo(ratePerMinute: 100, cap: 1000, snoozePenalty: 50);

@@ -100,6 +100,26 @@ class ContactEventRows extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// The in-app 連絡帳, added in v6. The app's own address book — it never reads
+/// the device's contacts.
+///
+/// An alarm *references* a row here and keeps its own snapshot of the name and
+/// addresses, so there is deliberately no foreign key: deleting someone from
+/// the book must never break an alarm that was pointing at them.
+class ContactBookRows extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+
+  /// よみがな. Sorting only; never displayed as the name, never sent.
+  TextColumn get reading => text().nullable()();
+  TextColumn get phone => text().nullable()();
+  TextColumn get email => text().nullable()();
+  IntColumn get createdAtMs => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 /// Single-row tables. `id` is always 0.
 class WalletRows extends Table {
   IntColumn get id => integer()();
@@ -157,6 +177,7 @@ class GardenInventoryRows extends Table {
     GardenPlacementRows,
     GardenInventoryRows,
     ContactEventRows,
+    ContactBookRows,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -169,7 +190,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(inMemoryExecutor());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   /// v1 → v2 adds the per alarm grace window. Both columns default to 1, which
   /// is the rule every existing row was written under, so no stored session's
@@ -190,6 +211,10 @@ class AppDatabase extends _$AppDatabase {
   /// ring could not remember the terms it fired under. Both columns are
   /// nullable and read as the pre-stage-B rule, so again no stored session's
   /// loss or outcome changes.
+  ///
+  /// v5 → v6 adds the 連絡帳 table. It is created empty and nothing else is
+  /// touched: an alarm's contact stays exactly the JSON blob it already was,
+  /// referencing nobody, so no stored alarm changes who it would call.
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
@@ -223,6 +248,9 @@ class AppDatabase extends _$AppDatabase {
           alarmSessionRows,
           alarmSessionRows.kakugoSnoozeResetsClock,
         );
+      }
+      if (from < 6) {
+        await m.createTable(contactBookRows);
       }
     },
   );

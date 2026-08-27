@@ -3515,6 +3515,419 @@ class ContactEventRowsCompanion extends UpdateCompanion<ContactEventRow> {
   }
 }
 
+class $ContactBookRowsTable extends ContactBookRows
+    with TableInfo<$ContactBookRowsTable, ContactBookRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ContactBookRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _readingMeta = const VerificationMeta(
+    'reading',
+  );
+  @override
+  late final GeneratedColumn<String> reading = GeneratedColumn<String>(
+    'reading',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _phoneMeta = const VerificationMeta('phone');
+  @override
+  late final GeneratedColumn<String> phone = GeneratedColumn<String>(
+    'phone',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _emailMeta = const VerificationMeta('email');
+  @override
+  late final GeneratedColumn<String> email = GeneratedColumn<String>(
+    'email',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    reading,
+    phone,
+    email,
+    createdAtMs,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'contact_book_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ContactBookRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('reading')) {
+      context.handle(
+        _readingMeta,
+        reading.isAcceptableOrUnknown(data['reading']!, _readingMeta),
+      );
+    }
+    if (data.containsKey('phone')) {
+      context.handle(
+        _phoneMeta,
+        phone.isAcceptableOrUnknown(data['phone']!, _phoneMeta),
+      );
+    }
+    if (data.containsKey('email')) {
+      context.handle(
+        _emailMeta,
+        email.isAcceptableOrUnknown(data['email']!, _emailMeta),
+      );
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ContactBookRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ContactBookRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      reading: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reading'],
+      ),
+      phone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}phone'],
+      ),
+      email: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}email'],
+      ),
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $ContactBookRowsTable createAlias(String alias) {
+    return $ContactBookRowsTable(attachedDatabase, alias);
+  }
+}
+
+class ContactBookRow extends DataClass implements Insertable<ContactBookRow> {
+  final String id;
+  final String name;
+
+  /// よみがな. Sorting only; never displayed as the name, never sent.
+  final String? reading;
+  final String? phone;
+  final String? email;
+  final int createdAtMs;
+  const ContactBookRow({
+    required this.id,
+    required this.name,
+    this.reading,
+    this.phone,
+    this.email,
+    required this.createdAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || reading != null) {
+      map['reading'] = Variable<String>(reading);
+    }
+    if (!nullToAbsent || phone != null) {
+      map['phone'] = Variable<String>(phone);
+    }
+    if (!nullToAbsent || email != null) {
+      map['email'] = Variable<String>(email);
+    }
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    return map;
+  }
+
+  ContactBookRowsCompanion toCompanion(bool nullToAbsent) {
+    return ContactBookRowsCompanion(
+      id: Value(id),
+      name: Value(name),
+      reading: reading == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reading),
+      phone: phone == null && nullToAbsent
+          ? const Value.absent()
+          : Value(phone),
+      email: email == null && nullToAbsent
+          ? const Value.absent()
+          : Value(email),
+      createdAtMs: Value(createdAtMs),
+    );
+  }
+
+  factory ContactBookRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ContactBookRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      reading: serializer.fromJson<String?>(json['reading']),
+      phone: serializer.fromJson<String?>(json['phone']),
+      email: serializer.fromJson<String?>(json['email']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'reading': serializer.toJson<String?>(reading),
+      'phone': serializer.toJson<String?>(phone),
+      'email': serializer.toJson<String?>(email),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+    };
+  }
+
+  ContactBookRow copyWith({
+    String? id,
+    String? name,
+    Value<String?> reading = const Value.absent(),
+    Value<String?> phone = const Value.absent(),
+    Value<String?> email = const Value.absent(),
+    int? createdAtMs,
+  }) => ContactBookRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    reading: reading.present ? reading.value : this.reading,
+    phone: phone.present ? phone.value : this.phone,
+    email: email.present ? email.value : this.email,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+  );
+  ContactBookRow copyWithCompanion(ContactBookRowsCompanion data) {
+    return ContactBookRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      reading: data.reading.present ? data.reading.value : this.reading,
+      phone: data.phone.present ? data.phone.value : this.phone,
+      email: data.email.present ? data.email.value : this.email,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ContactBookRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('reading: $reading, ')
+          ..write('phone: $phone, ')
+          ..write('email: $email, ')
+          ..write('createdAtMs: $createdAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, reading, phone, email, createdAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ContactBookRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.reading == this.reading &&
+          other.phone == this.phone &&
+          other.email == this.email &&
+          other.createdAtMs == this.createdAtMs);
+}
+
+class ContactBookRowsCompanion extends UpdateCompanion<ContactBookRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String?> reading;
+  final Value<String?> phone;
+  final Value<String?> email;
+  final Value<int> createdAtMs;
+  final Value<int> rowid;
+  const ContactBookRowsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.reading = const Value.absent(),
+    this.phone = const Value.absent(),
+    this.email = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ContactBookRowsCompanion.insert({
+    required String id,
+    required String name,
+    this.reading = const Value.absent(),
+    this.phone = const Value.absent(),
+    this.email = const Value.absent(),
+    required int createdAtMs,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<ContactBookRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? reading,
+    Expression<String>? phone,
+    Expression<String>? email,
+    Expression<int>? createdAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (reading != null) 'reading': reading,
+      if (phone != null) 'phone': phone,
+      if (email != null) 'email': email,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ContactBookRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String?>? reading,
+    Value<String?>? phone,
+    Value<String?>? email,
+    Value<int>? createdAtMs,
+    Value<int>? rowid,
+  }) {
+    return ContactBookRowsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      reading: reading ?? this.reading,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (reading.present) {
+      map['reading'] = Variable<String>(reading.value);
+    }
+    if (phone.present) {
+      map['phone'] = Variable<String>(phone.value);
+    }
+    if (email.present) {
+      map['email'] = Variable<String>(email.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ContactBookRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('reading: $reading, ')
+          ..write('phone: $phone, ')
+          ..write('email: $email, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3531,6 +3944,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ContactEventRowsTable contactEventRows = $ContactEventRowsTable(
     this,
   );
+  late final $ContactBookRowsTable contactBookRows = $ContactBookRowsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3543,6 +3959,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     gardenPlacementRows,
     gardenInventoryRows,
     contactEventRows,
+    contactBookRows,
   ];
 }
 
@@ -5324,6 +5741,233 @@ typedef $$ContactEventRowsTableProcessedTableManager =
       ContactEventRow,
       PrefetchHooks Function()
     >;
+typedef $$ContactBookRowsTableCreateCompanionBuilder =
+    ContactBookRowsCompanion Function({
+      required String id,
+      required String name,
+      Value<String?> reading,
+      Value<String?> phone,
+      Value<String?> email,
+      required int createdAtMs,
+      Value<int> rowid,
+    });
+typedef $$ContactBookRowsTableUpdateCompanionBuilder =
+    ContactBookRowsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String?> reading,
+      Value<String?> phone,
+      Value<String?> email,
+      Value<int> createdAtMs,
+      Value<int> rowid,
+    });
+
+class $$ContactBookRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $ContactBookRowsTable> {
+  $$ContactBookRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reading => $composableBuilder(
+    column: $table.reading,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get email => $composableBuilder(
+    column: $table.email,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ContactBookRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ContactBookRowsTable> {
+  $$ContactBookRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reading => $composableBuilder(
+    column: $table.reading,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get email => $composableBuilder(
+    column: $table.email,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ContactBookRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ContactBookRowsTable> {
+  $$ContactBookRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get reading =>
+      $composableBuilder(column: $table.reading, builder: (column) => column);
+
+  GeneratedColumn<String> get phone =>
+      $composableBuilder(column: $table.phone, builder: (column) => column);
+
+  GeneratedColumn<String> get email =>
+      $composableBuilder(column: $table.email, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+}
+
+class $$ContactBookRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ContactBookRowsTable,
+          ContactBookRow,
+          $$ContactBookRowsTableFilterComposer,
+          $$ContactBookRowsTableOrderingComposer,
+          $$ContactBookRowsTableAnnotationComposer,
+          $$ContactBookRowsTableCreateCompanionBuilder,
+          $$ContactBookRowsTableUpdateCompanionBuilder,
+          (
+            ContactBookRow,
+            BaseReferences<
+              _$AppDatabase,
+              $ContactBookRowsTable,
+              ContactBookRow
+            >,
+          ),
+          ContactBookRow,
+          PrefetchHooks Function()
+        > {
+  $$ContactBookRowsTableTableManager(
+    _$AppDatabase db,
+    $ContactBookRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ContactBookRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ContactBookRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ContactBookRowsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> reading = const Value.absent(),
+                Value<String?> phone = const Value.absent(),
+                Value<String?> email = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ContactBookRowsCompanion(
+                id: id,
+                name: name,
+                reading: reading,
+                phone: phone,
+                email: email,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<String?> reading = const Value.absent(),
+                Value<String?> phone = const Value.absent(),
+                Value<String?> email = const Value.absent(),
+                required int createdAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => ContactBookRowsCompanion.insert(
+                id: id,
+                name: name,
+                reading: reading,
+                phone: phone,
+                email: email,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ContactBookRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ContactBookRowsTable,
+      ContactBookRow,
+      $$ContactBookRowsTableFilterComposer,
+      $$ContactBookRowsTableOrderingComposer,
+      $$ContactBookRowsTableAnnotationComposer,
+      $$ContactBookRowsTableCreateCompanionBuilder,
+      $$ContactBookRowsTableUpdateCompanionBuilder,
+      (
+        ContactBookRow,
+        BaseReferences<_$AppDatabase, $ContactBookRowsTable, ContactBookRow>,
+      ),
+      ContactBookRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5342,4 +5986,6 @@ class $AppDatabaseManager {
       $$GardenInventoryRowsTableTableManager(_db, _db.gardenInventoryRows);
   $$ContactEventRowsTableTableManager get contactEventRows =>
       $$ContactEventRowsTableTableManager(_db, _db.contactEventRows);
+  $$ContactBookRowsTableTableManager get contactBookRows =>
+      $$ContactBookRowsTableTableManager(_db, _db.contactBookRows);
 }

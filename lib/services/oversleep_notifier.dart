@@ -46,7 +46,9 @@ class LoggingOversleepNotifier implements OversleepNotifier {
       firedAt: at,
       contactName: contact.name,
       channel: channelFor(contact),
-      detail: detailFor(contact),
+      // The alarm's own time, not the trigger time: that is what the message
+      // is about.
+      detail: detailFor(contact, session.firedAt),
     );
     await _events.save(event);
 
@@ -60,23 +62,42 @@ class LoggingOversleepNotifier implements OversleepNotifier {
   }
 }
 
-/// Which route the next phase would have taken. Pure.
+/// Every route the next phase would have taken, in the order it would take
+/// them. Pure.
 ///
-/// A phone number is the loudest thing available, so it wins; an address is
-/// next; with neither there is nothing to do but write it down.
+/// A route counts only when the user switched it on *and* there is an address
+/// to use. A phone call is the loudest thing available, so it comes first.
+List<ContactChannel> channelsFor(OversleepContact contact) => [
+  if (contact.willPhone) ContactChannel.phone,
+  if (contact.willEmail) ContactChannel.email,
+];
+
+/// The single channel the event row is filed under. Pure.
+///
+/// The row has one column and a contact can use both routes, so this is the
+/// loudest of them; [detailFor] is where every route that went out is written
+/// down. With no route at all there is nothing to do but keep the record.
 ContactChannel channelFor(OversleepContact contact) {
-  if ((contact.phone ?? '').trim().isNotEmpty) return ContactChannel.phone;
-  if ((contact.email ?? '').trim().isNotEmpty) return ContactChannel.email;
-  return ContactChannel.log;
+  final channels = channelsFor(contact);
+  return channels.isEmpty ? ContactChannel.log : channels.first;
 }
 
-/// What would have been sent, kept so the history can show it. Pure.
-String? detailFor(OversleepContact contact) {
+/// What would have been sent, on which route, in which mode — kept so the
+/// history can show it. Pure.
+///
+/// Nothing is actually sent, so this string is the entire evidence that the
+/// app decided to send it. It names each route and its mode by the same words
+/// the editor uses.
+String? detailFor(OversleepContact contact, DateTime at) {
+  final call = callContentFor(contact, at);
   final parts = [
-    if ((contact.message ?? '').trim().isNotEmpty) contact.message!.trim(),
-    if ((contact.recordingPath ?? '').isNotEmpty) '（録音あり）',
+    if (contact.willPhone)
+      call.recordingPath != null ? '電話（カスタム録音）' : '電話（自動音声）：${call.script}',
+    if (contact.willEmail)
+      '${contact.mailMode == MailMode.custom ? 'メール（カスタムメッセージ）' : 'メール（デフォルト）'}'
+          '：${mailBodyFor(contact, at)}',
   ];
-  return parts.isEmpty ? null : parts.join(' ');
+  return parts.isEmpty ? null : parts.join(' / ');
 }
 
 /// Decides *whether* to fire, and fires at most once per session.

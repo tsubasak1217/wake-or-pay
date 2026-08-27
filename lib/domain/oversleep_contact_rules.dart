@@ -109,7 +109,5 @@ String contactSpeechText(ContactSpeechCue cue, OversleepContact contact) {
 ///
 /// It says out loud that nothing was actually sent. Letting a user believe a
 /// message went out when it did not would be worse than not having the feature.
-({String title, String body}) contactSentNotificationText(String name) => (
-  title: '$name さんへの連絡',
-  body: '$name さんへの連絡が送信されました（開発中：実際には送信していません）',
-);
+({String title, String body}) contactSentNotificationText(String name) =>
+    (title: '$name さんへの連絡', body: '$name さんへの連絡が送信されました（開発中：実際には送信していません）');

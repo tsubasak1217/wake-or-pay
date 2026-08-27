@@ -97,12 +97,45 @@ Future<void> inContactScreen(
   await tester.pumpAndSettle();
 }
 
+/// Opens the 連絡帳 from the 連絡先 row and taps [name].
+Future<void> pick(WidgetTester tester, String name) async {
+  await tester.tap(find.byKey(const ValueKey('contactPickRow')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(name));
+  await tester.pumpAndSettle();
+}
+
 late FakeVoiceRecorder recorder;
 late FakeVoicePlayer player;
+
+/// Two people in the book: one reachable both ways, one by mail only.
+Future<void> seedBook(ProviderContainer container) async {
+  final book = container.read(contactBookRepositoryProvider);
+  await book.save(
+    ContactEntry(
+      id: 'c1',
+      name: '田中太郎',
+      reading: 'たなかたろう',
+      phone: '090-1234-5678',
+      email: 'taro@example.com',
+      createdAt: DateTime(2026, 1, 1),
+    ),
+  );
+  await book.save(
+    ContactEntry(
+      id: 'c2',
+      name: '佐藤花子',
+      reading: 'さとうはなこ',
+      email: 'hanako@example.com',
+      createdAt: DateTime(2026, 1, 2),
+    ),
+  );
+}
 
 Future<ProviderContainer> openNewAlarm(
   WidgetTester tester, {
   bool micPermitted = true,
+  bool withBook = true,
 }) async {
   recorder = FakeVoiceRecorder(permitted: micPermitted);
   player = FakeVoicePlayer();
@@ -121,6 +154,7 @@ Future<ProviderContainer> openNewAlarm(
   await container
       .read(walletRepositoryProvider)
       .write(const Wallet(coins: 100000));
+  if (withBook) await seedBook(container);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -147,7 +181,8 @@ void main() {
   setUp(() {
     // Tall enough that every field of the contact screen is built and hit
     // testable at once; the sub-screen's list is long.
-    final view = TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
+    final view = TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
         .views
         .first;
     view.physicalSize = const Size(1000, 2400);
@@ -171,43 +206,118 @@ void main() {
     expect(find.text('寝坊時連絡先'), findsNothing);
   });
 
-  testWidgets('name, phone, message and timing are saved onto the alarm', (
+  testWidgets('with nobody picked the two route toggles are dead', (
+    tester,
+  ) async {
+    await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      expect(find.text('寝坊時の連絡設定'), findsOneWidget, reason: 'the island');
+      expect(find.text('なし'), findsOneWidget, reason: 'the 連絡先 row');
+      for (final label in const ['電話', 'メール']) {
+        expect(
+          tester
+              .widget<SwitchListTile>(
+                find.widgetWithText(SwitchListTile, label),
+              )
+              .onChanged,
+          isNull,
+          reason: '$label cannot be switched on with nobody to reach',
+        );
+      }
+      expect(find.text('メール設定'), findsNothing);
+      expect(find.text('電話設定'), findsNothing);
+    });
+  });
+
+  testWidgets('picking somebody copies them onto the alarm, routes and all', (
     tester,
   ) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
 
     await inContactScreen(tester, () async {
-      expect(find.text('寝坊時連絡先'), findsOneWidget, reason: 'the app bar');
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '田中太郎');
-      await tester.enterText(
-        find.byKey(const ValueKey('contactPhone')),
-        '090-1234-5678',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('contactEmail')),
-        'taro@example.com',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('contactMessage')),
-        '起きられませんでした。起こしてください。',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
-        '15',
-      );
-      await tester.pumpAndSettle();
+      await pick(tester, '田中太郎');
+      expect(find.text('田中太郎'), findsOneWidget, reason: 'the 連絡先 row');
+      expect(find.text('メール設定'), findsOneWidget, reason: 'mail is reachable');
+      expect(find.text('電話設定'), findsOneWidget, reason: 'so is the phone');
     });
 
     await scrollTo(tester, find.text('寝坊時連絡先'));
     expect(find.text('田中太郎'), findsOneWidget, reason: 'the row shows the name');
 
     final contact = (await save(tester, container)).contact!;
+    expect(contact.contactId, 'c1', reason: 'the book entry it came from');
     expect(contact.name, '田中太郎');
     expect(contact.phone, '090-1234-5678');
     expect(contact.email, 'taro@example.com');
-    expect(contact.message, '起きられませんでした。起こしてください。');
-    expect(contact.triggerMinutesAfterGrace, 15);
+    expect(contact.phoneEnabled, isTrue);
+    expect(contact.emailEnabled, isTrue);
+    expect(contact.mailMode, MailMode.standard, reason: 'the default文面');
+    expect(contact.phoneMode, PhoneMode.auto);
+    expect(contact.triggerMinutesAfterGrace, defaultContactTriggerMinutes);
+  });
+
+  testWidgets('a contact with no number cannot have 電話 switched on', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      await pick(tester, '佐藤花子');
+
+      final phone = tester.widget<SwitchListTile>(
+        find.widgetWithText(SwitchListTile, '電話'),
+      );
+      expect(phone.onChanged, isNull, reason: 'greyed out, not toggleable');
+      expect(phone.value, isFalse);
+      expect(find.text('この連絡先には電話番号がありません'), findsOneWidget);
+
+      // Tapping it changes nothing at all.
+      await tester.tap(find.widgetWithText(SwitchListTile, '電話'));
+      await tester.pumpAndSettle();
+      expect(find.text('電話設定'), findsNothing);
+
+      expect(find.text('メール設定'), findsOneWidget, reason: 'mail still works');
+    });
+
+    final contact = (await save(tester, container)).contact!;
+    expect(contact.phoneEnabled, isFalse);
+    expect(contact.emailEnabled, isTrue);
+    expect(contact.phone, isNull);
+  });
+
+  testWidgets('the timing runs 0-60 and 0 is the moment the grace ends', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      await pick(tester, '田中太郎');
+      expect(find.text('猶予後 3分'), findsOneWidget, reason: 'the default');
+
+      await tester.tap(find.byKey(const ValueKey('contactTriggerRow')));
+      await tester.pumpAndSettle();
+      expect(find.text('0〜60分'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('sliderNumberInput')),
+        '0',
+      );
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.text('猶予後すぐ'), findsOneWidget);
+    });
+
+    expect(
+      (await save(tester, container)).contact!.triggerMinutesAfterGrace,
+      0,
+      reason: '0 is a real choice now',
+    );
   });
 
   testWidgets('a timing above 60 is clamped down, not rejected', (
@@ -217,11 +327,15 @@ void main() {
     await toggle(tester, '覚悟');
 
     await inContactScreen(tester, () async {
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '母');
+      await pick(tester, '田中太郎');
+      await tester.tap(find.byKey(const ValueKey('contactTriggerRow')));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('sliderNumberInput')),
         '999',
       );
+      await tester.pumpAndSettle();
+      await tester.pageBack();
       await tester.pumpAndSettle();
     });
     expect(
@@ -230,52 +344,48 @@ void main() {
     );
   });
 
-  testWidgets('a timing of 0 is clamped up to 1', (tester) async {
+  testWidgets('カスタムメッセージ shows a box and saves what is written in it', (
+    tester,
+  ) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
 
     await inContactScreen(tester, () async {
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '母');
+      await pick(tester, '田中太郎');
+      expect(
+        find.byKey(const ValueKey('contactMailMessage')),
+        findsNothing,
+        reason: 'デフォルト has nothing to write',
+      );
+
+      await tester.tap(find.byKey(const ValueKey('mailModeCustom')));
+      await tester.pumpAndSettle();
       await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
-        '0',
+        find.byKey(const ValueKey('contactMailMessage')),
+        '起きられませんでした。起こしてください。',
       );
       await tester.pumpAndSettle();
     });
-    expect(
-      (await save(tester, container)).contact!.triggerMinutesAfterGrace,
-      1,
-      reason: 'nobody is contacted the instant the grace runs out',
-    );
+
+    final contact = (await save(tester, container)).contact!;
+    expect(contact.mailMode, MailMode.custom);
+    expect(contact.mailMessage, '起きられませんでした。起こしてください。');
   });
 
-  testWidgets('clearing the name removes the contact entirely', (tester) async {
+  testWidgets('カスタム録音 records, and 自動音声 hides the recorder', (tester) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
 
     await inContactScreen(tester, () async {
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '母');
+      await pick(tester, '田中太郎');
+      expect(
+        find.byKey(const ValueKey('contactRecordStart')),
+        findsNothing,
+        reason: '自動音声 has nothing to record',
+      );
+
+      await tester.tap(find.byKey(const ValueKey('phoneModeCustom')));
       await tester.pumpAndSettle();
-    });
-    await scrollTo(tester, find.text('寝坊時連絡先'));
-    expect(find.text('母'), findsOneWidget);
-
-    await inContactScreen(tester, () async {
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '   ');
-      await tester.pumpAndSettle();
-    });
-
-    await scrollTo(tester, find.text('寝坊時連絡先'));
-    expect(find.text('なし'), findsOneWidget);
-    expect((await save(tester, container)).contact, isNull);
-  });
-
-  testWidgets('record then stop stores the recorded file', (tester) async {
-    final container = await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
-
-    await inContactScreen(tester, () async {
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '母');
       expect(statusText(tester), '録音なし');
 
       await tester.tap(find.byKey(const ValueKey('contactRecordStart')));
@@ -288,10 +398,9 @@ void main() {
       expect(statusText(tester), '録音あり');
     });
 
-    expect(
-      (await save(tester, container)).contact!.recordingPath,
-      recorder.started.single,
-    );
+    final contact = (await save(tester, container)).contact!;
+    expect(contact.phoneMode, PhoneMode.custom);
+    expect(contact.recordingPath, recorder.started.single);
   });
 
   testWidgets('削除 plays back then throws the recording away', (tester) async {
@@ -299,7 +408,9 @@ void main() {
     await toggle(tester, '覚悟');
 
     await inContactScreen(tester, () async {
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '母');
+      await pick(tester, '田中太郎');
+      await tester.tap(find.byKey(const ValueKey('phoneModeCustom')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('contactRecordStart')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('contactRecordStop')));
@@ -319,7 +430,7 @@ void main() {
 
     final after = (await save(tester, container)).contact!;
     expect(after.recordingPath, isNull);
-    expect(after.name, '母', reason: 'only the recording was deleted');
+    expect(after.name, '田中太郎', reason: 'only the recording was deleted');
   });
 
   testWidgets('a refused microphone says so in Japanese and records nothing', (
@@ -329,7 +440,9 @@ void main() {
     await toggle(tester, '覚悟');
 
     await inContactScreen(tester, () async {
-      await tester.enterText(find.byKey(const ValueKey('contactName')), '母');
+      await pick(tester, '田中太郎');
+      await tester.tap(find.byKey(const ValueKey('phoneModeCustom')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('contactRecordStart')));
       await tester.pumpAndSettle();
 
@@ -340,5 +453,26 @@ void main() {
     });
 
     expect((await save(tester, container)).contact!.recordingPath, isNull);
+  });
+
+  testWidgets('連絡先を外す removes the contact entirely', (tester) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      await pick(tester, '田中太郎');
+    });
+    await scrollTo(tester, find.text('寝坊時連絡先'));
+    expect(find.text('田中太郎'), findsOneWidget);
+
+    await inContactScreen(tester, () async {
+      await tester.tap(find.byKey(const ValueKey('contactClear')));
+      await tester.pumpAndSettle();
+      expect(find.text('なし'), findsOneWidget);
+    });
+
+    await scrollTo(tester, find.text('寝坊時連絡先'));
+    expect(find.text('なし'), findsOneWidget);
+    expect((await save(tester, container)).contact, isNull);
   });
 }

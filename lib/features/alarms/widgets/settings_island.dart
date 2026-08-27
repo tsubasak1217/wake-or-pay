@@ -122,6 +122,7 @@ class SettingSwitchRow extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.subtitle,
+    this.enabled = true,
   });
 
   final String label;
@@ -129,12 +130,18 @@ class SettingSwitchRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   final String? subtitle;
 
+  /// false greys the row out and makes it untappable — for a switch that has
+  /// nothing to switch, like 電話 on a contact with no number.
+  final bool enabled;
+
   @override
   Widget build(BuildContext context) {
     debugRowBuildCounts.update(label, (n) => n + 1, ifAbsent: () => 1);
     return SwitchListTile(
       value: value,
-      onChanged: onChanged,
+      // A null callback is what makes SwitchListTile draw itself disabled, so
+      // the grey and the untappable are the same fact rather than two.
+      onChanged: enabled ? onChanged : null,
       title: Text(label),
       subtitle: subtitle == null ? null : Text(subtitle!),
     );

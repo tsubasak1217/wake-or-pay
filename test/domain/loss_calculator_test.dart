@@ -291,7 +291,11 @@ void main() {
             // from firedAt.
             currentRingAt: at(minutes: 12),
           );
-          expect(lossAt(at(minutes: 10), s), expected, reason: '$count presses');
+          expect(
+            lossAt(at(minutes: 10), s),
+            expected,
+            reason: '$count presses',
+          );
         }
       });
 
@@ -302,7 +306,11 @@ void main() {
             graceMinutes: 5,
             snoozes: presses(count),
           );
-          expect(lossAt(at(minutes: 10), s), expected, reason: '$count presses');
+          expect(
+            lossAt(at(minutes: 10), s),
+            expected,
+            reason: '$count presses',
+          );
         }
       });
 
@@ -466,7 +474,11 @@ void main() {
         at(minutes: 60),
       );
       expect(s.status, SessionStatus.failed);
-      expect(s.dismissedAt, at(minutes: 60), reason: 'not pushed out by snooze');
+      expect(
+        s.dismissedAt,
+        at(minutes: 60),
+        reason: 'not pushed out by snooze',
+      );
       // 5 minutes of the current ring bill 5 (the grace minute is the first
       // billed one), plus one press.
       expect(s.loss, 550);

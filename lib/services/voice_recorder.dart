@@ -49,10 +49,7 @@ typedef ContactRecordingPathBuilder = Future<String> Function(String? alarmId);
 
 Future<String> newContactRecordingPath(String? alarmId) async {
   final directory = Directory(
-    p.join(
-      (await getApplicationSupportDirectory()).path,
-      'contact_recordings',
-    ),
+    p.join((await getApplicationSupportDirectory()).path, 'contact_recordings'),
   );
   await directory.create(recursive: true);
   return p.join(
@@ -110,9 +107,8 @@ class AudioPlayersVoicePlayer implements VoicePlayer {
   Future<void> stop() => _player.stop();
 
   @override
-  Stream<bool> get playing => _player.onPlayerStateChanged.map(
-    (state) => state == PlayerState.playing,
-  );
+  Stream<bool> get playing =>
+      _player.onPlayerStateChanged.map((state) => state == PlayerState.playing);
 
   @override
   Future<void> dispose() => _player.dispose();
