@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/router.dart';
 import '../../domain/ojisan.dart';
 import 'garden_board.dart';
 import 'garden_controller.dart';
@@ -52,11 +54,31 @@ class _GardenScreenState extends ConsumerState<GardenScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const _GardenActions(),
         ],
       ),
     );
   }
+}
+
+class _GardenActions extends StatelessWidget {
+  const _GardenActions();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const SizedBox.shrink(),
+        FilledButton.tonalIcon(
+          onPressed: () => context.push(AppRoute.gardenEdit),
+          icon: const Icon(Icons.grid_view_outlined),
+          label: const Text('模様替え'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _StreakBanner extends ConsumerWidget {

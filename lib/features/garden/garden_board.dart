@@ -43,6 +43,7 @@ class GardenBoard extends StatelessWidget {
     this.placementBuilder,
     this.cellOverlayBuilder,
     this.residentEnabled = true,
+    this.residentInteractive = true,
     this.ojisanSpeech,
     super.key,
   });
@@ -59,6 +60,11 @@ class GardenBoard extends StatelessWidget {
   final Widget Function(int x, int y)? cellOverlayBuilder;
 
   final bool residentEnabled;
+
+  /// False in edit mode: he keeps strolling, but he is not part of any hit
+  /// test, so he can never swallow a drop or block a cell.
+  final bool residentInteractive;
+
   final String? ojisanSpeech;
 
   @override
@@ -134,10 +140,13 @@ class GardenBoard extends StatelessWidget {
 
               if (residentEnabled)
                 Positioned.fill(
-                  child: _Resident(
-                    geometry: geometry,
-                    occupied: _occupiedCells(placements),
-                    speech: ojisanSpeech,
+                  child: IgnorePointer(
+                    ignoring: !residentInteractive,
+                    child: _Resident(
+                      geometry: geometry,
+                      occupied: _occupiedCells(placements),
+                      speech: ojisanSpeech,
+                    ),
                   ),
                 ),
             ],

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/alarms/alarm_edit_screen.dart';
 import '../features/alarms/home_screen.dart';
+import '../features/garden/garden_edit_screen.dart';
 import '../features/garden/garden_screen.dart';
 import '../features/result/result_screen.dart';
 import '../features/ringing/ringing_screen.dart';
@@ -17,6 +18,7 @@ class AppRoute {
   static const home = '/';
   static const alarmNew = '/alarm/new';
   static const garden = '/garden';
+  static const gardenEdit = '/garden/edit';
   static const wallet = '/wallet';
   static const settings = '/settings';
 
@@ -66,6 +68,10 @@ GoRouter createAppRouter() => GoRouter(
       ],
     ),
     // Outside the shell: full screen, no tab bar.
+    GoRoute(
+      path: AppRoute.gardenEdit,
+      builder: (context, state) => const GardenEditScreen(),
+    ),
     GoRoute(
       path: '/alarm/new',
       builder: (context, state) => const AlarmEditScreen(),
