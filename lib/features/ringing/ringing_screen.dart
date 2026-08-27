@@ -13,6 +13,7 @@ import '../../domain/ojisan.dart';
 import 'ringing_controller.dart';
 import 'wake_checks/long_press_check.dart';
 import 'wake_checks/math_check.dart';
+import 'wake_checks/shake_check.dart';
 import 'wake_checks/typing_check.dart';
 
 /// Full screen, no way back, no snooze. The only control is the wake check.
@@ -160,6 +161,10 @@ class _RingingBody extends ConsumerWidget {
               // loads would let the user clear a check they did not choose. An
               // alarm that has since been deleted still needs a way out, so that
               // — and only that — falls back to long press.
+              //
+              // A check drawn at fire time wins over the alarm's own, which for
+              // a random alarm is the word "random" and not something anyone
+              // can perform.
               alarm.when(
                 loading: () => const Padding(
                   padding: EdgeInsets.all(24),
@@ -168,7 +173,9 @@ class _RingingBody extends ConsumerWidget {
                 error: (e, _) =>
                     _wakeCheckFor(WakeCheckType.longPress, onCleared),
                 data: (data) => _wakeCheckFor(
-                  data?.wakeCheck ?? WakeCheckType.longPress,
+                  session.wakeCheckResolved ??
+                      data?.wakeCheck ??
+                      WakeCheckType.longPress,
                   onCleared,
                 ),
               ),
@@ -185,6 +192,11 @@ Widget _wakeCheckFor(WakeCheckType type, VoidCallback onCleared) =>
       WakeCheckType.longPress => LongPressCheck(onCleared: onCleared),
       WakeCheckType.math => MathCheck(onCleared: onCleared),
       WakeCheckType.typing => TypingCheck(onCleared: onCleared),
+      WakeCheckType.shake => ShakeCheck(onCleared: onCleared),
+      // Unreachable in practice: the draw happens when the session opens. A
+      // session written before that existed still needs a way out, so it gets
+      // the simplest check rather than a crash.
+      WakeCheckType.random => LongPressCheck(onCleared: onCleared),
     };
 
 /// The countdown shown while the alarm is still free to clear.

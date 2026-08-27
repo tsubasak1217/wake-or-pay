@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/wake_check.dart';
 
 void main() {
@@ -58,6 +59,50 @@ void main() {
       for (final s in typingSentences) {
         expect(s.length, inInclusiveRange(8, 16), reason: s);
       }
+    });
+  });
+
+  group('resolveWakeCheck', () {
+    test('leaves a check the user actually chose alone', () {
+      final random = Random(1);
+      for (final type in [
+        WakeCheckType.longPress,
+        WakeCheckType.math,
+        WakeCheckType.typing,
+        WakeCheckType.shake,
+      ]) {
+        expect(resolveWakeCheck(type, random), type);
+      }
+    });
+
+    test('draws only from checks that can be performed', () {
+      final random = Random(3);
+      for (var i = 0; i < 500; i++) {
+        final drawn = resolveWakeCheck(WakeCheckType.random, random);
+        expect(randomWakeCheckPool, contains(drawn));
+        expect(drawn, isNot(WakeCheckType.random));
+      }
+    });
+
+    test('reaches all four over enough draws', () {
+      final random = Random(11);
+      final seen = <WakeCheckType>{};
+      for (var i = 0; i < 500; i++) {
+        seen.add(resolveWakeCheck(WakeCheckType.random, random));
+      }
+      expect(seen, randomWakeCheckPool.toSet());
+    });
+
+    test('is pure given the seed', () {
+      List<WakeCheckType> draw() {
+        final random = Random(42);
+        return [
+          for (var i = 0; i < 20; i++)
+            resolveWakeCheck(WakeCheckType.random, random),
+        ];
+      }
+
+      expect(draw(), draw());
     });
   });
 }

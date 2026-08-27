@@ -1,9 +1,12 @@
+import 'dart:math';
+
 import '../data/repositories/alarm_session_repository.dart';
 import '../data/repositories/ojisan_repository.dart';
 import '../data/repositories/wallet_repository.dart';
 import '../domain/loss_calculator.dart';
 import '../domain/models.dart';
 import '../domain/reward.dart';
+import '../domain/wake_check.dart';
 
 /// What [SessionService.recoverPending] found at startup.
 class RecoveryOutcome {
@@ -21,11 +24,15 @@ class RecoveryOutcome {
 /// Owns the money side of a ring: opening a session, and settling it exactly
 /// once against the wallet and the ojisan's takings.
 class SessionService {
-  SessionService(this._sessions, this._wallet, this._ojisan);
+  SessionService(this._sessions, this._wallet, this._ojisan, {Random? random})
+    : _random = random ?? Random();
 
   final AlarmSessionRepository _sessions;
   final WalletRepository _wallet;
   final OjisanRepository _ojisan;
+
+  /// Injectable so the draw behind [WakeCheckType.random] can be tested.
+  final Random _random;
 
   /// Opens a session, freezing the pledge and the balance as they are now.
   Future<AlarmSession> start({
@@ -41,6 +48,12 @@ class SessionService {
       kakugoSnapshot: alarm.kakugo,
       coinsAtFire: wallet.coins,
       graceMinutes: alarm.graceMinutes,
+      // The draw happens once, here, and is written down with the rest of the
+      // frozen terms: a relaunch mid-ring must find the same check waiting,
+      // not roll again for an easier one.
+      wakeCheckResolved: alarm.wakeCheck == WakeCheckType.random
+          ? resolveWakeCheck(alarm.wakeCheck, _random)
+          : null,
     );
     await _sessions.save(session);
     return session;

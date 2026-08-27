@@ -4,13 +4,15 @@ import 'kakugo.dart';
 import 'snooze.dart';
 
 /// How the user proves they are actually awake.
-enum WakeCheckType { longPress, math, typing }
+enum WakeCheckType { longPress, math, typing, shake, random }
 
 extension WakeCheckTypeLabel on WakeCheckType {
   String get label => switch (this) {
     WakeCheckType.longPress => '長押し（5秒）',
     WakeCheckType.math => '計算（3問）',
     WakeCheckType.typing => '文字入力',
+    WakeCheckType.shake => '振る（5秒）',
+    WakeCheckType.random => 'ランダム',
   };
 
   /// One line of explanation, shown in the editor's sub-screen.
@@ -18,6 +20,8 @@ extension WakeCheckTypeLabel on WakeCheckType {
     WakeCheckType.longPress => 'ボタンを5秒間押し続ける',
     WakeCheckType.math => '2桁の足し算を3問続けて正解する',
     WakeCheckType.typing => '表示された文を一字一句そのまま打つ',
+    WakeCheckType.shake => '端末を5秒間振り続ける',
+    WakeCheckType.random => '鳴った時に上の4種類から抽選する',
   };
 }
 

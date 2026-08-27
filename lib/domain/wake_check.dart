@@ -1,5 +1,25 @@
 import 'dart:math';
 
+import 'models/alarm.dart';
+
+/// What [WakeCheckType.random] draws from. Itself excluded, obviously; a draw
+/// always lands on a check that can actually be performed.
+const randomWakeCheckPool = <WakeCheckType>[
+  WakeCheckType.longPress,
+  WakeCheckType.math,
+  WakeCheckType.typing,
+  WakeCheckType.shake,
+];
+
+/// The check this ring will actually ask for. Pure given [random].
+///
+/// Anything but [WakeCheckType.random] passes straight through, so this is
+/// safe to call for every ring.
+WakeCheckType resolveWakeCheck(WakeCheckType chosen, Random random) =>
+    chosen == WakeCheckType.random
+    ? randomWakeCheckPool[random.nextInt(randomWakeCheckPool.length)]
+    : chosen;
+
 /// How long the button has to be held down.
 const longPressDuration = Duration(seconds: 5);
 

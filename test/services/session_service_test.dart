@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/data/repositories/alarm_session_repository.dart';
@@ -5,6 +7,7 @@ import 'package:wake_or_pay/data/repositories/ojisan_repository.dart';
 import 'package:wake_or_pay/data/repositories/wallet_repository.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
+import 'package:wake_or_pay/domain/wake_check.dart';
 import 'package:wake_or_pay/services/session_service.dart';
 
 import '../helpers.dart';
@@ -32,6 +35,42 @@ void main() {
       sessions: container.read(alarmSessionRepositoryProvider),
     );
   }
+
+  test('a random alarm draws its check once, at fire time', () async {
+    final container = await testContainer();
+    await container.read(walletRepositoryProvider).write(const Wallet());
+    final sessions = container.read(alarmSessionRepositoryProvider);
+    // A fixed seed, so the draw is checked rather than guessed at.
+    final service = SessionService(
+      sessions,
+      container.read(walletRepositoryProvider),
+      container.read(ojisanRepositoryProvider),
+      random: Random(42),
+    );
+
+    const randomAlarm = Alarm(
+      id: 'a1',
+      hour: 7,
+      minute: 0,
+      wakeCheck: WakeCheckType.random,
+    );
+    final session = await service.start(alarm: randomAlarm, firedAt: firedAt);
+
+    expect(session.wakeCheckResolved, isNotNull);
+    expect(randomWakeCheckPool, contains(session.wakeCheckResolved));
+    expect(
+      (await sessions.getById(session.id))!.wakeCheckResolved,
+      session.wakeCheckResolved,
+      reason: 'a relaunch mid-ring finds the same check waiting',
+    );
+  });
+
+  test('a chosen check is not a draw and is not written down', () async {
+    final s = await setUpService();
+    final session = await s.service.start(alarm: alarm, firedAt: firedAt);
+    expect(session.wakeCheckResolved, isNull);
+    expect((await s.sessions.getById(session.id))!.wakeCheckResolved, isNull);
+  });
 
   test('start freezes the pledge and the balance', () async {
     final s = await setUpService(coins: 1234);
