@@ -4,7 +4,11 @@ import 'package:flutter/foundation.dart';
 enum HostageType { coin }
 
 /// The bounds the editor offers, and the bounds every read is clamped to.
-const minKakugoRate = 1;
+///
+/// The rate starts at 0: a pledge whose whole punishment is that somebody gets
+/// phoned is a real pledge, and forcing at least one coin a minute onto it
+/// would be the app inventing a stake the user did not choose.
+const minKakugoRate = 0;
 const maxKakugoRate = 1000;
 const minKakugoCap = 100;
 const maxKakugoCap = 10000;

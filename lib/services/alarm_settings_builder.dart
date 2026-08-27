@@ -62,7 +62,9 @@ pkg.AlarmSettings buildAlarmSettings(domain.Alarm alarm, DateTime fireAt) {
     ),
     notificationSettings: pkg.NotificationSettings(
       title: '起きろ！！',
-      body: alarm.isKakugo
+      // Same rule as the ringing screen: a pledge with no per-minute penalty
+      // must not claim coins are burning by the minute, because none are.
+      body: (alarm.kakugo?.ratePerMinute ?? 0) > 0
           ? '1分ごとに ${alarm.kakugo!.ratePerMinute} コインが燃えています'
           : 'アプリを開いて解除してください',
       // No stop button and no swipe-to-stop: dismissing has to go through the

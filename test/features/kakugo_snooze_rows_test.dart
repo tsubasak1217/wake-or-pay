@@ -230,6 +230,55 @@ void main() {
     );
   });
 
+  testWidgets('寝坊ペナルティ can be 0: a pledge that is only the phone call', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inSubScreen(tester, '寝坊ペナルティ', () async {
+      expect(find.text('0〜1000コイン/分'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('sliderNumberInput')),
+        '0',
+      );
+      await tester.pumpAndSettle();
+      expect(textOf(tester, const ValueKey('kakugoGauge')), '😌 ペナルティなし');
+    });
+
+    await scrollTo(tester, find.byKey(const ValueKey('maxLoss')));
+    expect(
+      textOf(tester, const ValueKey('maxLoss')),
+      '0 コイン',
+      reason: 'nothing can reach the cap: no rate, and no snooze either',
+    );
+
+    expect((await save(tester, container)).kakugo!.ratePerMinute, 0);
+  });
+
+  testWidgets('a 0 コイン/分 pledge still shows the cap if snoozing costs', (
+    tester,
+  ) async {
+    await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+    await toggle(tester, 'スヌーズ');
+
+    await inSubScreen(tester, '寝坊ペナルティ', () async {
+      await tester.enterText(
+        find.byKey(const ValueKey('sliderNumberInput')),
+        '0',
+      );
+      await tester.pumpAndSettle();
+    });
+
+    await scrollTo(tester, find.byKey(const ValueKey('maxLoss')));
+    expect(
+      textOf(tester, const ValueKey('maxLoss')),
+      '1000 コイン',
+      reason: 'the 50 コイン snooze penalty can still add up to the cap',
+    );
+  });
+
   testWidgets('nothing in the editor sells or gates a snooze', (tester) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');

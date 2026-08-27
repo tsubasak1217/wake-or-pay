@@ -43,6 +43,41 @@ void main() {
       expect(lossAt(at(minutes: 2), session()), 200);
     });
 
+    test('0 コイン/分 burns nothing by the minute, ever', () {
+      // 連絡だけの覚悟: the punishment is the phone call, not the wallet.
+      final s = session(kakugo: const Kakugo(ratePerMinute: 0, cap: 1000));
+      expect(lossAt(at(minutes: 1), s), 0);
+      expect(lossAt(at(minutes: 30), s), 0);
+      expect(lossAt(at(minutes: 600), s), 0);
+      expect(finalizeSession(s, at(minutes: 30)).loss, 0);
+      expect(
+        finalizeSession(s, at(minutes: 30)).status,
+        SessionStatus.failed,
+        reason: 'costing nothing is still oversleeping',
+      );
+    });
+
+    test('0 コイン/分 with a snooze penalty still charges the presses', () {
+      final s = session(
+        kakugo: const Kakugo(ratePerMinute: 0, cap: 1000, snoozePenalty: 50),
+        snoozes: [at(minutes: 1), at(minutes: 6)],
+      );
+      expect(lossAt(at(minutes: 30), s), 100, reason: '2 presses at 50');
+      expect(
+        lossAt(at(minutes: 600), s),
+        100,
+        reason: 'time adds nothing on top',
+      );
+    });
+
+    test('0 コイン/分 with a snooze penalty is still capped', () {
+      final s = session(
+        kakugo: const Kakugo(ratePerMinute: 0, cap: 120, snoozePenalty: 50),
+        snoozes: [at(minutes: 1), at(minutes: 2), at(minutes: 3)],
+      );
+      expect(lossAt(at(minutes: 10), s), 120);
+    });
+
     test('exactly at firedAt, and before it, costs nothing', () {
       expect(lossAt(firedAt, session()), 0);
       expect(lossAt(firedAt.subtract(const Duration(hours: 1)), session()), 0);

@@ -664,8 +664,17 @@ class _MaxLossHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cap = ref.watch(
-      alarmDraftProvider(seed).select((a) => a.kakugo?.cap ?? 0),
+    // The cap is what the pledge can cost — but only if anything can reach it.
+    // With no per-minute penalty and no snooze penalty (or no snooze at all)
+    // nothing ever adds up, and a header shouting 1000 コイン over an alarm
+    // that cannot take a single coin is a lie about the stake.
+    final worst = ref.watch(
+      alarmDraftProvider(seed).select((a) {
+        final kakugo = a.kakugo;
+        if (kakugo == null) return 0;
+        final snoozePart = a.snooze == null ? 0 : kakugo.snoozePenalty;
+        return kakugo.ratePerMinute == 0 && snoozePart == 0 ? 0 : kakugo.cap;
+      }),
     );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
@@ -678,7 +687,7 @@ class _MaxLossHeader extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '$cap コイン',
+            '$worst コイン',
             key: const ValueKey('maxLoss'),
             style: Theme.of(context).textTheme.displaySmall?.copyWith(
               color: _KakugoIsland.danger,
@@ -717,7 +726,8 @@ class _RateRow extends ConsumerWidget {
           min: minKakugoRate,
           max: maxKakugoRate,
           suffix: 'コイン/分',
-          description: '猶予を過ぎたあと、1分ごとに燃えるコインです。',
+          description: '猶予を過ぎたあと、1分ごとに燃えるコインです。'
+              '0 にすると、寝坊しても分ごとには燃えません（連絡だけの覚悟）。',
           footer: (context, value) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

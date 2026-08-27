@@ -391,7 +391,10 @@ class _GracePanel extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          pledge == null
+          // 「1分ごとに 0 コイン」 is not a threat, it is a bug on screen: a
+          // pledge with no per-minute penalty says the same thing a plain
+          // alarm says, because that is what it does.
+          pledge == null || pledge.ratePerMinute == 0
               ? '今のうちに解除すれば起床成功'
               : '過ぎると 1分ごとに ${pledge.ratePerMinute} コイン',
           style: theme.textTheme.titleMedium,

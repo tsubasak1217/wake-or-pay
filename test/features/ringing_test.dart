@@ -133,6 +133,21 @@ void main() {
     expect(find.textContaining('💸 あなた'), findsNothing, reason: 'still free');
   });
 
+  testWidgets('a 0 コイン/分 pledge never says 「1分ごとに 0 コイン」', (tester) async {
+    await openRinging(
+      tester,
+      withAlarm: alarm.copyWith(
+        graceMinutes: 5,
+        kakugo: const Kakugo(ratePerMinute: 0, cap: 2000),
+      ),
+      ringingFor: const Duration(minutes: 2, seconds: 17, milliseconds: 500),
+    );
+
+    expect(find.text('猶予 あと 2:42'), findsOneWidget);
+    expect(find.textContaining('1分ごとに'), findsNothing);
+    expect(find.text('今のうちに解除すれば起床成功'), findsOneWidget);
+  });
+
   testWidgets('a spent grace hands over to the loss counter', (tester) async {
     // Grace 5, five and a half minutes in: exactly one billable minute.
     await openRinging(
