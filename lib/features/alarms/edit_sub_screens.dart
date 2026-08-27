@@ -149,6 +149,64 @@ class _RepeatDaysSubScreenState extends State<RepeatDaysSubScreen> {
   }
 }
 
+/// One of two named choices, each with a line of explanation. The value is
+/// local while the screen is open and handed back when it closes, exactly like
+/// [NumberSubScreen].
+class ChoiceSubScreen<T> extends StatefulWidget {
+  const ChoiceSubScreen({
+    super.key,
+    required this.title,
+    required this.initial,
+    required this.options,
+    required this.onCommit,
+    this.description,
+  });
+
+  final String title;
+  final T initial;
+  final List<({T value, String label, String description})> options;
+  final ValueChanged<T> onCommit;
+  final String? description;
+
+  @override
+  State<ChoiceSubScreen<T>> createState() => _ChoiceSubScreenState<T>();
+}
+
+class _ChoiceSubScreenState<T> extends State<ChoiceSubScreen<T>> {
+  late T _selected = widget.initial;
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    onPopInvokedWithResult: (didPop, _) {
+      if (didPop) widget.onCommit(_selected);
+    },
+    child: Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: ListView(
+        children: [
+          for (final option in widget.options)
+            ListTile(
+              onTap: () => setState(() => _selected = option.value),
+              title: Text(option.label),
+              subtitle: Text(option.description),
+              trailing: _selected == option.value
+                  ? const Icon(Icons.check)
+                  : null,
+            ),
+          if (widget.description != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                widget.description!,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// 起床確認: which check has to be cleared to stop the alarm.
 class WakeCheckSubScreen extends StatefulWidget {
   const WakeCheckSubScreen({

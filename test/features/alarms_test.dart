@@ -114,7 +114,11 @@ void main() {
         (await container.read(alarmRepositoryProvider).getAll()).single;
     expect(saved.repeatDays, {1, 5});
     expect(saved.wakeCheck, WakeCheckType.math);
-    expect(saved.kakugo, const Kakugo(ratePerMinute: 500, cap: 1000));
+    // Stage B: switching 覚悟 on now seeds the snooze penalty too, at the 50
+    // the spec's editor shows. It costs nothing here — this alarm has no
+    // snooze, so there is nothing to penalise.
+    expect(saved.kakugo, defaultKakugo.copyWith(ratePerMinute: 500));
+    expect(saved.kakugo!.snoozeResetsClock, isFalse, reason: 'the strict mode');
     expect(saved.enabled, isTrue);
     expect(saved.snooze, isNull, reason: 'the toggle was never touched');
     expect(saved.soundId, defaultSoundId);

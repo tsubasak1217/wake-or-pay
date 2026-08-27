@@ -341,7 +341,7 @@ class _KakugoToggleRow extends ConsumerWidget {
             (a) => v
                 ? a.copyWith(
                     kakugo:
-                        a.kakugo ?? const Kakugo(ratePerMinute: 100, cap: 1000),
+                        a.kakugo ?? defaultKakugo,
                   )
                 : a.copyWith(clearKakugo: true),
           ),
@@ -461,6 +461,13 @@ class _KakugoIsland extends ConsumerWidget {
     final on = ref.watch(alarmDraftProvider(seed).select((a) => a.isKakugo));
     if (!on) return const SizedBox.shrink();
 
+    // Read here rather than inside the two rows: [SettingsIsland] draws a
+    // hairline between every child, so a row that returns an empty box would
+    // still leave its divider behind.
+    final canSnooze = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.canSnooze),
+    );
+
     final theme = Theme.of(context);
     // ListTile paints from the ambient colour scheme, so the whole island gets
     // a dark scheme of its own — otherwise the light themes would draw black
@@ -484,8 +491,107 @@ class _KakugoIsland extends ConsumerWidget {
         header: _MaxLossHeader(seed: seed),
         children: [
           _RateRow(seed: seed),
+          // Both only mean anything when the alarm can be snoozed at all, so
+          // they follow the スヌーズ toggle in the island above.
+          if (canSnooze) ...[
+            _SnoozePenaltyRow(seed: seed),
+            _SnoozeClockRow(seed: seed),
+          ],
           _CapRow(seed: seed),
         ],
+      ),
+    );
+  }
+}
+
+/// スヌーズペナルティ: the coin cost of one press, 0-1000.
+class _SnoozePenaltyRow extends ConsumerWidget {
+  const _SnoozePenaltyRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final draft = alarmDraftProvider(seed);
+    final penalty = ref.watch(
+      draft.select((a) => a.kakugo?.snoozePenalty ?? 0),
+    );
+    return SettingRow(
+      label: 'スヌーズペナルティ',
+      value: '$penalty コイン',
+      onTap: () => pushEditorSubScreen(
+        context,
+        NumberSubScreen(
+          title: 'スヌーズペナルティ',
+          initial: penalty,
+          min: minSnoozePenalty,
+          max: maxSnoozePenalty,
+          suffix: 'コイン',
+          description:
+              'スヌーズを1回押すごとに燃えるコインです。0 ならスヌーズは無料のままです。'
+              'スヌーズ自体はいつでも無料で使えます。これはあなたが自分に課した罰であって、'
+              '買うものではありません。',
+          onCommit: (v) => ref
+              .read(draft.notifier)
+              .update(
+                (a) => a.copyWith(
+                  kakugo: (a.kakugo ?? defaultKakugo).copyWith(
+                    snoozePenalty: v,
+                  ),
+                ),
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+/// スヌーズ中の加算: which of the two clocks spec 4 defines this pledge bills on.
+class _SnoozeClockRow extends ConsumerWidget {
+  const _SnoozeClockRow({required this.seed});
+
+  final Alarm seed;
+
+  static const continuousLabel = '規定時刻から加算し続ける';
+  static const resetLabel = '次に鳴る時刻を起点にし直す';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final draft = alarmDraftProvider(seed);
+    final resets = ref.watch(
+      draft.select((a) => a.kakugo?.snoozeResetsClock ?? false),
+    );
+    return SettingRow(
+      label: 'スヌーズ中の加算',
+      value: resets ? '起点にし直す' : '加算し続ける',
+      onTap: () => pushEditorSubScreen(
+        context,
+        ChoiceSubScreen<bool>(
+          title: 'スヌーズ中の加算',
+          initial: resets,
+          options: const [
+            (
+              value: false,
+              label: continuousLabel,
+              description: 'スヌーズで鳴っていない間もコインは燃え続けます。厳しいほう。',
+            ),
+            (
+              value: true,
+              label: resetLabel,
+              description: '鳴っていない間は燃えません。再び鳴った時点から、猶予もあらためて数え直します。',
+            ),
+          ],
+          description: 'どちらを選んでも、スヌーズを1回でも押した朝は起床失敗です。',
+          onCommit: (v) => ref
+              .read(draft.notifier)
+              .update(
+                (a) => a.copyWith(
+                  kakugo: (a.kakugo ?? defaultKakugo).copyWith(
+                    snoozeResetsClock: v,
+                  ),
+                ),
+              ),
+        ),
       ),
     );
   }
@@ -559,7 +665,7 @@ class _RateRow extends ConsumerWidget {
               .update(
                 (a) => a.copyWith(
                   kakugo:
-                      (a.kakugo ?? const Kakugo(ratePerMinute: 100, cap: 1000))
+                      (a.kakugo ?? defaultKakugo)
                           .copyWith(ratePerMinute: v),
                 ),
               ),
@@ -605,7 +711,7 @@ class _CapRow extends ConsumerWidget {
               .update(
                 (a) => a.copyWith(
                   kakugo:
-                      (a.kakugo ?? const Kakugo(ratePerMinute: 100, cap: 1000))
+                      (a.kakugo ?? defaultKakugo)
                           .copyWith(cap: v),
                 ),
               ),
