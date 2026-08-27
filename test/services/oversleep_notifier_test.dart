@@ -35,7 +35,7 @@ Future<({ProviderContainer container, AlarmSession session})> ringing(
   String user = userName,
 }) async {
   final container = await testContainer(
-    prefs: {if (user.isNotEmpty) 'settings.userName': user},
+    prefs: {if (user.isNotEmpty) 'profile.userName': user},
     extra: [fakeAlarmServiceOverride()],
   );
   await container.read(alarmRepositoryProvider).save(alarm);

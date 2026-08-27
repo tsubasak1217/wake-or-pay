@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/data/repositories/alarm_session_repository.dart';
 import 'package:wake_or_pay/data/repositories/ojisan_repository.dart';
+import 'package:wake_or_pay/data/repositories/profile_repository.dart';
 import 'package:wake_or_pay/data/repositories/wallet_repository.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
@@ -16,6 +17,7 @@ typedef Fixture = ({
   SessionService service,
   WalletRepository wallet,
   OjisanRepository ojisan,
+  ProfileRepository profile,
   AlarmSessionRepository sessions,
 });
 
@@ -32,6 +34,7 @@ void main() {
       service: container.read(sessionServiceProvider),
       wallet: wallet,
       ojisan: container.read(ojisanRepositoryProvider),
+      profile: container.read(profileRepositoryProvider),
       sessions: container.read(alarmSessionRepositoryProvider),
     );
   }
@@ -45,6 +48,7 @@ void main() {
       sessions,
       container.read(walletRepositoryProvider),
       container.read(ojisanRepositoryProvider),
+      container.read(profileRepositoryProvider),
       random: Random(42),
     );
 
@@ -181,6 +185,71 @@ void main() {
 
     expect(settled.status, SessionStatus.success);
     expect((await s.wallet.read()).tokens, 10);
+  });
+
+  group('XP', () {
+    test('a plain alarm cleared in time pays the base XP', () async {
+      final s = await setUpService();
+      const plain = Alarm(id: 'a2', hour: 7, minute: 0);
+      final session = await s.service.start(alarm: plain, firedAt: firedAt);
+
+      await s.service.dismiss(
+        session,
+        firedAt.add(const Duration(seconds: 59)),
+      );
+
+      expect(s.profile.read().xp, 10);
+    });
+
+    test('a 覚悟 alarm pays the same bonus the tokens got', () async {
+      final s = await setUpService();
+      final session = await s.service.start(alarm: alarm, firedAt: firedAt);
+
+      await s.service.dismiss(
+        session,
+        firedAt.add(const Duration(seconds: 59)),
+      );
+
+      expect(s.profile.read().xp, 20);
+      expect((await s.wallet.read()).tokens, 20);
+    });
+
+    test('XP adds to what was already earned', () async {
+      final s = await setUpService();
+      await s.profile.update((p) => p.copyWith(xp: 1000));
+      final session = await s.service.start(alarm: alarm, firedAt: firedAt);
+
+      await s.service.dismiss(
+        session,
+        firedAt.add(const Duration(seconds: 59)),
+      );
+
+      expect(s.profile.read().xp, 1020);
+    });
+
+    test('an overslept morning pays none', () async {
+      final s = await setUpService();
+      final session = await s.service.start(alarm: alarm, firedAt: firedAt);
+
+      final settled = await s.service.dismiss(
+        session,
+        firedAt.add(const Duration(minutes: 7)),
+      );
+
+      expect(settled.status, SessionStatus.failed);
+      expect(s.profile.read().xp, 0);
+    });
+
+    test('a second settle of the same session pays nothing more', () async {
+      final s = await setUpService();
+      final session = await s.service.start(alarm: alarm, firedAt: firedAt);
+      final dismissedAt = firedAt.add(const Duration(seconds: 59));
+
+      final settled = await s.service.dismiss(session, dismissedAt);
+      await s.service.settle(settled);
+
+      expect(s.profile.read().xp, 20, reason: 'granted exactly once');
+    });
   });
 
   test('settling twice charges once', () async {

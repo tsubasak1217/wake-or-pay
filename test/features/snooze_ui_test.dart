@@ -115,7 +115,12 @@ void main() {
       await settle(tester);
 
       expect(find.text('起きろ！！'), findsNothing, reason: 'off the ring screen');
-      expect(find.text('覚悟の目覚まし'), findsOneWidget, reason: 'Home');
+      // Home has no title bar of its own any more, only the shared header.
+      expect(
+        find.byKey(const ValueKey('appHeader')),
+        findsOneWidget,
+        reason: 'Home',
+      );
 
       final posted = notifierOf(r.container).posted.single;
       expect(posted.title, 'スヌーズ中');

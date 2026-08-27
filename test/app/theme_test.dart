@@ -25,13 +25,21 @@ Future<void> pumpApp(
   await tester.pumpAndSettle();
 }
 
+/// 設定 is reached through the wallet tab: Home has no app bar action any more,
+/// only the shared header.
+Future<void> openSettings(WidgetTester tester) async {
+  await tester.tap(find.text('ウォレット'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('設定・テーマ'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('starts on Home and can reach settings', (tester) async {
     await pumpApp(tester);
-    expect(find.text('覚悟の目覚まし'), findsOneWidget);
+    expect(find.byKey(const ValueKey('appHeader')), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.settings_outlined));
-    await tester.pumpAndSettle();
+    await openSettings(tester);
     expect(find.text('設定'), findsOneWidget);
   });
 
@@ -45,8 +53,7 @@ void main() {
         ],
       },
     );
-    await tester.tap(find.byIcon(Icons.settings_outlined));
-    await tester.pumpAndSettle();
+    await openSettings(tester);
 
     Brightness brightness() =>
         Theme.of(tester.element(find.text('設定'))).colorScheme.brightness;

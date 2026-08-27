@@ -158,7 +158,7 @@ final oversleepNotifierProvider = Provider<OversleepNotifier>(
     ref.watch(appNotifierProvider),
     // read, not watch: the name is wanted at the moment of firing, and a
     // rename should not tear this provider down mid-session.
-    () => ref.read(settingsRepositoryProvider).read().userName,
+    () => ref.read(profileRepositoryProvider).read().userName,
   ),
 );
 

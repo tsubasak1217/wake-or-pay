@@ -11,7 +11,6 @@ class SettingsRepository {
 
   static const _themeIdKey = 'settings.themeId';
   static const _unlockedKey = 'settings.unlockedThemeIds';
-  static const _userNameKey = 'settings.userName';
 
   final SharedPreferences _prefs;
 
@@ -21,18 +20,18 @@ class SettingsRepository {
       AppThemes.defaultThemeId,
       ...?_prefs.getStringList(_unlockedKey),
     },
-    // An install from before the name existed has no key — that is exactly
-    // the "not set yet" the empty string means, so no migration is needed.
-    userName: _prefs.getString(_userNameKey) ?? '',
   );
 
+  // `settings.userName` is deliberately neither read nor written any more: the
+  // name belongs to the profile now, and `ProfileRepository` reads that key
+  // through as a fallback. Leaving it untouched is what keeps a rollback able
+  // to find it.
   Future<void> write(Settings settings) async {
     await _prefs.setString(_themeIdKey, settings.themeId);
     await _prefs.setStringList(
       _unlockedKey,
       settings.unlockedThemeIds.toList()..sort(),
     );
-    await _prefs.setString(_userNameKey, settings.userName);
   }
 
   Future<Settings> update(Settings Function(Settings current) change) async {

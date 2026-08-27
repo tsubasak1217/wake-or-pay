@@ -21,6 +21,7 @@ final sessionServiceProvider = Provider(
     ref.watch(alarmSessionRepositoryProvider),
     ref.watch(walletRepositoryProvider),
     ref.watch(ojisanRepositoryProvider),
+    ref.watch(profileRepositoryProvider),
   ),
 );
 

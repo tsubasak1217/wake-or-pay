@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../data/repositories/alarm_session_repository.dart';
 import '../data/repositories/ojisan_repository.dart';
+import '../data/repositories/profile_repository.dart';
 import '../data/repositories/wallet_repository.dart';
 import '../domain/loss_calculator.dart';
 import '../domain/models.dart';
@@ -34,12 +35,18 @@ class RecoveryOutcome {
 /// Owns the money side of a ring: opening a session, and settling it exactly
 /// once against the wallet and the ojisan's takings.
 class SessionService {
-  SessionService(this._sessions, this._wallet, this._ojisan, {Random? random})
-    : _random = random ?? Random();
+  SessionService(
+    this._sessions,
+    this._wallet,
+    this._ojisan,
+    this._profile, {
+    Random? random,
+  }) : _random = random ?? Random();
 
   final AlarmSessionRepository _sessions;
   final WalletRepository _wallet;
   final OjisanRepository _ojisan;
+  final ProfileRepository _profile;
 
   /// Injectable so the draw behind [WakeCheckType.random] can be tested.
   final Random _random;
@@ -100,6 +107,11 @@ class SessionService {
     } else {
       final reward = rewardTokens(settled.kakugoSnapshot);
       await _wallet.update((w) => w.copyWith(tokens: w.tokens + reward));
+      // XP is paid for the same event as the tokens but lives on the profile,
+      // not the wallet: it is never spent, so it can never be a currency. A
+      // failed morning grants none — the level is a record of waking up.
+      final xp = rewardXp(settled.kakugoSnapshot);
+      await _profile.update((p) => p.copyWith(xp: p.xp + xp));
     }
 
     return settled;

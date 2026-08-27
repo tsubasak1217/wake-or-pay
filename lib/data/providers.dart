@@ -9,6 +9,7 @@ import 'repositories/contact_book_repository.dart';
 import 'repositories/contact_event_repository.dart';
 import 'repositories/garden_repository.dart';
 import 'repositories/ojisan_repository.dart';
+import 'repositories/profile_repository.dart';
 import 'repositories/settings_repository.dart';
 import 'repositories/wallet_repository.dart';
 
@@ -57,6 +58,10 @@ final gardenRepositoryProvider = Provider(
 
 final settingsRepositoryProvider = Provider(
   (ref) => SettingsRepository(ref.watch(sharedPreferencesProvider)),
+);
+
+final profileRepositoryProvider = Provider(
+  (ref) => ProfileRepository(ref.watch(sharedPreferencesProvider)),
 );
 
 final alarmsProvider = StreamProvider<List<Alarm>>(

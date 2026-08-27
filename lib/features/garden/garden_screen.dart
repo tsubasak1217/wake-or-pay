@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
 import '../../domain/ojisan.dart';
+import '../profile/app_header.dart';
 import 'garden_board.dart';
 import 'garden_controller.dart';
 
@@ -39,7 +40,7 @@ class _GardenScreenState extends ConsumerState<GardenScreen> {
     });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('お庭')),
+      appBar: const AppHeaderBar(),
       body: Column(
         children: [
           const _StreakBanner(),

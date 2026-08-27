@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wake_or_pay/app/theme_controller.dart';
+import 'package:wake_or_pay/app/profile_controller.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/main.dart';
@@ -465,8 +465,13 @@ void main() {
         );
       }
 
-      // The same editor the 設定 screen opens.
+      // The row is a pointer now: it opens the profile, and the name is set
+      // there.
       await tester.tap(find.byKey(const ValueKey('contactUserNameRow')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profileOverlay')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('profileUserNameRow')));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('userNameField')),
@@ -474,9 +479,11 @@ void main() {
       );
       await tester.pageBack();
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profileOverlayClose')));
+      await tester.pumpAndSettle();
 
       expect(
-        container.read(settingsProvider).userName,
+        container.read(profileProvider).userName,
         '山田花子',
         reason: 'stored trimmed',
       );
@@ -496,23 +503,17 @@ void main() {
     });
   });
 
-  testWidgets('設定 opens the same name editor', (tester) async {
+  testWidgets('設定 no longer carries the name', (tester) async {
     final container = await openNewAlarm(tester);
-    // Out of the new-alarm editor and over to the 設定 tab.
+    // Out of the new-alarm editor and over to 設定, which is on the wallet tab.
     await save(tester, container);
-    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.tap(find.text('ウォレット'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('設定・テーマ'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('settingsUserNameRow')), findsOneWidget);
-    expect(find.text('未設定'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('settingsUserNameRow')));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('userNameField')), '山田花子');
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-
-    expect(container.read(settingsProvider).userName, '山田花子');
-    expect(find.text('山田花子'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '設定'), findsOneWidget);
+    expect(find.byKey(const ValueKey('settingsUserNameRow')), findsNothing);
+    expect(find.text('あなたの名前'), findsNothing);
   });
 }

@@ -4,12 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme_controller.dart';
+import '../../app/profile_controller.dart';
 import '../../data/providers.dart';
 import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
 import '../../services/voice_recorder.dart';
-import '../settings/user_name_screen.dart';
+import '../profile/profile_overlay.dart';
 import 'contact_book_screen.dart';
 import 'edit_sub_screens.dart';
 import 'widgets/recording_bar.dart';
@@ -173,7 +173,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     final theme = Theme.of(context);
     // The subject of the default sentence. Watched, so coming back from the
     // editor redraws the row and both previews.
-    final userName = ref.watch(settingsProvider).userName;
+    final userName = ref.watch(profileProvider).userName;
 
     // Watched, not read: editing this person inside the 連絡帳 — which is a
     // route pushed on top of this screen — has to land on the 連絡先 row and
@@ -207,11 +207,15 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
               children: [
                 // Above 連絡先 on purpose: the message is about this person and
                 // is sent to that one, and reading the rows in order says so.
+                // A pointer, not an editor: the name is one value and it is
+                // owned by the profile now, so this row shows what it is and
+                // opens the place it is set.
                 SettingRow(
                   key: const ValueKey('contactUserNameRow'),
                   label: 'あなたの名前',
                   value: userName.isEmpty ? '未設定' : userName,
-                  onTap: () => pushUserNameSubScreen(context),
+                  subtitle: '名前はプロフィールで設定します',
+                  onTap: () => showProfileOverlay(context),
                 ),
                 SettingRow(
                   key: const ValueKey('contactPickRow'),

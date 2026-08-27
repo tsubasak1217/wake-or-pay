@@ -9,6 +9,7 @@ import '../../domain/format.dart';
 import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
 import '../../domain/snooze_rules.dart';
+import '../profile/app_header.dart';
 import 'alarm_controller.dart';
 import 'widgets/swipe_to_delete.dart';
 
@@ -20,20 +21,9 @@ class HomeScreen extends ConsumerWidget {
     final alarms = ref.watch(alarmsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('覚悟の目覚まし'),
-        actions: [
-          IconButton(
-            tooltip: '設定',
-            onPressed: () => context.push(AppRoute.settings),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(44),
-          child: _BalanceBar(),
-        ),
-      ),
+      // The shared header replaces both the title bar and the old balance bar:
+      // the balance is in it, and 設定 keeps its row on the wallet tab.
+      appBar: const AppHeaderBar(),
       body: alarms.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('$e')),
@@ -52,32 +42,6 @@ class HomeScreen extends ConsumerWidget {
         onPressed: () => context.push(AppRoute.alarmNew),
         tooltip: 'アラームを追加',
         child: const Icon(Icons.add),
-      ),
-    );
-  }
-}
-
-class _BalanceBar extends ConsumerWidget {
-  const _BalanceBar();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final wallet = ref.watch(walletProvider).valueOrNull ?? const Wallet();
-    // The wallet is a tab now, so this bar only shows the balance and hands
-    // over to that tab rather than pushing a second copy of the screen.
-    return InkWell(
-      onTap: () => context.go(AppRoute.wallet),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-        child: Row(
-          children: [
-            Text('🪙 ${wallet.coins}'),
-            const SizedBox(width: 24),
-            Text('🎁 ${wallet.tokens}'),
-            const Spacer(),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
       ),
     );
   }

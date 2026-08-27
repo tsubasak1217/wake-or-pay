@@ -6,6 +6,7 @@ import '../../app/router.dart';
 import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
+import '../profile/app_header.dart';
 
 /// Stand-in for the in-app purchase that does not exist yet.
 const devChargeAmount = 1000;
@@ -20,7 +21,7 @@ class WalletScreen extends ConsumerWidget {
     final history = ref.watch(sessionHistoryProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('ウォレット')),
+      appBar: const AppHeaderBar(),
       body: ListView(
         children: [
           Padding(

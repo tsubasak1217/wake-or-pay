@@ -20,13 +20,6 @@ class SettingsController extends Notifier<Settings> {
         .update((s) => s.copyWith(themeId: AppThemes.byId(id).id));
   }
 
-  /// The app's own user. Stored trimmed; empty means "not set".
-  Future<void> setUserName(String name) async {
-    state = await ref
-        .read(settingsRepositoryProvider)
-        .update((s) => s.copyWith(userName: name.trim()));
-  }
-
   Future<void> unlockTheme(String id) async {
     state = await ref
         .read(settingsRepositoryProvider)

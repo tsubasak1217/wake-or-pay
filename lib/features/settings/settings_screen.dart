@@ -6,7 +6,6 @@ import '../../app/theme_controller.dart';
 import '../../data/providers.dart';
 import '../../domain/models.dart';
 import 'theme_shop.dart';
-import 'user_name_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -21,30 +20,10 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('設定')),
       body: ListView(
         children: [
+          // あなた lives in the profile overlay now — the name, the ID and the
+          // cosmetics are one screen, and this one is only the theme.
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: Text('あなた', style: textTheme.titleMedium),
-          ),
-          ListTile(
-            key: const ValueKey('settingsUserNameRow'),
-            onTap: () => pushUserNameSubScreen(context),
-            title: const Text('あなたの名前'),
-            subtitle: const Text('寝坊を知らせる文面の主語になります'),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  settings.userName.isEmpty ? '未設定' : settings.userName,
-                  style: textTheme.bodyLarge,
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right),
-              ],
-            ),
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Text('テーマ', style: textTheme.titleMedium),
           ),
           Padding(

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme_controller.dart';
+import '../../app/profile_controller.dart';
 import '../../domain/models.dart';
 
 /// あなたの名前: the one name the app has for its own user.
 ///
-/// Reached from two places — the 設定 screen and the 寝坊時の連絡設定 island —
-/// and it is deliberately the same screen from both, because it is the same
-/// single value. Written on the way out, like every other editor sub-screen.
+/// Reached from the profile overlay and from the 寝坊時の連絡設定 island, and it
+/// is deliberately the same screen from both, because it is the same single
+/// value. Written on the way out, like every other editor sub-screen.
 class UserNameSubScreen extends ConsumerStatefulWidget {
   const UserNameSubScreen({super.key});
 
@@ -18,7 +18,7 @@ class UserNameSubScreen extends ConsumerStatefulWidget {
 
 class _UserNameSubScreenState extends ConsumerState<UserNameSubScreen> {
   late final TextEditingController _controller = TextEditingController(
-    text: ref.read(settingsProvider).userName,
+    text: ref.read(profileProvider).userName,
   );
 
   @override
@@ -29,8 +29,8 @@ class _UserNameSubScreenState extends ConsumerState<UserNameSubScreen> {
 
   void _commit() {
     final name = _controller.text.trim();
-    if (name == ref.read(settingsProvider).userName) return;
-    ref.read(settingsProvider.notifier).setUserName(name);
+    if (name == ref.read(profileProvider).userName) return;
+    ref.read(profileProvider.notifier).setUserName(name);
   }
 
   @override

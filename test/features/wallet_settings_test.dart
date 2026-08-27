@@ -21,6 +21,15 @@ Future<ProviderContainer> pumpHome(WidgetTester tester) async {
   return container;
 }
 
+/// Home lost its 設定 action along with its app bar, so 設定 is reached the one
+/// remaining way: the wallet tab's row.
+Future<void> openSettings(WidgetTester tester) async {
+  await tester.tap(find.text('ウォレット'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('設定・テーマ'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('Wallet', () {
     testWidgets('dev charge adds 1,000 coins and is labelled as dev-only', (
@@ -82,8 +91,7 @@ void main() {
       tester,
     ) async {
       final container = await pumpHome(tester);
-      await tester.tap(find.byIcon(Icons.settings_outlined));
-      await tester.pumpAndSettle();
+      await openSettings(tester);
 
       expect(find.widgetWithText(TextButton, '交換'), findsNWidgets(2));
 
@@ -105,8 +113,7 @@ void main() {
           .read(walletRepositoryProvider)
           .write(const Wallet(tokens: 250));
 
-      await tester.tap(find.byIcon(Icons.settings_outlined));
-      await tester.pumpAndSettle();
+      await openSettings(tester);
 
       await tester.tap(find.widgetWithText(TextButton, '交換').first);
       await tester.pumpAndSettle();

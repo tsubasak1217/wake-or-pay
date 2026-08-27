@@ -309,30 +309,22 @@ void main() {
       final s = repo.read();
       expect(s.themeId, AppThemes.defaultThemeId);
       expect(s.unlockedThemeIds, {AppThemes.defaultThemeId});
-      expect(s.userName, '', reason: 'nobody has said who they are yet');
     });
 
-    test(
-      'the user name survives a write, and an old install has none',
-      () async {
-        final repo = (await testContainer(
-          // An install from before the name existed: theme keys, no name key.
-          prefs: {'settings.themeId': AppThemes.sunrise.id},
-        )).read(settingsRepositoryProvider);
-        expect(repo.read().userName, '');
+    test('a write leaves the retired user name key alone', () async {
+      final container = await testContainer(
+        prefs: {'settings.userName': '山田花子'},
+      );
+      await container
+          .read(settingsRepositoryProvider)
+          .update((s) => s.copyWith(themeId: AppThemes.sunrise.id));
 
-        await repo.update((s) => s.copyWith(userName: '山田花子'));
-        expect(repo.read().userName, '山田花子');
-        expect(
-          repo.read().themeId,
-          AppThemes.sunrise.id,
-          reason: 'writing the name must not disturb the theme',
-        );
-
-        await repo.update((s) => s.copyWith(userName: ''));
-        expect(repo.read().userName, '');
-      },
-    );
+      expect(
+        container.read(sharedPreferencesProvider).getString('settings.userName'),
+        '山田花子',
+        reason: 'ProfileRepository still reads it through',
+      );
+    });
 
     test('reads what was stored, default theme always unlocked', () async {
       final repo = (await testContainer(

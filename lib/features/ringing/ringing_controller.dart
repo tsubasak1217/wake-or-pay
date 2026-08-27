@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/profile_controller.dart';
 import '../../app/router.dart';
 import '../../data/providers.dart';
 import '../../services/alarm_service.dart';
@@ -31,6 +32,10 @@ class RingingController {
     }
 
     _ref.invalidate(sessionByIdProvider(sessionId));
+    // A success paid XP straight into shared_preferences, behind the cached
+    // profile the header is painted from — so drop the cache rather than let
+    // the level go stale until the next launch.
+    _ref.invalidate(profileProvider);
     _ref.read(appRouterProvider).go(AppRoute.result(settled.id));
   }
 
