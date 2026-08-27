@@ -6,6 +6,7 @@ import '../features/alarms/alarm_edit_screen.dart';
 import '../features/alarms/home_screen.dart';
 import '../features/garden/garden_edit_screen.dart';
 import '../features/garden/garden_screen.dart';
+import '../features/garden/seed_shop_screen.dart';
 import '../features/result/result_screen.dart';
 import '../features/ringing/ringing_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -19,6 +20,7 @@ class AppRoute {
   static const alarmNew = '/alarm/new';
   static const garden = '/garden';
   static const gardenEdit = '/garden/edit';
+  static const seedShop = '/garden/shop';
   static const wallet = '/wallet';
   static const settings = '/settings';
 
@@ -71,6 +73,10 @@ GoRouter createAppRouter() => GoRouter(
     GoRoute(
       path: AppRoute.gardenEdit,
       builder: (context, state) => const GardenEditScreen(),
+    ),
+    GoRoute(
+      path: AppRoute.seedShop,
+      builder: (context, state) => const SeedShopScreen(),
     ),
     GoRoute(
       path: '/alarm/new',

@@ -70,7 +70,11 @@ class _GardenActions extends StatelessWidget {
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const SizedBox.shrink(),
+        OutlinedButton.icon(
+          onPressed: () => context.push(AppRoute.seedShop),
+          icon: const Icon(Icons.storefront_outlined),
+          label: const Text('種屋'),
+        ),
         FilledButton.tonalIcon(
           onPressed: () => context.push(AppRoute.gardenEdit),
           icon: const Icon(Icons.grid_view_outlined),
