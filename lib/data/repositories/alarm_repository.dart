@@ -29,6 +29,13 @@ class AlarmRepository {
     return row?.toModel();
   }
 
+  /// Live view of one alarm. Emits again on every write to it, so a screen
+  /// holding this can never be looking at a pre-edit copy.
+  Stream<Alarm?> watchById(String id) =>
+      (_db.select(_db.alarmRows)..where((a) => a.id.equals(id)))
+          .watchSingleOrNull()
+          .map((r) => r?.toModel());
+
   /// Insert or replace.
   Future<void> save(Alarm alarm) =>
       _db.into(_db.alarmRows).insertOnConflictUpdate(alarm.toCompanion());

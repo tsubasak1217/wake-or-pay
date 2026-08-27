@@ -61,6 +61,9 @@ final sessionByIdProvider = FutureProvider.family<AlarmSession?, String>(
   (ref, id) => ref.watch(alarmSessionRepositoryProvider).getById(id),
 );
 
-final alarmByIdProvider = FutureProvider.family<Alarm?, String>(
-  (ref, id) => ref.watch(alarmRepositoryProvider).getById(id),
+/// Live, not a one-shot read: a `FutureProvider` here caches the alarm as it
+/// was the first time anyone asked for it, which is how an alarm edited in the
+/// editor used to ring with its previous wake check.
+final alarmByIdProvider = StreamProvider.family<Alarm?, String>(
+  (ref, id) => ref.watch(alarmRepositoryProvider).watchById(id),
 );

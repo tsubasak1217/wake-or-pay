@@ -115,8 +115,7 @@ class _RingingBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final loss = lossAt(now, session);
-    final alarm = ref.watch(alarmByIdProvider(session.alarmId)).valueOrNull;
-    final wakeCheck = alarm?.wakeCheck ?? WakeCheckType.longPress;
+    final alarm = ref.watch(alarmByIdProvider(session.alarmId));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -130,16 +129,33 @@ class _RingingBody extends ConsumerWidget {
           else
             Text('覚悟モードはオフです', style: theme.textTheme.bodyLarge),
           const SizedBox(height: 32),
-          switch (wakeCheck) {
-            WakeCheckType.longPress => LongPressCheck(onCleared: onCleared),
-            WakeCheckType.math => MathCheck(onCleared: onCleared),
-            WakeCheckType.typing => TypingCheck(onCleared: onCleared),
-          },
+          // Never guess the wake check: showing long press while the alarm
+          // loads would let the user clear a check they did not choose. An
+          // alarm that has since been deleted still needs a way out, so that
+          // — and only that — falls back to long press.
+          alarm.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ),
+            error: (e, _) => _wakeCheckFor(WakeCheckType.longPress, onCleared),
+            data: (data) => _wakeCheckFor(
+              data?.wakeCheck ?? WakeCheckType.longPress,
+              onCleared,
+            ),
+          ),
         ],
       ),
     );
   }
 }
+
+Widget _wakeCheckFor(WakeCheckType type, VoidCallback onCleared) =>
+    switch (type) {
+      WakeCheckType.longPress => LongPressCheck(onCleared: onCleared),
+      WakeCheckType.math => MathCheck(onCleared: onCleared),
+      WakeCheckType.typing => TypingCheck(onCleared: onCleared),
+    };
 
 class _OjisanPanel extends StatelessWidget {
   const _OjisanPanel({required this.loss});

@@ -163,6 +163,46 @@ void main() {
     expect(find.text('起きろ！！'), findsOneWidget, reason: 'still ringing');
   });
 
+  testWidgets('the wake check saved in the editor is the one that rings', (
+    tester,
+  ) async {
+    final container = await testContainer(extra: [fakeAlarmServiceOverride()]);
+    // Stored as longPress, then edited to math before it ever rings.
+    await container.read(alarmRepositoryProvider).save(alarm);
+    await container
+        .read(walletRepositoryProvider)
+        .write(const Wallet(coins: 5000));
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const WakeOrPayApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('07:00'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('計算（3問）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    final saved = (await container
+        .read(alarmRepositoryProvider)
+        .getById(alarm.id))!;
+    expect(saved.wakeCheck, WakeCheckType.math, reason: 'stored correctly');
+
+    final session = await container
+        .read(sessionServiceProvider)
+        .start(alarm: saved, firedAt: DateTime.now());
+    container.read(appRouterProvider).go(AppRoute.ringing(session.id));
+    await settle(tester);
+
+    expect(find.textContaining('= ?'), findsOneWidget);
+    expect(find.text('5秒間押し続ける'), findsNothing);
+  });
+
   testWidgets('the typing check demands an exact match and blocks selection', (
     tester,
   ) async {
