@@ -47,6 +47,20 @@ void main() {
       expect((await repo.getById('slow'))!.graceMinutes, 5);
     });
 
+    test('every wake check, ノーマル included, round trips by name', () async {
+      final repo = (await testContainer()).read(alarmRepositoryProvider);
+      for (final type in WakeCheckType.values) {
+        await repo.save(
+          Alarm(id: type.name, hour: 7, minute: 0, wakeCheck: type),
+        );
+        expect(
+          (await repo.getById(type.name))!.wakeCheck,
+          type,
+          reason: type.name,
+        );
+      }
+    });
+
     test('a one-shot alarm round trips with no repeat days', () async {
       final repo = (await testContainer()).read(alarmRepositoryProvider);
       const alarm = Alarm(id: 'a1', hour: 23, minute: 59);

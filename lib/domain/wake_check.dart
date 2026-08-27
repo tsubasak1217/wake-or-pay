@@ -4,6 +4,10 @@ import 'models/alarm.dart';
 
 /// What [WakeCheckType.random] draws from. Itself excluded, obviously; a draw
 /// always lands on a check that can actually be performed.
+///
+/// [WakeCheckType.normal] is excluded too, and for a different reason: it asks
+/// nothing of the user, so drawing it would turn 「ランダム」 into a lottery for
+/// getting off easy. Whoever picks random is asking to be tested.
 const randomWakeCheckPool = <WakeCheckType>[
   WakeCheckType.longPress,
   WakeCheckType.math,

@@ -84,6 +84,29 @@ void main() {
       }
     });
 
+    test('never draws ノーマル: random is not a lottery for getting off easy', () {
+      expect(randomWakeCheckPool, isNot(contains(WakeCheckType.normal)));
+      final random = Random(5);
+      for (var i = 0; i < 2000; i++) {
+        expect(
+          resolveWakeCheck(WakeCheckType.random, random),
+          isNot(WakeCheckType.normal),
+        );
+      }
+    });
+
+    test('ノーマル chosen deliberately passes straight through', () {
+      expect(
+        resolveWakeCheck(WakeCheckType.normal, Random(1)),
+        WakeCheckType.normal,
+      );
+    });
+
+    test('ノーマル is listed first, so the editor offers it first', () {
+      expect(WakeCheckType.values.first, WakeCheckType.normal);
+      expect(WakeCheckType.normal.label, 'ノーマル');
+    });
+
     test('reaches all four over enough draws', () {
       final random = Random(11);
       final seen = <WakeCheckType>{};

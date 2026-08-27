@@ -17,6 +17,7 @@ import '../../services/speaker.dart';
 import 'ringing_controller.dart';
 import 'wake_checks/long_press_check.dart';
 import 'wake_checks/math_check.dart';
+import 'wake_checks/normal_check.dart';
 import 'wake_checks/shake_check.dart';
 import 'wake_checks/typing_check.dart';
 
@@ -288,6 +289,7 @@ class _RingingBody extends ConsumerWidget {
 
 Widget _wakeCheckFor(WakeCheckType type, VoidCallback onCleared) =>
     switch (type) {
+      WakeCheckType.normal => NormalCheck(onCleared: onCleared),
       WakeCheckType.longPress => LongPressCheck(onCleared: onCleared),
       WakeCheckType.math => MathCheck(onCleared: onCleared),
       WakeCheckType.typing => TypingCheck(onCleared: onCleared),

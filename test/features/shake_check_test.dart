@@ -103,7 +103,9 @@ void main() {
     );
   });
 
-  testWidgets('the wake check sub-screen offers all five', (tester) async {
+  testWidgets('the wake check sub-screen offers all six, ノーマル first', (
+    tester,
+  ) async {
     await pumpHome(tester, coins: 5000);
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();

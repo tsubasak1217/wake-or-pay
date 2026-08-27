@@ -5,10 +5,16 @@ import 'oversleep_contact.dart';
 import 'snooze.dart';
 
 /// How the user proves they are actually awake.
-enum WakeCheckType { longPress, math, typing, shake, random }
+///
+/// [normal] is first because it is the plainest one — an ordinary alarm's
+/// dismiss button, for the mornings nobody wants a puzzle. It is deliberately
+/// **not** in [randomWakeCheckPool]: a random draw that can land on "tap once"
+/// is not a check.
+enum WakeCheckType { normal, longPress, math, typing, shake, random }
 
 extension WakeCheckTypeLabel on WakeCheckType {
   String get label => switch (this) {
+    WakeCheckType.normal => 'ノーマル',
     WakeCheckType.longPress => '長押し（5秒）',
     WakeCheckType.math => '計算（3問）',
     WakeCheckType.typing => '文字入力',
@@ -18,6 +24,7 @@ extension WakeCheckTypeLabel on WakeCheckType {
 
   /// One line of explanation, shown in the editor's sub-screen.
   String get description => switch (this) {
+    WakeCheckType.normal => '解除ボタンを1回押すだけ',
     WakeCheckType.longPress => 'ボタンを5秒間押し続ける',
     WakeCheckType.math => '2桁の足し算を3問続けて正解する',
     WakeCheckType.typing => '表示された文を一字一句そのまま打つ',

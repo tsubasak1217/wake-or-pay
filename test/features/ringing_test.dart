@@ -70,6 +70,27 @@ void main() {
     );
   });
 
+  testWidgets('ノーマル clears the morning with a single tap', (tester) async {
+    final r = await openRinging(
+      tester,
+      withAlarm: alarm.copyWith(wakeCheck: WakeCheckType.normal),
+      ringingFor: const Duration(minutes: 3),
+    );
+
+    expect(find.text('タップして解除'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('normalCheckButton')));
+    await settle(tester);
+
+    expect(
+      (await r.container
+              .read(alarmSessionRepositoryProvider)
+              .getById(r.session.id))!
+          .isRinging,
+      isFalse,
+      reason: 'one tap is the whole check',
+    );
+  });
+
   testWidgets('the ringing content is centred, not stuck in the corner', (
     tester,
   ) async {
