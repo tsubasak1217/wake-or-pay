@@ -15,6 +15,37 @@ const defaultContactTriggerMinutes = 3;
 int normalizeContactTriggerMinutes(int minutes) =>
     minutes.clamp(minContactTriggerMinutes, maxContactTriggerMinutes);
 
+/// The longest a custom recording may run.
+///
+/// A fixed limit rather than a setting: the recording is played down a phone
+/// line to somebody who is being told to go and wake a person up, and half a
+/// minute is already more than that takes. It also bounds the file, the
+/// waveform, and — more to the point — how long the recorder can sit open on
+/// the microphone if the user walks away from it.
+const maxContactRecordingSeconds = 30;
+
+const maxContactRecordingDuration = Duration(
+  seconds: maxContactRecordingSeconds,
+);
+
+/// How many amplitude readings make up a stored waveform.
+///
+/// [maxContactRecordingDuration] divided by [contactWaveformInterval]: one bar
+/// per quarter second, which is fine enough to look like speech and coarse
+/// enough that the whole thing is a few hundred bytes of JSON.
+const contactWaveformSamples = 120;
+
+const contactWaveformInterval = Duration(milliseconds: 250);
+
+/// Amplitudes read back off disk, made safe to draw. Pure.
+///
+/// Anything outside 0..1 is clamped and anything past the limit is dropped: a
+/// hand edited row must not be able to paint outside the widget.
+List<double> normalizeWaveform(Iterable<double> samples) => [
+  for (final sample in samples.take(contactWaveformSamples))
+    sample.isFinite ? sample.clamp(0.0, 1.0).toDouble() : 0.0,
+];
+
 /// What the mail says: the app's own sentence, or the user's.
 enum MailMode { standard, custom }
 
@@ -87,6 +118,7 @@ class OversleepContact {
     this.mailMessage,
     this.phoneMode = PhoneMode.auto,
     this.recordingPath,
+    this.recordingWaveform = const [],
     this.triggerMinutesAfterGrace = defaultContactTriggerMinutes,
   });
 
@@ -113,6 +145,15 @@ class OversleepContact {
   /// A recording copied into the app's own storage, so it survives the
   /// original file being deleted. Used only under [PhoneMode.custom].
   final String? recordingPath;
+
+  /// The loudness of [recordingPath], 0..1, one reading every
+  /// [contactWaveformInterval]. Drawn behind the seek bar so the recording has
+  /// a shape and not just a length.
+  ///
+  /// Empty is a real and ordinary value: a device that will not report the
+  /// microphone level still records perfectly well, and the bar is simply
+  /// drawn flat. Nothing reads this except the drawing.
+  final List<double> recordingWaveform;
 
   /// 0-60. Counted from the end of the grace window, not from the ring.
   final int triggerMinutesAfterGrace;
@@ -146,6 +187,7 @@ class OversleepContact {
     PhoneMode? phoneMode,
     String? recordingPath,
     bool clearRecordingPath = false,
+    List<double>? recordingWaveform,
     int? triggerMinutesAfterGrace,
   }) => OversleepContact(
     contactId: clearContactId ? null : (contactId ?? this.contactId),
@@ -160,6 +202,11 @@ class OversleepContact {
     recordingPath: clearRecordingPath
         ? null
         : (recordingPath ?? this.recordingPath),
+    // A cleared recording takes its waveform with it: there is nothing left
+    // for those bars to be the shape of.
+    recordingWaveform: clearRecordingPath
+        ? const []
+        : (recordingWaveform ?? this.recordingWaveform),
     triggerMinutesAfterGrace:
         triggerMinutesAfterGrace ?? this.triggerMinutesAfterGrace,
   );
@@ -175,6 +222,11 @@ class OversleepContact {
     'mailMessage': mailMessage,
     'phoneMode': phoneMode.name,
     'recordingPath': recordingPath,
+    // Two decimals: a bar is a few pixels tall and nobody can see the third.
+    'recordingWaveform': [
+      for (final sample in recordingWaveform)
+        double.parse(sample.toStringAsFixed(2)),
+    ],
     'triggerMinutesAfterGrace': normalizeContactTriggerMinutes(
       triggerMinutesAfterGrace,
     ),
@@ -216,6 +268,12 @@ class OversleepContact {
           _byName(PhoneMode.values, json['phoneMode'] as String?) ??
           (hasRecording ? PhoneMode.custom : PhoneMode.auto),
       recordingPath: recordingPath,
+      recordingWaveform: normalizeWaveform(
+        (json['recordingWaveform'] as List?)?.map(
+              (v) => (v as num?)?.toDouble() ?? 0.0,
+            ) ??
+            const <double>[],
+      ),
       triggerMinutesAfterGrace: normalizeContactTriggerMinutes(
         json['triggerMinutesAfterGrace'] as int? ??
             defaultContactTriggerMinutes,
@@ -236,6 +294,7 @@ class OversleepContact {
       other.mailMessage == mailMessage &&
       other.phoneMode == phoneMode &&
       other.recordingPath == recordingPath &&
+      listEquals(other.recordingWaveform, recordingWaveform) &&
       other.triggerMinutesAfterGrace == triggerMinutesAfterGrace;
 
   @override
@@ -250,6 +309,7 @@ class OversleepContact {
     mailMessage,
     phoneMode,
     recordingPath,
+    Object.hashAll(recordingWaveform),
     triggerMinutesAfterGrace,
   );
 

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,60 +8,6 @@ import 'package:wake_or_pay/main.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
 
 import '../helpers.dart';
-
-/// A recorder that never touches a microphone: it remembers the path it was
-/// asked to write and hands the same one back from [stop].
-class FakeVoiceRecorder implements VoiceRecorder {
-  FakeVoiceRecorder({this.permitted = true});
-
-  final bool permitted;
-  final started = <String>[];
-  int permissionAsked = 0;
-
-  String? _current;
-
-  @override
-  Future<bool> hasPermission() async {
-    permissionAsked++;
-    return permitted;
-  }
-
-  @override
-  Future<void> start(String path) async {
-    started.add(path);
-    _current = path;
-  }
-
-  @override
-  Future<String?> stop() async {
-    final path = _current;
-    _current = null;
-    return path;
-  }
-
-  @override
-  Future<void> dispose() async {}
-}
-
-class FakeVoicePlayer implements VoicePlayer {
-  final played = <String>[];
-  final _playing = StreamController<bool>.broadcast();
-
-  @override
-  Future<void> play(String path) async {
-    played.add(path);
-    _playing.add(true);
-  }
-
-  @override
-  Future<void> stop() async => _playing.add(false);
-
-  @override
-  Stream<bool> get playing => _playing.stream;
-
-  @override
-  Future<void> dispose() async => _playing.close();
-}
 
 /// The editor's own scroll view; the time wheel brings scrollables of its own.
 Finder get editorScrollable => find
@@ -393,13 +337,15 @@ void main() {
       expect(statusText(tester), '録音なし');
 
       await tester.tap(find.byKey(const ValueKey('contactRecordStart')));
-      await tester.pumpAndSettle();
-      expect(statusText(tester), '録音中');
+      await tester.pump();
+      // 録音開始 and 停止 are now the same wide button, so the start is gone.
+      expect(statusText(tester), startsWith('録音中'));
+      expect(find.byKey(const ValueKey('contactRecordStart')), findsNothing);
       expect(recorder.started, hasLength(1));
 
       await tester.tap(find.byKey(const ValueKey('contactRecordStop')));
       await tester.pumpAndSettle();
-      expect(statusText(tester), '録音あり');
+      expect(statusText(tester), startsWith('録音あり'));
     });
 
     final contact = (await save(tester, container)).contact!;
@@ -422,12 +368,21 @@ void main() {
     });
 
     await inContactScreen(tester, () async {
-      expect(statusText(tester), '録音あり', reason: 'read back off the draft');
+      expect(
+        statusText(tester),
+        startsWith('録音あり'),
+        reason: 'read back off the draft',
+      );
       await tester.tap(find.byKey(const ValueKey('contactRecordPlay')));
       await tester.pumpAndSettle();
       expect(player.played, [recorder.started.single]);
 
+      // 削除 now asks first: it is the one button here that cannot be undone.
       await tester.tap(find.byKey(const ValueKey('contactRecordDelete')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('contactRecordDeleteConfirm')),
+      );
       await tester.pumpAndSettle();
       expect(statusText(tester), '録音なし');
     });

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +8,7 @@ import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
+import 'package:wake_or_pay/services/voice_recorder.dart';
 
 /// Overrides backing the app with an in-memory database and in-memory
 /// preferences. The database is closed when the owning container is disposed.
@@ -78,3 +81,87 @@ Override fakeAlarmServiceOverride() =>
 /// already a [RecordingNotifier]; this just reads it back with a type.
 RecordingNotifier notifierOf(ProviderContainer container) =>
     container.read(appNotifierProvider) as RecordingNotifier;
+
+/// A recorder that never touches a microphone: it remembers the path it was
+/// asked to write, hands the same one back from [stop], and lets the test push
+/// microphone levels in by hand.
+class FakeVoiceRecorder implements VoiceRecorder {
+  FakeVoiceRecorder({this.permitted = true});
+
+  final bool permitted;
+  final started = <String>[];
+  int permissionAsked = 0;
+  int stopped = 0;
+
+  final _amplitude = StreamController<double>.broadcast();
+
+  String? _current;
+
+  /// One microphone reading, as the plugin's stream would have delivered it.
+  void emitAmplitude(double level) => _amplitude.add(level);
+
+  @override
+  Future<bool> hasPermission() async {
+    permissionAsked++;
+    return permitted;
+  }
+
+  @override
+  Future<void> start(String path) async {
+    started.add(path);
+    _current = path;
+  }
+
+  @override
+  Future<String?> stop() async {
+    stopped++;
+    final path = _current;
+    _current = null;
+    return path;
+  }
+
+  @override
+  Stream<double> get amplitude => _amplitude.stream;
+
+  @override
+  Future<void> dispose() async => _amplitude.close();
+}
+
+/// A recorder whose microphone level the platform will not report — the
+/// ordinary case on an emulator, and never a reason not to record.
+class SilentAmplitudeRecorder extends FakeVoiceRecorder {
+  @override
+  Stream<double> get amplitude => const Stream<double>.empty();
+}
+
+class FakeVoicePlayer implements VoicePlayer {
+  final played = <String>[];
+  final _playing = StreamController<bool>.broadcast();
+  final _position = StreamController<Duration>.broadcast();
+
+  /// The knob following playback, as the platform's position stream would.
+  void emitPosition(Duration at) => _position.add(at);
+
+  void finish() => _playing.add(false);
+
+  @override
+  Future<void> play(String path) async {
+    played.add(path);
+    _playing.add(true);
+  }
+
+  @override
+  Future<void> stop() async => _playing.add(false);
+
+  @override
+  Stream<bool> get playing => _playing.stream;
+
+  @override
+  Stream<Duration> get position => _position.stream;
+
+  @override
+  Future<void> dispose() async {
+    await _playing.close();
+    await _position.close();
+  }
+}

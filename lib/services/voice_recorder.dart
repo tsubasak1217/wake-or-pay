@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
+import '../domain/models.dart';
+
 /// Records the user's own voice for the oversleep contact.
 ///
 /// An interface, not the plugin, so the contact sub-screen can be driven in a
@@ -22,6 +24,15 @@ abstract class VoiceRecorder {
   /// Stops and returns the file that was written, or null if nothing was.
   Future<String?> stop();
 
+  /// How loud the microphone is, 0 (silence) to 1 (as loud as it goes), one
+  /// reading every [contactWaveformInterval] while recording.
+  ///
+  /// **Never required.** Plenty of devices and emulators report nothing at all,
+  /// and a recording that will not draw a waveform is still a recording — the
+  /// bar is simply flat. An implementation that cannot do this returns a stream
+  /// that emits nothing, and nothing waits on it.
+  Stream<double> get amplitude;
+
   Future<void> dispose();
 }
 
@@ -35,6 +46,10 @@ abstract class VoicePlayer {
   /// True while a recording is audible, so the screen can show 再生中 and offer
   /// a stop instead of a second play.
   Stream<bool> get playing;
+
+  /// How far into the recording playback has got, so the knob on the bar can
+  /// follow it. Emits nothing when the platform will not say.
+  Stream<Duration> get position;
 
   Future<void> dispose();
 }
@@ -85,6 +100,27 @@ class RecordVoiceRecorder implements VoiceRecorder {
   @override
   Future<String?> stop() => _recorder.stop();
 
+  /// The plugin reports dBFS: 0 is as loud as the format goes and it falls away
+  /// without a floor, so a silent room reads as -120 or worse. [_quietDbfs] is
+  /// where the scale is cut off — quieter than that is drawn as silence — and
+  /// everything above it is spread over 0..1.
+  ///
+  /// The plugin's own stream only emits while it believes it is recording, and
+  /// a platform that cannot answer `getAmplitude` simply never emits. Errors
+  /// are swallowed for the same reason: a waveform is decoration, and nothing
+  /// about it may take the recording down with it.
+  static const _quietDbfs = -45.0;
+
+  @override
+  Stream<double> get amplitude => _recorder
+      .onAmplitudeChanged(contactWaveformInterval)
+      .map((a) {
+        final db = a.current;
+        if (!db.isFinite) return 0.0;
+        return ((db - _quietDbfs) / -_quietDbfs).clamp(0.0, 1.0).toDouble();
+      })
+      .handleError((Object _) {});
+
   @override
   Future<void> dispose() => _recorder.dispose();
 }
@@ -109,6 +145,9 @@ class AudioPlayersVoicePlayer implements VoicePlayer {
   @override
   Stream<bool> get playing =>
       _player.onPlayerStateChanged.map((state) => state == PlayerState.playing);
+
+  @override
+  Stream<Duration> get position => _player.onPositionChanged;
 
   @override
   Future<void> dispose() => _player.dispose();

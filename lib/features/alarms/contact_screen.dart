@@ -12,6 +12,7 @@ import '../../services/voice_recorder.dart';
 import '../settings/user_name_screen.dart';
 import 'contact_book_screen.dart';
 import 'edit_sub_screens.dart';
+import 'widgets/recording_bar.dart';
 import 'widgets/settings_island.dart';
 
 /// 寝坊時の連絡設定: who is told when the oversleeping runs long, on which
@@ -65,29 +66,14 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
 
   late PhoneMode _phoneMode = widget.initial?.phoneMode ?? PhoneMode.auto;
   late String? _recordingPath = widget.initial?.recordingPath;
+  late List<double> _waveform = widget.initial?.recordingWaveform ?? const [];
 
   late int _trigger = normalizeContactTriggerMinutes(
     widget.initial?.triggerMinutesAfterGrace ?? defaultContactTriggerMinutes,
   );
 
-  bool _recording = false;
-  bool _playing = false;
-  StreamSubscription<bool>? _playbackSubscription;
-
-  /// Shown in place of the buttons' result when the microphone was refused.
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _playbackSubscription = ref.read(voicePlayerProvider).playing.listen((on) {
-      if (mounted) setState(() => _playing = on);
-    });
-  }
-
   @override
   void dispose() {
-    _playbackSubscription?.cancel();
     _mailMessage.dispose();
     super.dispose();
   }
@@ -117,6 +103,7 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         mailMessage: message.isEmpty ? null : message,
         phoneMode: _phoneMode,
         recordingPath: _recordingPath,
+        recordingWaveform: _waveform,
         triggerMinutesAfterGrace: normalizeContactTriggerMinutes(_trigger),
       ),
       book,
@@ -160,69 +147,19 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     _emailEnabled = false;
   });
 
-  void _showError(String message) {
-    setState(() => _error = message);
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _startRecording() async {
-    final recorder = ref.read(voiceRecorderProvider);
-    if (!await recorder.hasPermission()) {
-      if (!mounted) return;
-      _showError('マイクの使用が許可されていないため録音できません。端末の設定から許可してください。');
-      return;
-    }
-    // Allocating the file and opening the microphone are the two places this
-    // can fail on a real device — no storage, or the mic already held by a
-    // call. Either way the screen says so instead of throwing under the tap.
-    try {
-      final path = await ref.read(contactRecordingPathProvider)(widget.alarmId);
-      await recorder.start(path);
-    } catch (_) {
-      if (!mounted) return;
-      _showError('録音を開始できませんでした。ほかのアプリがマイクを使っていないか確認してください。');
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      _recording = true;
-      _error = null;
-    });
-  }
-
-  Future<void> _stopRecording() async {
-    final path = await ref.read(voiceRecorderProvider).stop();
-    if (!mounted) return;
-    setState(() {
-      _recording = false;
-      // A stop that produced nothing leaves the previous recording alone: the
-      // user has not asked for it to be thrown away, 削除 is how that is said.
-      if (path != null) _recordingPath = path;
-    });
-  }
-
-  Future<void> _play() async {
-    final path = _recordingPath;
-    if (path == null) return;
-    await ref.read(voicePlayerProvider).play(path);
-  }
-
+  /// Throws the recording away. Called by the panel once the user has said
+  /// yes to the confirmation, so there is nothing left to ask here.
   Future<void> _deleteRecording() async {
     final path = _recordingPath;
-    setState(() => _recordingPath = null);
+    setState(() {
+      _recordingPath = null;
+      _waveform = const [];
+    });
     if (path == null) return;
-    await ref.read(voicePlayerProvider).stop();
     // The file is the app's own, inside app storage, so deleting it here is
     // the whole deletion. A file that is already gone is not an error.
     final file = File(path);
     if (await file.exists()) await file.delete();
-  }
-
-  String get _recordingStatus {
-    if (_recording) return '録音中';
-    if (_recordingPath != null) return _playing ? '再生中' : '録音あり';
-    return '録音なし';
   }
 
   String get _triggerLabel => _trigger == 0 ? '猶予後すぐ' : '猶予後 $_trigger分';
@@ -254,7 +191,9 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         // Leaving mid-recording discards it: the file is still being written
         // and there is nothing to await it on the way out, so committing a
         // path that may never be finished would be worse than dropping it.
-        if (_recording) unawaited(ref.read(voiceRecorderProvider).stop());
+        // Unconditional because the panel below owns whether it is recording,
+        // and stopping a recorder that is not running is not an error.
+        unawaited(ref.read(voiceRecorderProvider).stop());
         unawaited(ref.read(voicePlayerProvider).stop());
         widget.onCommit(_value);
       },
@@ -394,7 +333,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
   );
 
   Widget _phoneIsland(ThemeData theme, String userName) {
-    final hasRecording = _recordingPath != null;
     return SettingsIsland(
       title: '電話設定',
       children: [
@@ -415,68 +353,15 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         if (_phoneMode == PhoneMode.custom)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      _recording ? Icons.fiber_manual_record : Icons.mic_none,
-                      color: _recording ? theme.colorScheme.error : null,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _recordingStatus,
-                      key: const ValueKey('contactRecordingStatus'),
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: _recording ? theme.colorScheme.error : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.icon(
-                      key: const ValueKey('contactRecordStart'),
-                      onPressed: _recording ? null : _startRecording,
-                      icon: const Icon(Icons.mic),
-                      label: const Text('録音開始'),
-                    ),
-                    OutlinedButton.icon(
-                      key: const ValueKey('contactRecordStop'),
-                      onPressed: _recording ? _stopRecording : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('停止'),
-                    ),
-                    OutlinedButton.icon(
-                      key: const ValueKey('contactRecordPlay'),
-                      onPressed: hasRecording && !_recording ? _play : null,
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('再生'),
-                    ),
-                    OutlinedButton.icon(
-                      key: const ValueKey('contactRecordDelete'),
-                      onPressed: hasRecording && !_recording
-                          ? _deleteRecording
-                          : null,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('削除'),
-                    ),
-                  ],
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _error!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
-              ],
+            child: ContactRecorderPanel(
+              alarmId: widget.alarmId,
+              recordingPath: _recordingPath,
+              waveform: _waveform,
+              onRecorded: (path, waveform) => setState(() {
+                _recordingPath = path;
+                _waveform = waveform;
+              }),
+              onDeleted: _deleteRecording,
             ),
           )
         else
