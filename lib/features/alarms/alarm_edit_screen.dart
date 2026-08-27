@@ -8,17 +8,36 @@ import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
 import 'alarm_controller.dart';
+import 'alarm_draft.dart';
 
-class AlarmEditScreen extends ConsumerWidget {
+class AlarmEditScreen extends ConsumerStatefulWidget {
   const AlarmEditScreen({super.key, this.alarmId});
 
   /// null when creating a new alarm.
   final String? alarmId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final id = alarmId;
-    if (id == null) return const _AlarmEditForm();
+  ConsumerState<AlarmEditScreen> createState() => _AlarmEditScreenState();
+}
+
+class _AlarmEditScreenState extends ConsumerState<AlarmEditScreen> {
+  /// The alarm the draft was seeded from. Held here so a later emission of
+  /// [alarmByIdProvider] — the alarm being saved, most of all — cannot swap the
+  /// draft out from under the editor. The old editor read `existing` only in
+  /// `initState`, so this is the behaviour it already had.
+  Alarm? _seed;
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.alarmId;
+    if (id == null) {
+      return _AlarmEditForm(
+        seed: _seed ??= Alarm(id: AlarmController.newId(), hour: 7, minute: 0),
+      );
+    }
+
+    final seeded = _seed;
+    if (seeded != null) return _AlarmEditForm(seed: seeded, existing: seeded);
 
     return ref
         .watch(alarmByIdProvider(id))
@@ -28,13 +47,16 @@ class AlarmEditScreen extends ConsumerWidget {
           error: (e, _) => Scaffold(body: Center(child: Text('$e'))),
           data: (data) => data == null
               ? const Scaffold(body: Center(child: Text('アラームが見つかりません')))
-              : _AlarmEditForm(existing: data),
+              : _AlarmEditForm(seed: _seed = data, existing: data),
         );
   }
 }
 
 class _AlarmEditForm extends ConsumerStatefulWidget {
-  const _AlarmEditForm({this.existing});
+  const _AlarmEditForm({required this.seed, this.existing});
+
+  /// The key of this editor's [alarmDraftProvider].
+  final Alarm seed;
 
   final Alarm? existing;
 
@@ -43,7 +65,6 @@ class _AlarmEditForm extends ConsumerStatefulWidget {
 }
 
 class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
-  late TimeOfDay _time;
   late Set<int> _days;
   late WakeCheckType _wakeCheck;
   late int _grace;
@@ -55,8 +76,12 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
   @override
   void initState() {
     super.initState();
+    // Holds the draft open for as long as the editor is on screen, without
+    // rebuilding anything when it changes. Without a listener the autoDispose
+    // draft would be collected between reads and the wheel's writes lost.
+    ref.listenManual(alarmDraftProvider(widget.seed), (_, _) {});
+
     final a = widget.existing;
-    _time = TimeOfDay(hour: a?.hour ?? 7, minute: a?.minute ?? 0);
     _days = {...?a?.repeatDays};
     _wakeCheck = a?.wakeCheck ?? WakeCheckType.longPress;
     _grace = normalizeGraceMinutes(a?.graceMinutes ?? minGraceMinutes);
@@ -79,16 +104,19 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
 
   int get _cap => int.tryParse(_capController.text.trim()) ?? 0;
 
-  Alarm _build() => Alarm(
-    id: widget.existing?.id ?? AlarmController.newId(),
-    hour: _time.hour,
-    minute: _time.minute,
-    repeatDays: _days,
-    enabled: widget.existing?.enabled ?? true,
-    wakeCheck: _wakeCheck,
-    graceMinutes: _grace,
-    kakugo: _kakugoOn ? Kakugo(ratePerMinute: _rate, cap: _cap) : null,
-  );
+  Alarm _build() {
+    final draft = ref.read(alarmDraftProvider(widget.seed));
+    return Alarm(
+      id: draft.id,
+      hour: draft.hour,
+      minute: draft.minute,
+      repeatDays: _days,
+      enabled: widget.existing?.enabled ?? true,
+      wakeCheck: _wakeCheck,
+      graceMinutes: _grace,
+      kakugo: _kakugoOn ? Kakugo(ratePerMinute: _rate, cap: _cap) : null,
+    );
+  }
 
   Future<void> _save() async {
     final coins = (await ref.read(walletRepositoryProvider).read()).coins;
@@ -133,6 +161,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
 
   @override
   Widget build(BuildContext context) {
+    debugAlarmEditBuildCount++;
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
@@ -149,7 +178,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
-          _TimeWheel(time: _time, onChanged: (t) => setState(() => _time = t)),
+          TimeWheel(seed: widget.seed),
           const SizedBox(height: 16),
           Text('繰り返し', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -268,17 +297,24 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
 /// Cupertino widgets carry their own theme, so the picker is wrapped in a
 /// [CupertinoTheme] built from the Material one — otherwise it would ignore the
 /// app's colours and read as black text on the dark themes.
-class _TimeWheel extends StatelessWidget {
-  const _TimeWheel({required this.time, required this.onChanged});
+///
+/// It *writes* the draft's time and never watches it. Watching would rebuild
+/// the picker on every tick of its own wheel — and `initialDateTime` is read
+/// once, so a rebuild would only ever be wasted work. The seeded time is read
+/// with `ref.read` for the same reason: it is an initial value, not a
+/// subscription.
+class TimeWheel extends ConsumerWidget {
+  const TimeWheel({super.key, required this.seed});
 
-  final TimeOfDay time;
-  final ValueChanged<TimeOfDay> onChanged;
+  /// The draft's family key.
+  final Alarm seed;
 
   static const height = 190.0;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final draft = ref.read(alarmDraftProvider(seed));
     return Container(
       height: height,
       decoration: BoxDecoration(
@@ -303,9 +339,11 @@ class _TimeWheel extends StatelessWidget {
           mode: CupertinoDatePickerMode.time,
           use24hFormat: true,
           // A fixed date: only the hour and minute of this value are read.
-          initialDateTime: DateTime(2026, 1, 1, time.hour, time.minute),
+          initialDateTime: DateTime(2026, 1, 1, draft.hour, draft.minute),
           onDateTimeChanged: (t) =>
-              onChanged(TimeOfDay(hour: t.hour, minute: t.minute)),
+              ref
+                  .read(alarmDraftProvider(seed).notifier)
+                  .setTime(t.hour, t.minute),
         ),
       ),
     );
