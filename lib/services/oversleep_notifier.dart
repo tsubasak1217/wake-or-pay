@@ -89,7 +89,10 @@ class OversleepDispatchNotifier implements OversleepNotifier {
       webhookCount: share?.webhookIds.length ?? 0,
     );
     final event = ContactEvent(
-      id: 'contact-${at.millisecondsSinceEpoch}-${session.id}',
+      // **One id per session**, with no timestamp in it, per spec 11.7: it is
+      // the row the ring screen and the background isolate race for, and two
+      // ids a millisecond apart would let both of them win.
+      id: contactSummaryRowId(session.id),
       sessionId: session.id,
       firedAt: at,
       contactName: target,
@@ -103,10 +106,11 @@ class OversleepDispatchNotifier implements OversleepNotifier {
         userName: userName(),
       ),
     );
-    // Written **before** anything is sent, per spec 11.7: the once-per-session
-    // guard reads these rows, so a relaunch mid-post must find the session
-    // already marked as fired rather than send a second round.
-    await _events.save(event);
+    // Written **before** anything is sent, per spec 11.7, and written as a
+    // claim: a relaunch mid-post — or the background isolate reaching the same
+    // trigger at the same instant — finds the session already marked and sends
+    // nothing at all.
+    if (!await _events.claim(event)) return null;
 
     final results = await _postToShareTargets(
       session: session,
@@ -202,11 +206,10 @@ class OversleepDispatchNotifier implements OversleepNotifier {
     for (final run in runs) {
       await _events.save(
         ContactEvent(
-          // The channel is on the end because the primary key is this string:
-          // the route rows and the summary row fire in the same millisecond of
-          // the same session, and without it one would overwrite the other.
-          id: 'contact-${at.millisecondsSinceEpoch}-${session.id}'
-              '${contactRouteRowSuffix(run.channel)}',
+          // The channel is on the end because the primary key is this string,
+          // and every row of one round shares the summary row's id otherwise.
+          id: contactSummaryRowId(session.id) +
+              contactRouteRowSuffix(run.channel),
           sessionId: session.id,
           firedAt: at,
           contactName: contact.name,
@@ -248,11 +251,10 @@ class OversleepDispatchNotifier implements OversleepNotifier {
       await _events.save(
         ContactEvent(
           // The webhook's id is on the end because the primary key is this
-          // string: two 共有先 firing in the same millisecond of the same
-          // session would otherwise be one row overwriting the other, and the
-          // failure would look exactly like a post that never happened.
-          id: 'contact-${at.millisecondsSinceEpoch}-${session.id}'
-              '-discord-${webhook.id}',
+          // string: two 共有先 of the same round would otherwise be one row
+          // overwriting the other, and the failure would look exactly like a
+          // post that never happened.
+          id: '${contactSummaryRowId(session.id)}-discord-${webhook.id}',
           sessionId: session.id,
           firedAt: at,
           contactName: webhook.displayName,

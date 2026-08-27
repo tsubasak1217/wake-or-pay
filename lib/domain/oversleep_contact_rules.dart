@@ -256,6 +256,13 @@ String contactSpeechText(
   );
 }
 
+/// The id of the one row that says "this session has been notified". Pure.
+///
+/// **No timestamp in it**, per spec 11.7: it is the row the ringing screen and
+/// the background isolate race to claim, and two ids a millisecond apart would
+/// let both of them win and send everything twice.
+String contactSummaryRowId(String sessionId) => 'contact-$sessionId';
+
 /// The suffix the per-route log rows carry on their id, so the summary row —
 /// which is filed under the loudest channel and shares the same timestamp —
 /// can be told apart from the route's own row.

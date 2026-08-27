@@ -4,6 +4,7 @@ import '../../app/profile_controller.dart';
 import '../../app/router.dart';
 import '../../data/providers.dart';
 import '../../services/alarm_service.dart';
+import '../../services/background_dispatch.dart';
 
 final ringingControllerProvider = Provider(RingingController.new);
 
@@ -23,6 +24,11 @@ class RingingController {
     final settled = await _ref
         .read(sessionServiceProvider)
         .dismiss(session, now ?? DateTime.now());
+
+    // Spec 11.7: the morning is over, so the trigger Android is holding for
+    // this session has to go. Cancelled even when the alarm behind it has been
+    // deleted — the booking is keyed on the session, not the alarm.
+    await _ref.read(oversleepBackgroundSchedulerProvider).cancel(session);
 
     final alarm = await _ref
         .read(alarmRepositoryProvider)

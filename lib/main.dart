@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,7 @@ import 'data/providers.dart';
 import 'services/alarm_service.dart';
 import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
+import 'services/background_dispatch.dart';
 import 'services/phone_caller.dart';
 import 'services/route_permissions.dart';
 import 'services/secret_store.dart';
@@ -37,8 +39,13 @@ Future<void> main() async {
       platformPhoneCallerOverride(),
       // And only the real app puts a permission dialog on screen.
       pluginRoutePermissionsOverride(),
+      // …or books a trigger with Android's own AlarmManager (spec 11.7).
+      androidExactAlarmSchedulerOverride(),
     ],
   );
+
+  // Must run before anything is booked. Cheap, and idempotent.
+  await AndroidAlarmManager.initialize();
 
   runApp(
     UncontrolledProviderScope(

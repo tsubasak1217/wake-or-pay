@@ -13,6 +13,7 @@ import '../domain/schedule.dart';
 import '../domain/snooze_rules.dart';
 import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
+import 'background_dispatch.dart';
 import 'oversleep_notifier.dart';
 import 'phone_caller.dart';
 import 'session_service.dart';
@@ -203,6 +204,14 @@ class AlarmService {
     await sessions.save(snoozed);
     _ref.invalidate(sessionByIdProvider(sessionId));
 
+    // Under 「次に鳴る時刻を起点にし直す」 the trigger has just moved, so the booking
+    // has to move with it. Re-booked unconditionally: the same id replaces the
+    // old one, and working out whether it needed to move is more code than
+    // just doing it.
+    await _ref
+        .read(oversleepBackgroundSchedulerProvider)
+        .sync(alarm: alarm, session: snoozed);
+
     // Silence this ring, then arm the next one. Dropping the id from _handled
     // is what lets the re-ring through — without it the second ring of the
     // same alarm would be swallowed as a duplicate.
@@ -273,6 +282,12 @@ class AlarmService {
             .read(sessionServiceProvider)
             .start(alarm: alarm, firedAt: settings.dateTime);
 
+    // Spec 11.7: book the trigger with Android as well, so the contact still
+    // goes out on the morning this screen gets swiped away.
+    await _ref
+        .read(oversleepBackgroundSchedulerProvider)
+        .sync(alarm: alarm, session: session);
+
     _goRinging(session.id);
   }
 
@@ -290,6 +305,9 @@ class AlarmService {
     };
 
     for (final session in outcome.settled) {
+      // The morning is over however it ended, so the background trigger has
+      // nothing left to fire about.
+      await _ref.read(oversleepBackgroundSchedulerProvider).cancel(session);
       // Never touch the alarm behind a ring that is still live — resumed or
       // snoozed — even if an older session of the same alarm was written off.
       if (live.contains(session.alarmId)) continue;
@@ -305,6 +323,11 @@ class AlarmService {
       if (alarm == null) continue;
       _handled.remove(alarm.id);
       await setRingAt(alarm, session.currentRingAt);
+      // Same for the background trigger: a reboot loses the booking, and this
+      // is the pass that notices.
+      await _ref
+          .read(oversleepBackgroundSchedulerProvider)
+          .sync(alarm: alarm, session: session);
       // Under 「規定時刻から加算し続ける」 the contact timer does not stop for a
       // snooze, so it can come due while the ring screen is closed. This
       // catches it whenever the app is running; the re-ring catches the rest.
