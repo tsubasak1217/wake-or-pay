@@ -391,8 +391,11 @@ void main() {
       expect(contactSentNotificationText(target).title, '田中太郎 さんへの連絡');
 
       expect(
-        contactSentNotificationText(target, otherRoutes: true).body,
-        '電話・SMS・メールは開発中で、記録だけが残ります',
+        contactSentNotificationText(
+          target,
+          pendingRoutes: const ['電話', 'SMS'],
+        ).body,
+        '電話・SMSは開発中で、記録だけが残ります',
         reason: 'a call nobody placed must never read as one that was',
       );
       expect(
@@ -401,14 +404,24 @@ void main() {
         reason: 'and a post that really went out must not deny itself',
       );
       expect(
+        contactSentNotificationText(target, sentRoutes: const ['メール']).body,
+        'メールを送信しました',
+      );
+      expect(
+        contactSentNotificationText(target, failedRoutes: const ['メール']).body,
+        'メールは送信できませんでした',
+        reason: 'and a mail that bounced must not read as one that arrived',
+      );
+      expect(
         contactSentNotificationText(
           target,
           discordSent: 1,
           discordFailed: 1,
-          otherRoutes: true,
+          sentRoutes: const ['メール'],
+          pendingRoutes: const ['電話', 'SMS'],
         ).body,
         'Discord 1件に投稿しました。Discord 1件は送信できませんでした。'
-        '電話・SMS・メールは開発中で、記録だけが残ります',
+        'メールを送信しました。電話・SMSは開発中で、記録だけが残ります',
       );
       expect(
         contactSentNotificationText(target).body,

@@ -5,9 +5,11 @@ import '../data/repositories/contact_event_repository.dart';
 import '../domain/discord_post.dart';
 import '../domain/models.dart';
 import '../domain/oversleep_contact_rules.dart';
+import '../domain/send_result.dart';
 import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
 import 'discord_sender.dart';
+import 'mail_sender.dart';
 
 /// How the app tells someone that an alarm was slept through.
 ///
@@ -28,19 +30,19 @@ abstract class OversleepNotifier {
   });
 }
 
-/// The implementation this phase ships: **Discord is really sent**, the rest
-/// is still only recorded.
+/// The implementation this phase ships: **Discord and mail are really sent**,
+/// the phone call and the SMS are still only recorded.
 ///
-/// The split is C3's whole shape. A webhook is an HTTPS POST the phone can
-/// make on its own, so it goes out for real; a phone call, an SMS and a mail
-/// need permissions and an SMTP account that stage D brings, so they stay a
-/// row in the log. What must never happen is the app claiming either one of
-/// those is the other — see [contactSentNotificationText].
+/// A webhook is an HTTPS POST and a mail is an SMTP conversation, both of
+/// which the phone can hold on its own; a call and a text need Android
+/// permissions that D2 and D3 bring. What must never happen is the app
+/// claiming either group is the other — see [contactSentNotificationText].
 class OversleepDispatchNotifier implements OversleepNotifier {
   OversleepDispatchNotifier(
     this._events,
     this._notifications,
-    this._sender, {
+    this._sender,
+    this._mail, {
     required this.userName,
     required this.discordUserId,
     required this.webhooks,
@@ -49,6 +51,7 @@ class OversleepDispatchNotifier implements OversleepNotifier {
   final ContactEventRepository _events;
   final AppNotifier _notifications;
   final DiscordWebhookSender _sender;
+  final MailSender _mail;
 
   /// Read at trigger time rather than held, so renaming yourself — or filling
   /// the Discord ID in last night — takes effect on alarms that were written
@@ -99,14 +102,28 @@ class OversleepDispatchNotifier implements OversleepNotifier {
       at: at,
       share: share,
     );
+    final personal = await _runPersonalRoutes(
+      session: session,
+      at: at,
+      contact: contact,
+    );
 
     final text = contactSentNotificationText(
       target,
       discordSent: results.where((r) => r.ok).length,
       discordFailed: results.where((r) => !r.ok).length,
-      otherRoutes: channelsFor(
-        contact: contact,
-      ).any((c) => c != ContactChannel.discord),
+      sentRoutes: [
+        for (final run in personal)
+          if (run.result.ok) contactChannelLabel(run.channel),
+      ],
+      failedRoutes: [
+        for (final run in personal)
+          if (!run.result.ok) contactChannelLabel(run.channel),
+      ],
+      pendingRoutes: [
+        for (final channel in pendingChannelsFor(contact))
+          contactChannelLabel(channel),
+      ],
     );
     await _notifications.show(
       id: contactNotificationId(platformAlarmId(session.alarmId)),
@@ -114,6 +131,62 @@ class OversleepDispatchNotifier implements OversleepNotifier {
       body: text.body,
     );
     return event;
+  }
+
+  /// Runs every personal route this app can actually perform, and files one
+  /// row for each.
+  ///
+  /// One row per route, beside the summary row above, for the same reason the
+  /// Discord half gets one per webhook: 「連絡しました」 is worth nothing the
+  /// morning after if it cannot say *which* route reached them and which one
+  /// bounced.
+  ///
+  /// Each route is awaited and each failure is a value, so an SMTP server that
+  /// is down cannot stop the one beside it — nor the notification that says so.
+  Future<List<({ContactChannel channel, SendResult result})>>
+  _runPersonalRoutes({
+    required AlarmSession session,
+    required DateTime at,
+    OversleepContact? contact,
+  }) async {
+    if (contact == null) return const [];
+    final runs = <({ContactChannel channel, SendResult result})>[];
+
+    if (contact.willEmail) {
+      // The alarm's own time, not the trigger time: that is what the message
+      // is about, and it is the time the contact will look for on the clock.
+      final mail = buildOversleepMail(
+        contact,
+        session.firedAt,
+        userName: userName(),
+      );
+      runs.add((
+        channel: ContactChannel.email,
+        result: await _mail.send(
+          to: mail.to,
+          subject: mail.subject,
+          body: mail.body,
+        ),
+      ));
+    }
+
+    for (final run in runs) {
+      await _events.save(
+        ContactEvent(
+          // The channel is on the end because the primary key is this string:
+          // the mail row and the summary row fire in the same millisecond of
+          // the same session, and without it one would overwrite the other.
+          id: 'contact-${at.millisecondsSinceEpoch}-${session.id}'
+              '-${run.channel.name}',
+          sessionId: session.id,
+          firedAt: at,
+          contactName: contact.name,
+          channel: run.channel,
+          detail: run.result.label,
+        ),
+      );
+    }
+    return runs;
   }
 
   /// Posts to every live 共有先 on [share] and files one row for each.
@@ -177,6 +250,18 @@ List<ContactChannel> channelsFor({
   if (contact?.willSms ?? false) ContactChannel.sms,
   if (contact?.willEmail ?? false) ContactChannel.email,
   if (share?.isUsable ?? false) ContactChannel.discord,
+];
+
+/// The routes [contact] asked for that this build cannot actually perform.
+/// Pure.
+///
+/// The honest half of [contactSentNotificationText]: a user who switched 電話
+/// on is owed a sentence saying it did not ring, rather than a notification
+/// that quietly implies it did. It shrinks as D2 and D3 land, and the day it
+/// is empty the sentence disappears on its own.
+List<ContactChannel> pendingChannelsFor(OversleepContact? contact) => [
+  if (contact?.willPhone ?? false) ContactChannel.phone,
+  if (contact?.willSms ?? false) ContactChannel.sms,
 ];
 
 /// The single channel the event row is filed under. Pure.
@@ -282,6 +367,7 @@ final oversleepNotifierProvider = Provider<OversleepNotifier>(
     ref.watch(contactEventRepositoryProvider),
     ref.watch(appNotifierProvider),
     ref.watch(discordWebhookSenderProvider),
+    ref.watch(mailSenderProvider),
     // read, not watch: the profile is wanted at the moment of firing, and a
     // rename should not tear this provider down mid-session.
     userName: () => ref.read(profileRepositoryProvider).read().userName,

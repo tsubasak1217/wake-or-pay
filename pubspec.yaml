@@ -28,6 +28,9 @@ dependencies:
   flutter_tts: ^4.2.5
   record: ^7.1.1
   http: ^1.2.0
+  # 段階D。SMTP 送信と、そのアプリパスワードの保管先。
+  mailer: ^7.2.0
+  flutter_secure_storage: ^11.0.0
 
 dev_dependencies:
   flutter_test:

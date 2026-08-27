@@ -217,28 +217,42 @@ String contactSpeechText(
 
 /// The notification posted when the contact fires, per spec 5. Pure.
 ///
-/// It says, route by route, what actually happened. Since C3 the Discord half
-/// **is really sent** and the personal half still is not, so a single sentence
-/// can no longer be true of both: 「実際には送信していません」 would now be a lie about
-/// a post that went into somebody's channel, and dropping the caveat would be
-/// a lie about a phone call nobody placed. Each half says its own piece.
+/// It says, route by route, what actually happened — because the routes no
+/// longer agree with each other. A single sentence covering the lot would have
+/// to be a lie about half of them: 「実際には送信していません」 is a lie about a mail
+/// that reached somebody's inbox, and dropping the caveat is a lie about a
+/// phone call nobody placed. Each group says its own piece.
 ///
 /// [discordSent] and [discordFailed] count 共有先 posted to and 共有先 that
-/// refused; [otherRoutes] is whether the alarm also had a phone / SMS / mail
-/// route, all of which are still stage D and only recorded.
+/// refused. [sentRoutes] and [failedRoutes] name the personal routes that were
+/// really attempted — 「メール」, 「SMS」, 「電話」 — and [pendingRoutes] names the
+/// ones the alarm asked for that the app cannot yet perform.
 ({String title, String body}) contactSentNotificationText(
   String target, {
   int discordSent = 0,
   int discordFailed = 0,
-  bool otherRoutes = false,
+  List<String> sentRoutes = const [],
+  List<String> failedRoutes = const [],
+  List<String> pendingRoutes = const [],
 }) {
   final parts = [
     if (discordSent > 0) 'Discord $discordSent件に投稿しました',
     if (discordFailed > 0) 'Discord $discordFailed件は送信できませんでした',
-    if (otherRoutes) '電話・SMS・メールは開発中で、記録だけが残ります',
+    if (sentRoutes.isNotEmpty) '${sentRoutes.join('・')}を送信しました',
+    if (failedRoutes.isNotEmpty) '${failedRoutes.join('・')}は送信できませんでした',
+    if (pendingRoutes.isNotEmpty) '${pendingRoutes.join('・')}は開発中で、記録だけが残ります',
   ];
   return (
     title: '$targetへの連絡',
     body: parts.isEmpty ? '$targetへの連絡を記録しました' : parts.join('。'),
   );
 }
+
+/// What each route is called in a sentence and in a log row. Pure.
+String contactChannelLabel(ContactChannel channel) => switch (channel) {
+  ContactChannel.phone => '電話',
+  ContactChannel.sms => 'SMS',
+  ContactChannel.email => 'メール',
+  ContactChannel.discord => 'Discord',
+  ContactChannel.log => '記録',
+};

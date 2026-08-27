@@ -6,7 +6,12 @@ plugins {
 
 android {
     namespace = "com.wakeorpay.wake_or_pay"
-    compileSdk = flutter.compileSdkVersion
+    // Ahead of flutter.compileSdkVersion on purpose: flutter_secure_storage 11
+    // — where the SMTP app password lives — publishes AAR metadata demanding
+    // 37, and the build refuses outright below it. Compiling against a newer
+    // SDK only makes newer APIs visible; minSdk (26) is what decides which
+    // devices can install this, and it has not moved.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

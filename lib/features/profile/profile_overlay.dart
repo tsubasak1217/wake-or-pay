@@ -5,9 +5,11 @@ import '../../app/profile_controller.dart';
 import '../../domain/level.dart';
 import '../../domain/models.dart';
 import '../../domain/profile_catalog.dart';
+import '../../services/mail_settings.dart';
 import '../alarms/edit_sub_screens.dart';
 import '../alarms/widgets/settings_island.dart';
 import 'discord_user_id_screen.dart';
+import 'mail_settings_screen.dart';
 import 'user_name_screen.dart';
 
 /// Drops the profile over whatever is on screen, from the top.
@@ -191,39 +193,45 @@ class _HeaderBlock extends StatelessWidget {
   }
 }
 
-class _ProfileSettingsIsland extends StatelessWidget {
+class _ProfileSettingsIsland extends ConsumerWidget {
   const _ProfileSettingsIsland({required this.profile});
 
   final Profile profile;
 
   @override
-  Widget build(BuildContext context) => SettingsIsland(
-    title: 'プロフィール設定',
-    children: [
-      SettingRow(
-        key: const ValueKey('profileUserNameRow'),
-        label: 'あなたの名前',
-        value: profile.userName.isEmpty ? '未設定' : profile.userName,
-        onTap: () => pushUserNameSubScreen(context),
-      ),
-      SettingRow(
-        key: const ValueKey('profileDiscordIdRow'),
-        label: 'Discord ユーザーID',
-        value: profile.discordUserId.isEmpty ? '未設定' : profile.discordUserId,
-        onTap: () =>
-            pushEditorSubScreen(context, const DiscordUserIdSubScreen()),
-      ),
-      // Deliberately dead: the SMTP settings behind it land in the next stage,
-      // and a row that opens an empty screen would be worse than one that says
-      // so.
-      const SettingRow(
-        key: ValueKey('profileMailRow'),
-        label: 'メール送信設定',
-        value: '準備中',
-        subtitle: 'あとの段階で、あなたのアドレスから寝坊を知らせられるようにします。',
-      ),
-    ],
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mail = ref.watch(mailSettingsProvider);
+    return SettingsIsland(
+      title: 'プロフィール設定',
+      children: [
+        SettingRow(
+          key: const ValueKey('profileUserNameRow'),
+          label: 'あなたの名前',
+          value: profile.userName.isEmpty ? '未設定' : profile.userName,
+          onTap: () => pushUserNameSubScreen(context),
+        ),
+        SettingRow(
+          key: const ValueKey('profileDiscordIdRow'),
+          label: 'Discord ユーザーID',
+          value: profile.discordUserId.isEmpty ? '未設定' : profile.discordUserId,
+          onTap: () =>
+              pushEditorSubScreen(context, const DiscordUserIdSubScreen()),
+        ),
+        // 設定済み only when the app could actually send: a half-filled account
+        // is 未設定 as far as every other screen is concerned, so this row must
+        // not be the one place that calls it done.
+        SettingRow(
+          key: const ValueKey('profileMailRow'),
+          label: 'メール送信設定',
+          value: mail.isConfigured ? '設定済み' : '未設定',
+          subtitle: mail.isConfigured
+              ? '${mail.fromAddress} から送ります'
+              : 'あなたのアドレスから寝坊を知らせられるようにします。',
+          onTap: () => pushMailSettingsScreen(context),
+        ),
+      ],
+    );
+  }
 }
 
 /// The three pickers. Every entry is owned today, but the owned set is what

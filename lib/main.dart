@@ -10,6 +10,7 @@ import 'data/providers.dart';
 import 'services/alarm_service.dart';
 import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
+import 'services/secret_store.dart';
 import 'services/speaker.dart';
 
 Future<void> main() async {
@@ -23,6 +24,9 @@ Future<void> main() async {
       // the recording default.
       localAppNotifierOverride(),
       ttsSpeakerOverride(),
+      // The SMTP app password. Only the real app reaches the platform
+      // keystore; every test keeps the in-memory store.
+      flutterSecureStoreOverride(),
     ],
   );
 

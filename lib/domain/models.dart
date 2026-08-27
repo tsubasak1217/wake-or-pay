@@ -4,6 +4,7 @@ export 'models/contact_entry.dart';
 export 'models/discord_webhook.dart';
 export 'models/garden.dart';
 export 'models/kakugo.dart';
+export 'models/mail_settings.dart';
 export 'models/ojisan_state.dart';
 export 'models/oversleep_contact.dart';
 export 'models/oversleep_share.dart';

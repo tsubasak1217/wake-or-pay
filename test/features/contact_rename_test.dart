@@ -243,6 +243,14 @@ void main() {
       oversleepTargetLabel(contactName: '田中太郎（部長）'),
       reason: 'the log names the recipient with the phrase everything uses',
     );
-    expect(await events.forSession('s1'), hasLength(1));
+    // Two rows since D1: the summary, and the メール route's own outcome. What
+    // matters here is that both name the *edited* person.
+    final rows = await events.forSession('s1');
+    expect(rows, hasLength(2));
+    expect(
+      rows.where((e) => e.channel == ContactChannel.email).single.contactName,
+      '田中太郎（部長）',
+      reason: 'the route row names the live entry too, not the snapshot',
+    );
   });
 }

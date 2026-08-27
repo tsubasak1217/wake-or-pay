@@ -6,6 +6,7 @@ import '../../data/providers.dart';
 import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
 import '../../services/mail_settings.dart';
+import '../profile/mail_settings_screen.dart';
 import '../profile/profile_overlay.dart';
 import 'contact_book_screen.dart';
 import 'widgets/mode_tile.dart';
@@ -228,6 +229,19 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                       : (mailConfigured ? null : mailSendingUnconfiguredNote),
                   onChanged: (v) => setState(() => _emailEnabled = v),
                 ),
+                // Only when the toggle is grey for the one reason the user can
+                // do something about. A row rather than a sentence: the fix is
+                // two screens away, and telling somebody where to go is worse
+                // than taking them.
+                if (hasEmail && !mailConfigured)
+                  ListTile(
+                    key: const ValueKey('contactMailSetupRow'),
+                    leading: const Icon(Icons.mail_outline),
+                    title: const Text('メール送信設定を開く'),
+                    subtitle: const Text('あなたのアドレスとアプリパスワードを登録します'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => pushMailSettingsScreen(context),
+                  ),
                 SettingSwitchRow(
                   label: 'SMS',
                   value: smsOn,
@@ -279,9 +293,8 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
               ),
             const SizedBox(height: 16),
             Text(
-              'この画面の経路（電話・メール・SMS）は、まだ実際には送信しません。'
-              '発火した記録がアプリ内に残るだけです。'
-              '寝坊の共有（Discord）は実際に投稿します。',
+              'メールと寝坊の共有（Discord）は実際に送信します。'
+              '電話と SMS はまだ送信せず、発火した記録がアプリ内に残るだけです。',
               style: theme.textTheme.bodySmall,
             ),
           ],

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/discord_post.dart';
 import 'package:wake_or_pay/domain/models.dart';
+import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/oversleep_notifier.dart';
 
@@ -69,20 +70,33 @@ Future<void> seedWebhooks(ProviderContainer container) async {
 
 late FakeDiscordWebhookSender sender;
 
+/// The SMTP half. Never reaches a server; an address in a test is somebody's
+/// real inbox.
+late FakeMailSender mails;
+
 Future<({ProviderContainer container, AlarmSession session})> ringing(
   Alarm alarm, {
   String user = userName,
   String discordUserId = '',
   Map<String, DiscordPostResult> failFor = const {},
   bool webhooks = true,
+  bool mailConfigured = false,
+  SendResult mailResult = const SendResult.success(),
 }) async {
   sender = FakeDiscordWebhookSender(failFor: failFor);
+  mails = FakeMailSender(result: mailResult);
   final container = await testContainer(
     prefs: {
       if (user.isNotEmpty) 'profile.userName': user,
       if (discordUserId.isNotEmpty) 'profile.discordUserId': discordUserId,
+      if (mailConfigured) ...configuredMailPrefs(),
     },
-    extra: [fakeAlarmServiceOverride(), fakeDiscordSenderOverride(sender)],
+    extra: [
+      fakeAlarmServiceOverride(),
+      fakeDiscordSenderOverride(sender),
+      fakeMailSenderOverride(mails),
+      if (mailConfigured) seededSecretStoreOverride(),
+    ],
   );
   if (webhooks) await seedWebhooks(container);
   await container.read(alarmRepositoryProvider).save(alarm);
@@ -151,7 +165,7 @@ void main() {
         final posted = notifierOf(r.container).posted.single;
         expect(
           posted.body,
-          '電話・SMS・メールは開発中で、記録だけが残ります',
+          '電話は開発中で、記録だけが残ります',
           reason: 'the call really was not placed, and it says so',
         );
         expect(sender.posts, isEmpty, reason: 'no share on this alarm');
@@ -429,7 +443,7 @@ void main() {
       );
     });
 
-    test('both halves: Discord went, the personal routes did not', () async {
+    test('both halves: Discord went, the phone call did not', () async {
       const both = Alarm(
         id: 'a1',
         hour: 7,
@@ -448,8 +462,116 @@ void main() {
       expect(sender.posts, hasLength(1));
       expect(
         notifierOf(r.container).posted.single.body,
-        'Discord 1件に投稿しました。電話・SMS・メールは開発中で、記録だけが残ります',
+        'Discord 1件に投稿しました。電話は開発中で、記録だけが残ります',
       );
+    });
+  });
+
+  group('メールの実送信', () {
+    const mailContact = OversleepContact(
+      name: '田中太郎',
+      email: 'taro@example.com',
+      emailEnabled: true,
+    );
+    const mailed = Alarm(
+      id: 'a1',
+      hour: 7,
+      minute: 0,
+      kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+      contact: mailContact,
+      oversleepTriggerMinutes: 10,
+    );
+
+    /// The メール route's **own** row, not the summary row beside it — which
+    /// is also filed under email when that is the only route on the alarm.
+    /// The suffix on the id is what tells them apart.
+    Future<List<ContactEvent>> mailRows(ProviderContainer c) async =>
+        (await c.read(contactEventRepositoryProvider).getRecent())
+            .where((e) => e.id.endsWith('-email'))
+            .toList();
+
+    test('the mail really goes out, with the alarm time in it', () async {
+      final r = await ringing(mailed, mailConfigured: true);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: mailed, session: r.session, now: at(minutes: 11));
+
+      final sent = mails.sent.single;
+      expect(sent.to, 'taro@example.com');
+      expect(sent.subject, oversleepMailSubject);
+      expect(sent.body, contains(userName));
+      expect(
+        sent.body,
+        contains('07:00'),
+        reason: "the alarm's own time, not the trigger time",
+      );
+
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'メールを送信しました',
+        reason: 'and it no longer apologises for a route that worked',
+      );
+      expect(mailRows(r.container), completion(hasLength(1)));
+      expect((await mailRows(r.container)).single.detail, '成功');
+    });
+
+    test('a refused mail is a row and a sentence, never a throw', () async {
+      final r = await ringing(
+        mailed,
+        mailConfigured: true,
+        mailResult: const SendResult.failure(SendFailure.auth),
+      );
+
+      final event = await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: mailed, session: r.session, now: at(minutes: 11));
+
+      expect(event, isNotNull, reason: 'the session still fired');
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'メールは送信できませんでした',
+      );
+      expect((await mailRows(r.container)).single.detail, '失敗（認証に失敗しました）');
+    });
+
+    test('a dead SMTP server does not stop the Discord post beside it',
+        () async {
+      const both = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+        contact: mailContact,
+        share: OversleepShare(webhookIds: {'w1'}),
+        oversleepTriggerMinutes: 10,
+      );
+      final r = await ringing(
+        both,
+        mailConfigured: true,
+        mailResult: const SendResult.failure(SendFailure.network),
+      );
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: both, session: r.session, now: at(minutes: 11));
+
+      expect(sender.posts, hasLength(1));
+      expect(
+        notifierOf(r.container).posted.single.body,
+        'Discord 1件に投稿しました。メールは送信できませんでした',
+      );
+    });
+
+    test('メール off on the contact sends nothing at all', () async {
+      final r = await ringing(pledged, mailConfigured: true);
+
+      await r.container
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: pledged, session: r.session, now: at(minutes: 11));
+
+      expect(mails.sent, isEmpty);
+      expect(await mailRows(r.container), isEmpty);
     });
   });
 

@@ -146,20 +146,19 @@ void main() {
     expect(find.text('123456789'), findsOneWidget);
   });
 
-  testWidgets('メール送信設定 is present but says 準備中 and does nothing', (
-    tester,
-  ) async {
+  testWidgets('メール送信設定 says 未設定 and opens the SMTP editor', (tester) async {
     await openOverlay(tester);
 
     await scrollTo(tester, find.byKey(const ValueKey('profileMailRow')));
     expect(find.text('メール送信設定'), findsOneWidget);
-    expect(find.text('準備中'), findsOneWidget);
+    // Nothing has been entered, and a half-filled account is 未設定 to every
+    // other screen — this row must not be the one place that calls it done.
+    expect(find.text('未設定'), findsWidgets);
 
     await tester.tap(find.byKey(const ValueKey('profileMailRow')));
     await tester.pumpAndSettle();
-    // Still on the overlay: the row is not a door yet.
-    expect(find.byKey(const ValueKey('profileOverlay')), findsOneWidget);
-    expect(find.text('準備中'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mailPreset-gmail')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mailHostField')), findsOneWidget);
   });
 
   testWidgets('picking an icon persists and repaints the header', (

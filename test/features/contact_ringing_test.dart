@@ -190,10 +190,10 @@ void main() {
     );
 
     final posted = notifierOf(r.container).posted;
-    expect(
-      posted.map((p) => p.body),
-      contains('電話・SMS・メールは開発中で、記録だけが残ります'),
-    );
+    // メール really goes out since D1, so it is no longer among the routes the
+    // notification apologises for. This alarm's contact has 電話 on and
+    // nothing else, and that is the one still owed an apology.
+    expect(posted.map((p) => p.body), contains('電話は開発中で、記録だけが残ります'));
 
     // Ticking on does not send a second one.
     await tick(tester, seconds: 3);

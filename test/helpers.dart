@@ -8,11 +8,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wake_or_pay/data/database.dart';
 import 'package:wake_or_pay/data/providers.dart';
+import 'package:wake_or_pay/data/repositories/mail_settings_repository.dart';
 import 'package:wake_or_pay/domain/discord_post.dart';
 import 'package:wake_or_pay/domain/models.dart';
+import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
 import 'package:wake_or_pay/services/discord_sender.dart';
+import 'package:wake_or_pay/services/mail_sender.dart';
+import 'package:wake_or_pay/services/secret_store.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
 
 /// Overrides backing the app with an in-memory database and in-memory
@@ -274,3 +278,56 @@ class FakeDiscordWebhookSender implements DiscordWebhookSender {
 
 Override fakeDiscordSenderOverride(FakeDiscordWebhookSender sender) =>
     discordWebhookSenderProvider.overrideWithValue(sender);
+
+/// A mail sender that reaches no SMTP server and remembers what it was asked
+/// to send.
+///
+/// The default [mailSenderProvider] is the real one, which is safe in a test
+/// only because an unconfigured account refuses before it opens a socket.
+/// Anything that *does* configure an account must hand this in instead — the
+/// 送信元アドレス in a test is somebody's real inbox.
+class FakeMailSender implements MailSender {
+  FakeMailSender({this.result = const SendResult.success()});
+
+  final SendResult result;
+  final sent = <({String to, String subject, String body})>[];
+
+  @override
+  Future<SendResult> send({
+    required String to,
+    required String subject,
+    required String body,
+  }) async {
+    sent.add((to: to, subject: subject, body: body));
+    return result;
+  }
+}
+
+Override fakeMailSenderOverride(FakeMailSender sender) =>
+    mailSenderProvider.overrideWithValue(sender);
+
+/// The prefs a fully configured メール送信設定 leaves behind, so a test can start
+/// from 「設定済み」 without walking the screen.
+///
+/// The password itself is deliberately **not** here — it never goes in prefs.
+/// Pair this with [seededSecretStoreOverride] for anything that sends.
+Map<String, Object> configuredMailPrefs({
+  String from = 'me@example.com',
+  String host = 'smtp.example.com',
+}) => {
+  'mail.presetId': 'custom',
+  'mail.host': host,
+  'mail.port': defaultSmtpPort,
+  'mail.useSsl': false,
+  'mail.fromAddress': from,
+  'mail.username': from,
+  'mail.passwordSaved': true,
+};
+
+/// A secret store that already holds [mailPassword], for a test that starts
+/// from a configured account.
+Override seededSecretStoreOverride({String mailPassword = 'app-password'}) =>
+    secretStoreProvider.overrideWithValue(
+      InMemorySecretStore()
+        ..values[MailSettingsRepository.passwordSecretKey] = mailPassword,
+    );

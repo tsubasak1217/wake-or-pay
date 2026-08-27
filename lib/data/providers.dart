@@ -9,10 +9,12 @@ import 'repositories/contact_book_repository.dart';
 import 'repositories/contact_event_repository.dart';
 import 'repositories/discord_webhook_repository.dart';
 import 'repositories/garden_repository.dart';
+import 'repositories/mail_settings_repository.dart';
 import 'repositories/ojisan_repository.dart';
 import 'repositories/profile_repository.dart';
 import 'repositories/settings_repository.dart';
 import 'repositories/wallet_repository.dart';
+import '../services/secret_store.dart';
 
 /// Overridden in `main()` with the instance loaded before the first frame, and
 /// in tests with mock values.
@@ -67,6 +69,15 @@ final settingsRepositoryProvider = Provider(
 
 final profileRepositoryProvider = Provider(
   (ref) => ProfileRepository(ref.watch(sharedPreferencesProvider)),
+);
+
+/// メール送信設定. Two stores behind one object — prefs for the server fields,
+/// the secure store for the app password. See [MailSettingsRepository].
+final mailSettingsRepositoryProvider = Provider(
+  (ref) => MailSettingsRepository(
+    ref.watch(sharedPreferencesProvider),
+    ref.watch(secretStoreProvider),
+  ),
 );
 
 final alarmsProvider = StreamProvider<List<Alarm>>(

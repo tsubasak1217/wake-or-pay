@@ -119,11 +119,14 @@ Future<ProviderContainer> openNewAlarm(
   WidgetTester tester, {
   bool micPermitted = true,
   bool withBook = true,
+  bool mailConfigured = false,
 }) async {
   recorder = FakeVoiceRecorder(permitted: micPermitted);
   player = FakeVoicePlayer();
   final container = await testContainer(
+    prefs: mailConfigured ? configuredMailPrefs() : const {},
     extra: [
+      if (mailConfigured) seededSecretStoreOverride(),
       fakeAlarmServiceOverride(),
       voiceRecorderProvider.overrideWithValue(recorder),
       voicePlayerProvider.overrideWithValue(player),
@@ -264,14 +267,14 @@ void main() {
     });
   });
 
-  testWidgets('メール stays greyed even with an address: sending is unbuilt', (
+  testWidgets('メール stays greyed with an address but no SMTP account', (
     tester,
   ) async {
     final container = await openNewAlarm(tester);
     expect(
       container.read(mailSendingConfiguredProvider),
       isFalse,
-      reason: 'the whole of stage C has no SMTP account to send with',
+      reason: 'nothing has been entered in メール送信設定',
     );
     await toggle(tester, '覚悟');
 
@@ -296,7 +299,42 @@ void main() {
       await flip(tester, 'メール');
       expect(routeRow(tester, 'メール').value, isFalse);
       expect(find.byKey(const ValueKey('messageIsland')), findsNothing);
+
+      // But the way out of the situation is right there, not described.
+      expect(find.byKey(const ValueKey('contactMailSetupRow')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('contactMailSetupRow')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('mailPreset-gmail')), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
     });
+  });
+
+  testWidgets('with メール送信設定 done the toggle comes alive', (tester) async {
+    final container = await openNewAlarm(tester, mailConfigured: true);
+    expect(container.read(mailSendingConfiguredProvider), isTrue);
+    await toggle(tester, '覚悟');
+
+    await inContactScreen(tester, () async {
+      await pick(tester, '田中太郎');
+
+      final mail = routeRow(tester, 'メール');
+      expect(mail.onChanged, isNotNull, reason: 'there is an account now');
+      expect(
+        mail.value,
+        isTrue,
+        reason: 'picking somebody switches on every route they can be reached '
+            'on, and メール is now one of them',
+      );
+      expect(find.text(mailSendingUnconfiguredNote), findsNothing);
+      expect(find.byKey(const ValueKey('contactMailSetupRow')), findsNothing);
+      // The written-message island appears for メール on its own now.
+      expect(find.byKey(const ValueKey('messageIsland')), findsOneWidget);
+    });
+
+    final saved = await save(tester, container);
+    expect(saved.contact!.emailEnabled, isTrue);
+    expect(saved.contact!.willEmail, isTrue);
   });
 
   testWidgets('picking somebody copies them onto the alarm, routes and all', (
