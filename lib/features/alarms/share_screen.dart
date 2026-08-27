@@ -208,7 +208,8 @@ class _ShareSubScreenState extends ConsumerState<ShareSubScreen> {
             ),
             Text(
               '録音があれば、投稿に音声ファイルとして添付します。'
-              '現在は実際の投稿は行いません。発火した記録がアプリ内に残るだけです。',
+              'Discord へは実際に投稿します。共有先を長押しすると、'
+              'テスト送信で URL を確かめられます。',
               style: theme.textTheme.bodySmall,
             ),
           ],

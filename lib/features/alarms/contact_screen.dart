@@ -279,7 +279,9 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
               ),
             const SizedBox(height: 16),
             Text(
-              '現在は実際の送信は行いません。発火した記録がアプリ内に残るだけです。',
+              'この画面の経路（電話・メール・SMS）は、まだ実際には送信しません。'
+              '発火した記録がアプリ内に残るだけです。'
+              '寝坊の共有（Discord）は実際に投稿します。',
               style: theme.textTheme.bodySmall,
             ),
           ],

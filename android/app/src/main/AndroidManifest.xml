@@ -12,6 +12,13 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
 
+    <!-- Posting the oversleep share to a Discord webhook. The debug manifest
+         has always declared this for the Flutter tool's own use, which is why
+         it worked in development; without it here, the release build reaches
+         nothing and every post fails as a connection error. It is the only
+         network the app makes: Discord, and nowhere else. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="覚悟の目覚まし"
         android:name="${applicationName}"
