@@ -58,6 +58,21 @@ List<DateTime> _parseSnoozes(String? json) {
 String _formatSnoozes(List<DateTime> snoozes) =>
     jsonEncode([for (final t in snoozes) t.millisecondsSinceEpoch]);
 
+/// The oversleep contact, stored whole as one JSON blob because it is only
+/// ever read and written whole. Unreadable JSON reads as "no contact" — the
+/// worst that costs is a message not sent, which is already the case today.
+OversleepContact? _parseContact(String? json) {
+  if (json == null || json.isEmpty) return null;
+  try {
+    final contact = OversleepContact.fromJson(
+      (jsonDecode(json) as Map).cast<String, dynamic>(),
+    );
+    return contact.isUsable ? contact : null;
+  } on Object {
+    return null;
+  }
+}
+
 extension AlarmRowMapper on AlarmRow {
   Alarm toModel() => Alarm(
     id: id,
@@ -79,6 +94,7 @@ extension AlarmRowMapper on AlarmRow {
       snoozePenalty: kakugoSnoozePenalty,
       snoozeResetsClock: kakugoSnoozeResetsClock,
     ),
+    contact: _parseContact(oversleepContact),
   );
 }
 
@@ -105,6 +121,33 @@ extension AlarmMapper on Alarm {
       kakugo == null ? null : normalizeSnoozePenalty(kakugo!.snoozePenalty),
     ),
     kakugoSnoozeResetsClock: Value(kakugo?.snoozeResetsClock),
+    oversleepContact: Value(
+      contact == null || !contact!.isUsable
+          ? null
+          : jsonEncode(contact!.toJson()),
+    ),
+  );
+}
+
+extension ContactEventRowMapper on ContactEventRow {
+  ContactEvent toModel() => ContactEvent(
+    id: id,
+    sessionId: sessionId,
+    firedAt: DateTime.fromMillisecondsSinceEpoch(firedAtMs),
+    contactName: contactName,
+    channel: contactChannelByName(channel),
+    detail: detail,
+  );
+}
+
+extension ContactEventMapper on ContactEvent {
+  ContactEventRowsCompanion toCompanion() => ContactEventRowsCompanion(
+    id: Value(id),
+    sessionId: Value(sessionId),
+    firedAtMs: Value(firedAt.millisecondsSinceEpoch),
+    contactName: Value(contactName),
+    channel: Value(channel.name),
+    detail: Value(detail),
   );
 }
 

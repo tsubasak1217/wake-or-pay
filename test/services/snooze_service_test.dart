@@ -8,11 +8,7 @@ import 'package:wake_or_pay/services/alarm_service.dart';
 import '../helpers.dart';
 
 void main() {
-  const kakugo = Kakugo(
-    ratePerMinute: 100,
-    cap: 10000,
-    snoozePenalty: 50,
-  );
+  const kakugo = Kakugo(ratePerMinute: 100, cap: 10000, snoozePenalty: 50);
   const snoozable = Alarm(
     id: 'a1',
     hour: 7,
@@ -182,6 +178,29 @@ void main() {
       expect(outcome.settled.single.dismissedAt, at(minutes: 60));
     });
   });
+
+  test(
+    'a second alarm ringing does not steal the snoozed one\'s session',
+    () async {
+      final r = await ringing(snoozable);
+      await r.service.snooze(r.id, now: at(minutes: 2));
+
+      // Another alarm fires later, while the first is still snoozing. Its
+      // session is the newest ringing one from then on.
+      const other = Alarm(id: 'b1', hour: 8, minute: 0, kakugo: kakugo);
+      await r.container.read(alarmRepositoryProvider).save(other);
+      await r.container
+          .read(sessionServiceProvider)
+          .start(alarm: other, firedAt: at(minutes: 60));
+
+      // The snoozed alarm's own open session is still findable, and it is not
+      // the other alarm's.
+      final sessions = r.container.read(alarmSessionRepositoryProvider);
+      final mine = await sessions.getRingingForAlarm('a1');
+      expect(mine!.id, r.id);
+      expect((await sessions.getRinging())!.alarmId, 'b1');
+    },
+  );
 
   group('dismissing a snoozed session', () {
     test('is failed, costs the presses, and clears the notice', () async {

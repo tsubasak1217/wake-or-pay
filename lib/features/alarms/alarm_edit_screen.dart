@@ -9,6 +9,7 @@ import '../../domain/models.dart';
 import '../../domain/sound_library.dart';
 import 'alarm_controller.dart';
 import 'alarm_draft.dart';
+import 'contact_screen.dart';
 import 'edit_sub_screens.dart';
 import 'sound_screen.dart';
 import 'widgets/settings_island.dart';
@@ -490,6 +491,7 @@ class _KakugoIsland extends ConsumerWidget {
         borderColor: danger,
         header: _MaxLossHeader(seed: seed),
         children: [
+          _ContactRow(seed: seed),
           _RateRow(seed: seed),
           // Both only mean anything when the alarm can be snoozed at all, so
           // they follow the スヌーズ toggle in the island above.
@@ -499,6 +501,40 @@ class _KakugoIsland extends ConsumerWidget {
           ],
           _CapRow(seed: seed),
         ],
+      ),
+    );
+  }
+}
+
+/// 寝坊時連絡先: the one person told when the oversleeping runs long.
+class _ContactRow extends ConsumerWidget {
+  const _ContactRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The name, not the contact: `select` compares with `==`, and watching the
+    // object would rebuild this row for a change to any of its six fields.
+    final label = ref.watch(
+      alarmDraftProvider(seed).select((a) => a.contact?.name ?? 'なし'),
+    );
+    return SettingRow(
+      label: '寝坊時連絡先',
+      value: label,
+      onTap: () => pushEditorSubScreen(
+        context,
+        ContactSubScreen(
+          alarmId: seed.id,
+          initial: ref.read(alarmDraftProvider(seed)).contact,
+          onCommit: (v) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update(
+                (a) => v == null
+                    ? a.copyWith(clearContact: true)
+                    : a.copyWith(contact: v),
+              ),
+        ),
       ),
     );
   }

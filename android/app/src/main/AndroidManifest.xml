@@ -56,5 +56,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Android 11+ hides other packages unless they are declared here.
+             Without this flutter_tts cannot see any speech engine at all, and
+             the oversleep contact countdown would be silent on a real device. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
     </queries>
 </manifest>

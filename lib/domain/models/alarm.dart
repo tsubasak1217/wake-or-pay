@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'kakugo.dart';
+import 'oversleep_contact.dart';
 import 'snooze.dart';
 
 /// How the user proves they are actually awake.
@@ -66,6 +67,7 @@ class Alarm {
     this.snooze,
     this.soundId = defaultSoundId,
     this.kakugo,
+    this.contact,
   });
 
   final String id;
@@ -89,9 +91,16 @@ class Alarm {
   /// null = plain alarm, nothing at stake.
   final Kakugo? kakugo;
 
+  /// Who to tell if this alarm is slept through. One per alarm, null = nobody.
+  final OversleepContact? contact;
+
   bool get isKakugo => kakugo != null;
 
   bool get canSnooze => snooze != null;
+
+  /// A contact only means anything under a pledge — it is part of 覚悟の設定 —
+  /// and only when it names someone.
+  bool get willContact => isKakugo && (contact?.isUsable ?? false);
 
   Alarm copyWith({
     String? id,
@@ -106,6 +115,8 @@ class Alarm {
     String? soundId,
     Kakugo? kakugo,
     bool clearKakugo = false,
+    OversleepContact? contact,
+    bool clearContact = false,
   }) => Alarm(
     id: id ?? this.id,
     hour: hour ?? this.hour,
@@ -117,6 +128,7 @@ class Alarm {
     snooze: clearSnooze ? null : (snooze ?? this.snooze),
     soundId: soundId ?? this.soundId,
     kakugo: clearKakugo ? null : (kakugo ?? this.kakugo),
+    contact: clearContact ? null : (contact ?? this.contact),
   );
 
   Map<String, dynamic> toJson() => {
@@ -130,6 +142,7 @@ class Alarm {
     'snooze': snooze?.toJson(),
     'soundId': soundId,
     'kakugo': kakugo?.toJson(),
+    'contact': contact?.toJson(),
   };
 
   factory Alarm.fromJson(Map<String, dynamic> json) => Alarm(
@@ -152,6 +165,11 @@ class Alarm {
     kakugo: json['kakugo'] == null
         ? null
         : Kakugo.fromJson((json['kakugo'] as Map).cast<String, dynamic>()),
+    contact: json['contact'] == null
+        ? null
+        : OversleepContact.fromJson(
+            (json['contact'] as Map).cast<String, dynamic>(),
+          ),
   );
 
   @override
@@ -166,7 +184,8 @@ class Alarm {
       other.graceMinutes == graceMinutes &&
       other.snooze == snooze &&
       other.soundId == soundId &&
-      other.kakugo == kakugo;
+      other.kakugo == kakugo &&
+      other.contact == contact;
 
   @override
   int get hashCode => Object.hash(
@@ -180,10 +199,12 @@ class Alarm {
     snooze,
     soundId,
     kakugo,
+    contact,
   );
 
   @override
   String toString() =>
       'Alarm($id, $hour:$minute, days $repeatDays, enabled $enabled, '
-      '$wakeCheck, grace ${graceMinutes}m, $snooze, $soundId, $kakugo)';
+      '$wakeCheck, grace ${graceMinutes}m, $snooze, $soundId, $kakugo, '
+      '$contact)';
 }

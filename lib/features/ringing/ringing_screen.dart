@@ -10,7 +10,10 @@ import '../../domain/format.dart';
 import '../../domain/loss_calculator.dart';
 import '../../domain/models.dart';
 import '../../domain/ojisan.dart';
+import '../../domain/oversleep_contact_rules.dart';
 import '../../domain/snooze_rules.dart';
+import '../../services/oversleep_notifier.dart';
+import '../../services/speaker.dart';
 import 'ringing_controller.dart';
 import 'wake_checks/long_press_check.dart';
 import 'wake_checks/math_check.dart';
@@ -32,20 +35,79 @@ class _RingingScreenState extends ConsumerState<RingingScreen> {
   Timer? _ticker;
   DateTime _now = DateTime.now();
 
+  /// The speech cues already said out loud for this ring. Each line is spoken
+  /// once, however many times the second hand passes over it.
+  final _spoken = <ContactSpeechCue>{};
+
+  /// Guards the dispatch call itself. The once-per-session rule is enforced
+  /// against the stored events, in [ContactDispatcher]; this only stops a
+  /// second call being made while the first is still in flight.
+  bool _dispatching = false;
+
+  /// Read once in [initState], never on demand: `ref` is not usable from
+  /// [dispose], and stopping the voice on the way out is exactly a dispose-time
+  /// job. A `late final` initialiser would not do — on a ring with no contact
+  /// nothing touches it until dispose, and by then the read throws.
+  late Speaker _speaker;
+
   @override
   void initState() {
     super.initState();
+    _speaker = ref.read(speakerProvider);
     _setWakelock(true);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
+      if (!mounted) return;
+      final now = DateTime.now();
+      setState(() => _now = now);
+      _contactTick(now);
+    });
+    // The opening line does not wait for the first tick.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _contactTick(DateTime.now());
     });
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    // Leaving the screen means the morning is over, one way or the other:
+    // nothing more should be said about a contact that is no longer coming.
+    unawaited(_speaker.stop());
     _setWakelock(false);
     super.dispose();
+  }
+
+  /// Speech and dispatch for the oversleep contact, per spec 5.
+  ///
+  /// Reads rather than watches: both providers are already being watched by
+  /// the body below, so this is the value that is on screen, not a fresh
+  /// query, and it costs nothing to run every second.
+  void _contactTick(DateTime now) {
+    final session = ref.read(sessionByIdProvider(widget.sessionId)).valueOrNull;
+    if (session == null || !session.isRinging) return;
+
+    final alarm = ref.read(alarmByIdProvider(session.alarmId)).valueOrNull;
+    if (alarm == null || !alarm.willContact) return;
+    final contact = alarm.contact!;
+
+    final remaining = contactRemaining(now, session, contact);
+    if (remaining == null) return;
+
+    // The opening line first, then whichever countdown mark has been reached.
+    for (final cue in [ContactSpeechCue.start, ?cueFor(remaining)]) {
+      if (_spoken.add(cue)) {
+        unawaited(_speaker.speak(contactSpeechText(cue, contact)));
+      }
+    }
+
+    if (remaining > Duration.zero || _dispatching) return;
+    _dispatching = true;
+    unawaited(
+      ref
+          .read(contactDispatcherProvider)
+          .fireIfDue(alarm: alarm, session: session, now: now)
+          .whenComplete(() => _dispatching = false),
+    );
   }
 
   /// Keeping the screen awake is a nicety; failing to is never a reason to
@@ -168,6 +230,21 @@ class _RingingBody extends ConsumerWidget {
                 _OjisanPanel(loss: loss)
               else
                 Text('覚悟モードはオフです', style: theme.textTheme.bodyLarge),
+              // Who is about to hear about this, and when. Only ever shown
+              // when there is somebody to tell.
+              alarm.maybeWhen(
+                data: (data) => data != null && data.willContact
+                    ? _ContactPanel(
+                        contact: data.contact!,
+                        remaining: contactRemaining(
+                          now,
+                          session,
+                          data.contact,
+                        )!,
+                      )
+                    : const SizedBox.shrink(),
+                orElse: () => const SizedBox.shrink(),
+              ),
               const SizedBox(height: 32),
               // Never guess the wake check: showing long press while the alarm
               // loads would let the user clear a check they did not choose. An
@@ -220,6 +297,46 @@ Widget _wakeCheckFor(WakeCheckType type, VoidCallback onCleared) =>
       // the simplest check rather than a crash.
       WakeCheckType.random => LongPressCheck(onCleared: onCleared),
     };
+
+/// 「あと 2:30 で 田中太郎 さんに連絡が行きます」 — the same sentence the synthesised
+/// voice says, so the screen and the speech never disagree.
+class _ContactPanel extends StatelessWidget {
+  const _ContactPanel({required this.contact, required this.remaining});
+
+  final OversleepContact contact;
+  final Duration remaining;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final due = remaining <= Duration.zero;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            due ? Icons.phone_forwarded : Icons.phone_in_talk_outlined,
+            size: 18,
+            color: theme.colorScheme.error,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              contactCountdownLine(remaining, contact),
+              key: const ValueKey('contactCountdown'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: theme.colorScheme.error,
+                fontWeight: due ? FontWeight.bold : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// The secondary way off this screen. Under a pledge it has to state the
 /// price — the whole point of kakugo mode is that nothing costs money quietly.

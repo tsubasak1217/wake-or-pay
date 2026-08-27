@@ -37,6 +37,31 @@ class AlarmSessionRepository {
     return row?.toModel();
   }
 
+  /// The open session of one particular alarm, newest first.
+  ///
+  /// [getRinging] answers "what is ringing right now", which is the wrong
+  /// question once a second alarm can be snoozed in the background: the newest
+  /// ringing session may belong to somebody else entirely, and a re-ring that
+  /// matched against it would open a second session for the same morning.
+  Future<AlarmSession?> getRingingForAlarm(String alarmId) async {
+    final row =
+        await (_db.select(_db.alarmSessionRows)
+              ..where(
+                (s) =>
+                    s.status.equals(SessionStatus.ringing.name) &
+                    s.alarmId.equals(alarmId),
+              )
+              ..orderBy([
+                (s) => OrderingTerm(
+                  expression: s.firedAtMs,
+                  mode: OrderingMode.desc,
+                ),
+              ])
+              ..limit(1))
+            .getSingleOrNull();
+    return row?.toModel();
+  }
+
   Future<List<AlarmSession>> getRingingAll() async =>
       (await (_db.select(
             _db.alarmSessionRows,

@@ -9,6 +9,7 @@ import 'app/theme_controller.dart';
 import 'data/providers.dart';
 import 'services/alarm_service.dart';
 import 'services/app_notifier.dart';
+import 'services/speaker.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,7 @@ Future<void> main() async {
       // Only the real app reaches the notification plugin; every test keeps
       // the recording default.
       localAppNotifierOverride(),
+      ttsSpeakerOverride(),
     ],
   );
 

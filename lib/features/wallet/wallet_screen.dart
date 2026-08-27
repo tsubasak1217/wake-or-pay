@@ -100,8 +100,62 @@ class WalletScreen extends ConsumerWidget {
                     ],
                   ),
           ),
+          const _ContactEventSection(),
         ],
       ),
     );
   }
 }
+
+/// The oversleep contact log. Absent entirely until something has fired, so
+/// nobody is shown an empty section about a feature they never set up.
+class _ContactEventSection extends ConsumerWidget {
+  const _ContactEventSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final events = ref.watch(contactEventsProvider).valueOrNull;
+    if (events == null || events.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 32),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('寝坊時連絡の記録', style: theme.textTheme.titleMedium),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Text(
+            '実際の送信はまだ実装されていません。ここに残るのは「送るはずだった」記録です。',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+        for (final event in events)
+          ListTile(
+            key: ValueKey('contactEvent-${event.id}'),
+            leading: Icon(
+              contactChannelIcon(event.channel),
+              color: theme.colorScheme.error,
+            ),
+            title: Text('${event.contactName} さんへ'),
+            subtitle: Text(
+              [
+                formatDateTime(event.firedAt),
+                contactChannelLabel(event.channel),
+                ?event.detail,
+              ].join(' ・ '),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+IconData contactChannelIcon(ContactChannel channel) => switch (channel) {
+  ContactChannel.phone => Icons.phone_outlined,
+  ContactChannel.email => Icons.mail_outline,
+  ContactChannel.log => Icons.receipt_long_outlined,
+};

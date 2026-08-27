@@ -50,6 +50,13 @@ String kakugoMood(int ratePerMinute) {
   return '😴 まあ起きたい';
 }
 
+/// How a logged contact reads in the history. Pure.
+String contactChannelLabel(ContactChannel channel) => switch (channel) {
+  ContactChannel.phone => '電話',
+  ContactChannel.email => 'メール',
+  ContactChannel.log => '記録のみ',
+};
+
 String sessionResultLabel(SessionStatus status) => switch (status) {
   SessionStatus.ringing => '鳴動中',
   SessionStatus.success => '起床成功',

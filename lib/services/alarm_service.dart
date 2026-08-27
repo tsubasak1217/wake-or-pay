@@ -13,6 +13,7 @@ import '../domain/schedule.dart';
 import '../domain/snooze_rules.dart';
 import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
+import 'oversleep_notifier.dart';
 import 'session_service.dart';
 
 final sessionServiceProvider = Provider(
@@ -195,17 +196,19 @@ class AlarmService {
     final alarm = await _ref.read(alarmRepositoryProvider).getById(alarmId);
     if (alarm == null) return;
 
-    // A ring we already opened a session for (a relaunch mid-ring) must not
-    // start a second one.
+    // A ring we already opened a session for must not start a second one —
+    // a relaunch mid-ring, and now also a snooze coming back. Asked per alarm,
+    // because with a second alarm snoozing in the background the newest
+    // ringing session is not necessarily this alarm's.
     final sessions = _ref.read(alarmSessionRepositoryProvider);
-    final existing = await sessions.getRinging();
+    final existing = await sessions.getRingingForAlarm(alarmId);
     // firedAt is the *scheduled* time, not now: ignoring the notification for
     // ten minutes must already have cost ten minutes' worth.
-    final session = existing != null && existing.alarmId == alarmId
-        ? existing
-        : await _ref
-              .read(sessionServiceProvider)
-              .start(alarm: alarm, firedAt: settings.dateTime);
+    final session =
+        existing ??
+        await _ref
+            .read(sessionServiceProvider)
+            .start(alarm: alarm, firedAt: settings.dateTime);
 
     _goRinging(session.id);
   }
@@ -239,6 +242,16 @@ class AlarmService {
       if (alarm == null) continue;
       _handled.remove(alarm.id);
       await setRingAt(alarm, session.currentRingAt);
+      // Under 「規定時刻から加算し続ける」 the contact timer does not stop for a
+      // snooze, so it can come due while the ring screen is closed. This
+      // catches it whenever the app is running; the re-ring catches the rest.
+      await _ref
+          .read(contactDispatcherProvider)
+          .fireIfDue(
+            alarm: alarm,
+            session: session,
+            now: now ?? DateTime.now(),
+          );
       final text = snoozeNotificationText(session.currentRingAt);
       await _ref
           .read(appNotifierProvider)
