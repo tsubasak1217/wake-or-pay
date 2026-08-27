@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ic_stat_notify is never named by any layout, manifest entry or Java
+     constant: flutter_local_notifications looks it up by name at runtime, with
+     Resources.getIdentifier. The release build's resource shrinker cannot see
+     that, so without this the icon is stripped and every notification the app
+     posts fails with invalid_icon — which SafeNotifier swallows, leaving no
+     notification and no error. -->
+<resources
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_notify"
+    tools:shrinkMode="safe" />
