@@ -265,7 +265,7 @@ void main() {
     await tester.pumpAndSettle();
     // The wake check now lives behind its own sub-screen, which commits the
     // choice when it closes.
-    await tester.tap(find.text('起床確認'));
+    await tester.tap(find.text('起床確認方法'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('計算（3問）'));
     await tester.pumpAndSettle();

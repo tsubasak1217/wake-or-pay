@@ -108,7 +108,7 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
-    await inSubScreen(tester, '起床確認', () async {
+    await inSubScreen(tester, '起床確認方法', () async {
       for (final type in WakeCheckType.values) {
         expect(find.text(type.label), findsOneWidget, reason: type.name);
       }

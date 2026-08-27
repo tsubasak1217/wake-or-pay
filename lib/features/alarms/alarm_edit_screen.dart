@@ -227,7 +227,7 @@ class _WakeCheckRow extends ConsumerWidget {
       alarmDraftProvider(seed).select((a) => a.wakeCheck),
     );
     return SettingRow(
-      label: '起床確認',
+      label: '起床確認方法',
       value: wakeCheck.label,
       onTap: () => pushEditorSubScreen(
         context,
@@ -312,7 +312,6 @@ class _SnoozeToggleRow extends ConsumerWidget {
     return SettingSwitchRow(
       label: 'スヌーズ',
       value: on,
-      subtitle: '無料の標準機能です',
       onChanged: (v) => ref
           .read(alarmDraftProvider(seed).notifier)
           .update(
@@ -335,7 +334,7 @@ class _KakugoToggleRow extends ConsumerWidget {
     return SettingSwitchRow(
       label: '覚悟',
       value: on,
-      subtitle: '寝坊した1分ごとにコインが燃えます',
+      subtitle: '起床に対するあなたの"覚悟"を設定できます',
       onChanged: (v) => ref
           .read(alarmDraftProvider(seed).notifier)
           .update(
@@ -493,12 +492,11 @@ class _KakugoIsland extends ConsumerWidget {
         children: [
           _ContactRow(seed: seed),
           _RateRow(seed: seed),
-          // Both only mean anything when the alarm can be snoozed at all, so
-          // they follow the スヌーズ toggle in the island above.
-          if (canSnooze) ...[
-            _SnoozePenaltyRow(seed: seed),
-            _SnoozeClockRow(seed: seed),
-          ],
+          // Only means anything when the alarm can be snoozed at all, so it
+          // follows the スヌーズ toggle in the island above. 「スヌーズ中の加算」
+          // is no longer a row of its own: it lives inside the 寝坊ペナルティ
+          // sub-screen, which is the number it modifies.
+          if (canSnooze) _SnoozePenaltyRow(seed: seed),
           _CapRow(seed: seed),
         ],
       ),
@@ -583,52 +581,72 @@ class _SnoozePenaltyRow extends ConsumerWidget {
 }
 
 /// スヌーズ中の加算: which of the two clocks spec 4 defines this pledge bills on.
-class _SnoozeClockRow extends ConsumerWidget {
-  const _SnoozeClockRow({required this.seed});
+///
+/// Not a row of its own any more. It sits inside the 寝坊ペナルティ sub-screen,
+/// under the slider, because it decides *which minutes* that rate is charged
+/// for — reading it next to the number is the whole point.
+///
+/// Unlike the sub-screens, this one writes the draft as it is tapped rather
+/// than on the way out: it is already inside a sub-screen whose own value is
+/// committed on pop, and a second deferred commit would race with it.
+class _SnoozeClockSelector extends ConsumerWidget {
+  const _SnoozeClockSelector({required this.seed});
 
   final Alarm seed;
 
   static const continuousLabel = '規定時刻から加算し続ける';
   static const resetLabel = '次に鳴る時刻を起点にし直す';
 
+  static const _options = <({bool value, String label, String description})>[
+    (
+      value: false,
+      label: continuousLabel,
+      description: 'スヌーズで鳴っていない間もコインは燃え続けます。厳しいほう。',
+    ),
+    (
+      value: true,
+      label: resetLabel,
+      description: '鳴っていない間は燃えません。再び鳴った時点から、猶予もあらためて数え直します。',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = alarmDraftProvider(seed);
+    // An alarm that cannot be snoozed has no snoozed minutes to bill.
+    if (!ref.watch(draft.select((a) => a.canSnooze))) {
+      return const SizedBox.shrink();
+    }
     final resets = ref.watch(
       draft.select((a) => a.kakugo?.snoozeResetsClock ?? false),
     );
-    return SettingRow(
-      label: 'スヌーズ中の加算',
-      value: resets ? '起点にし直す' : '加算し続ける',
-      onTap: () => pushEditorSubScreen(
-        context,
-        ChoiceSubScreen<bool>(
-          title: 'スヌーズ中の加算',
-          initial: resets,
-          options: const [
-            (
-              value: false,
-              label: continuousLabel,
-              description: 'スヌーズで鳴っていない間もコインは燃え続けます。厳しいほう。',
-            ),
-            (
-              value: true,
-              label: resetLabel,
-              description: '鳴っていない間は燃えません。再び鳴った時点から、猶予もあらためて数え直します。',
-            ),
-          ],
-          description: 'どちらを選んでも、スヌーズを1回でも押した朝は起床失敗です。',
-          onCommit: (v) => ref
-              .read(draft.notifier)
-              .update(
-                (a) => a.copyWith(
-                  kakugo: (a.kakugo ?? defaultKakugo).copyWith(
-                    snoozeResetsClock: v,
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 32),
+        Text('スヌーズ中の加算', style: theme.textTheme.titleMedium),
+        for (final option in _options)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            onTap: () => ref
+                .read(draft.notifier)
+                .update(
+                  (a) => a.copyWith(
+                    kakugo: (a.kakugo ?? defaultKakugo).copyWith(
+                      snoozeResetsClock: option.value,
+                    ),
                   ),
                 ),
-              ),
+            title: Text(option.label),
+            subtitle: Text(option.description),
+            trailing: resets == option.value ? const Icon(Icons.check) : null,
+          ),
+        Text(
+          'どちらを選んでも、スヌーズを1回でも押した朝は起床失敗です。',
+          style: theme.textTheme.bodyMedium,
         ),
-      ),
+      ],
     );
   }
 }
@@ -648,7 +666,7 @@ class _MaxLossHeader extends ConsumerWidget {
       child: Column(
         children: [
           Text(
-            '今夜の最大損失',
+            '寝坊で失う最大金額',
             style: Theme.of(context).textTheme.titleMedium
                 ?.copyWith(color: _KakugoIsland.onDanger),
           ),
@@ -689,12 +707,18 @@ class _RateRow extends ConsumerWidget {
           max: maxKakugoRate,
           suffix: 'コイン/分',
           description: '猶予を過ぎたあと、1分ごとに燃えるコインです。',
-          footer: (context, value) => Center(
-            child: Text(
-              kakugoMood(value),
-              key: const ValueKey('kakugoGauge'),
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
+          footer: (context, value) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Text(
+                  kakugoMood(value),
+                  key: const ValueKey('kakugoGauge'),
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+              _SnoozeClockSelector(seed: seed),
+            ],
           ),
           onCommit: (v) => ref
               .read(alarmDraftProvider(seed).notifier)

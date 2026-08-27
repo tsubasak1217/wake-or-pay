@@ -91,7 +91,7 @@ void main() {
     });
     expect(find.text('月・金'), findsOneWidget, reason: 'summarised on the row');
 
-    await inSubScreen(tester, '起床確認', () async {
+    await inSubScreen(tester, '起床確認方法', () async {
       await tester.tap(find.text('計算（3問）'));
       await tester.pumpAndSettle();
     });
@@ -174,7 +174,7 @@ void main() {
       reason: 'kakugo is off on a new alarm',
     );
     expect(find.text('スヌーズ設定'), findsNothing);
-    for (final row in ['曜日', '起床確認', 'サウンド', '起床猶予', 'スヌーズ', '覚悟']) {
+    for (final row in ['曜日', '起床確認方法', 'サウンド', '起床猶予', 'スヌーズ', '覚悟']) {
       expect(find.text(row), findsOneWidget, reason: row);
     }
   });
@@ -188,7 +188,7 @@ void main() {
 
       await toggleInEditor(tester, '覚悟');
       expect(find.text('覚悟の設定'), findsOneWidget);
-      expect(find.text('今夜の最大損失'), findsOneWidget);
+      expect(find.text('寝坊で失う最大金額'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('maxLoss'))).data,
         '1000 コイン',

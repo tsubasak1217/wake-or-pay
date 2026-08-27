@@ -70,7 +70,7 @@ Future<Alarm> save(WidgetTester tester, ProviderContainer container) async {
 }
 
 void main() {
-  testWidgets('the two snooze rows appear only when スヌーズ is on', (
+  testWidgets('the snooze penalty row appears only when スヌーズ is on', (
     tester,
   ) async {
     await openNewAlarm(tester);
@@ -78,17 +78,27 @@ void main() {
     await toggle(tester, '覚悟');
     expect(find.text('寝坊ペナルティ'), findsOneWidget, reason: '覚悟 is on');
     expect(find.text('スヌーズペナルティ'), findsNothing);
-    expect(find.text('スヌーズ中の加算'), findsNothing);
 
     await toggle(tester, 'スヌーズ');
     await scrollTo(tester, find.text('スヌーズペナルティ'));
     expect(find.text('スヌーズペナルティ'), findsOneWidget);
-    expect(find.text('スヌーズ中の加算'), findsOneWidget);
 
-    // And they go away again with it.
+    // And it goes away again with it.
     await toggle(tester, 'スヌーズ');
     expect(find.text('スヌーズペナルティ'), findsNothing);
-    expect(find.text('スヌーズ中の加算'), findsNothing);
+  });
+
+  testWidgets('スヌーズ中の加算 is no longer a row of the island', (tester) async {
+    await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+    await toggle(tester, 'スヌーズ');
+    await scrollTo(tester, find.text('スヌーズペナルティ'));
+
+    expect(
+      find.text('スヌーズ中の加算'),
+      findsNothing,
+      reason: 'it moved into the 寝坊ペナルティ sub-screen',
+    );
   });
 
   testWidgets('with 覚悟 off there is no kakugo island at all', (tester) async {
@@ -97,7 +107,7 @@ void main() {
     await toggle(tester, 'スヌーズ');
     expect(find.text('間隔'), findsOneWidget, reason: 'the snooze island');
     expect(find.text('スヌーズペナルティ'), findsNothing);
-    expect(find.text('今夜の最大損失'), findsNothing);
+    expect(find.text('寝坊で失う最大金額'), findsNothing);
   });
 
   testWidgets('the penalty is a slider plus a number, 0 to 1000', (
@@ -158,26 +168,35 @@ void main() {
     expect((await save(tester, container)).kakugo!.snoozePenalty, 0);
   });
 
-  testWidgets('the clock mode is a two option choice that round-trips', (
+  testWidgets(
+    'the clock mode is a two option choice inside the 寝坊ペナルティ sub-screen',
+    (tester) async {
+      final container = await openNewAlarm(tester);
+      await toggle(tester, '覚悟');
+      await toggle(tester, 'スヌーズ');
+
+      await inSubScreen(tester, '寝坊ペナルティ', () async {
+        expect(find.text('スヌーズ中の加算'), findsOneWidget);
+        expect(find.text('規定時刻から加算し続ける'), findsOneWidget);
+        expect(find.text('次に鳴る時刻を起点にし直す'), findsOneWidget);
+        await tester.tap(find.text('次に鳴る時刻を起点にし直す'));
+        await tester.pumpAndSettle();
+      });
+
+      expect((await save(tester, container)).kakugo!.snoozeResetsClock, isTrue);
+    },
+  );
+
+  testWidgets('with スヌーズ off the 寝坊ペナルティ sub-screen has no clock mode', (
     tester,
   ) async {
-    final container = await openNewAlarm(tester);
+    await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
 
-    await scrollTo(tester, find.text('スヌーズ中の加算'));
-    expect(find.text('加算し続ける'), findsOneWidget, reason: 'the default');
-
-    await inSubScreen(tester, 'スヌーズ中の加算', () async {
-      expect(find.text('規定時刻から加算し続ける'), findsOneWidget);
-      expect(find.text('次に鳴る時刻を起点にし直す'), findsOneWidget);
-      await tester.tap(find.text('次に鳴る時刻を起点にし直す'));
-      await tester.pumpAndSettle();
+    await inSubScreen(tester, '寝坊ペナルティ', () async {
+      expect(find.text('スヌーズ中の加算'), findsNothing);
+      expect(find.byKey(const ValueKey('kakugoGauge')), findsOneWidget);
     });
-
-    await scrollTo(tester, find.text('スヌーズ中の加算'));
-    expect(find.text('起点にし直す'), findsOneWidget);
-    expect((await save(tester, container)).kakugo!.snoozeResetsClock, isTrue);
   });
 
   testWidgets('the header stays the cap, not the cap plus penalties', (
@@ -188,7 +207,7 @@ void main() {
     await toggle(tester, 'スヌーズ');
 
     await scrollTo(tester, find.byKey(const ValueKey('maxLoss')));
-    expect(find.text('今夜の最大損失'), findsOneWidget);
+    expect(find.text('寝坊で失う最大金額'), findsOneWidget);
     expect(
       textOf(tester, const ValueKey('maxLoss')),
       '1000 コイン',
@@ -220,7 +239,15 @@ void main() {
     for (final forbidden in const ['広告', '課金', 'スヌーズを購入', 'プレミアム', '購入']) {
       expect(find.textContaining(forbidden), findsNothing, reason: forbidden);
     }
-    await scrollTo(tester, find.text('無料の標準機能です'));
-    expect(find.text('無料の標準機能です'), findsOneWidget);
+    // The 「無料の標準機能です」 subtitle is gone from the スヌーズ toggle: the row
+    // says nothing about price at all, which is the same promise in fewer words.
+    await scrollTo(tester, find.text('スヌーズ'));
+    expect(find.text('無料の標準機能です'), findsNothing);
+  });
+
+  testWidgets('the 覚悟 toggle explains itself in one line', (tester) async {
+    await openNewAlarm(tester);
+    await scrollTo(tester, find.text('覚悟'));
+    expect(find.text('起床に対するあなたの"覚悟"を設定できます'), findsOneWidget);
   });
 }

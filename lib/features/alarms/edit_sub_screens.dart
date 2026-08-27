@@ -207,7 +207,7 @@ class _ChoiceSubScreenState<T> extends State<ChoiceSubScreen<T>> {
   );
 }
 
-/// 起床確認: which check has to be cleared to stop the alarm.
+/// 起床確認方法: which check has to be cleared to stop the alarm.
 class WakeCheckSubScreen extends StatefulWidget {
   const WakeCheckSubScreen({
     super.key,
@@ -231,7 +231,7 @@ class _WakeCheckSubScreenState extends State<WakeCheckSubScreen> {
       if (didPop) widget.onCommit(_selected);
     },
     child: Scaffold(
-      appBar: AppBar(title: const Text('起床確認')),
+      appBar: AppBar(title: const Text('起床確認方法')),
       body: ListView(
         children: [
           for (final type in WakeCheckType.values)
