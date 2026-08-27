@@ -382,6 +382,24 @@ APK は `build/app/outputs/flutter-apk/app-release.apk` に出力される（`--
 
 補足：メーカーによってはバッテリー最適化を無効にしないと鳴らない（dontkillmyapp.com 参照）。
 
+## フォント
+
+アプリ全体の書体は **M PLUS Rounded 1c**（作者: Coji Morishita / M+ FONTS PROJECT）。
+`assets/fonts/` に Regular(400) / Medium(500) / Bold(700) の 3 ウェイトを同梱している。
+
+- **ライセンスは SIL Open Font License 1.1。** 全文は `assets/fonts/OFL.txt` に、
+  経緯とファイル一覧は `assets/fonts/LICENSE.md` にある。**OFL はライセンス全文の同梱が
+  条件のひとつ**なので、`OFL.txt` を消してはいけない。フォント単体の販売は不可、
+  アプリへの同梱・再配布は可。
+- 端末のフォントに頼らず**同梱**しているのは、Android のバージョンやメーカーによって
+  日本語の既定書体が変わり、同じ画面が別物に見えるため。ネットワークも要らない。
+- 適用は `lib/app/theme.dart` の `appFontFamily` を `ThemeData.fontFamily` に置くだけで、
+  3 テーマすべてに効く。**Cupertino は自前のテーマを持つ**ので、時刻ホイールだけは
+  `CupertinoTextThemeData` を Material の `textTheme` から組み立てて渡している
+  （`test/app/theme_test.dart` が両方を固定している）。
+- 同梱は 3 ウェイトのみ。配布元には Thin / Light / ExtraBold / Black もあるが、
+  1 ウェイトあたり約 3.4MB あり、使わないものを APK に入れる理由がない。
+
 ## 音源
 
 同梱の 5 音源はすべてこのリポジトリ内で合成した原著作物で、第三者の権利を含まない

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
@@ -821,7 +822,9 @@ class TimeWheel extends ConsumerWidget {
                   color: theme.colorScheme.onSurface,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ) ??
-                const TextStyle(),
+                // Only reached if the Material theme has no headlineSmall at
+                // all; even then the wheel must not fall back to Roboto.
+                const TextStyle(fontFamily: appFontFamily),
           ),
         ),
         child: CupertinoDatePicker(

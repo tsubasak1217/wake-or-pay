@@ -41,3 +41,15 @@ flutter:
 
   assets:
     - assets/audio/
+
+  # M PLUS Rounded 1c — SIL Open Font License 1.1.
+  # 全文は assets/fonts/OFL.txt、経緯は assets/fonts/LICENSE.md にあります。
+  fonts:
+    - family: MPLUSRounded1c
+      fonts:
+        - asset: assets/fonts/MPLUSRounded1c-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/MPLUSRounded1c-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/MPLUSRounded1c-Bold.ttf
+          weight: 700

@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -82,5 +83,40 @@ void main() {
     }
     expect(AppThemes.byId('nope').id, AppThemes.defaultThemeId);
     expect(AppThemes.byId(AppThemes.defaultThemeId).price, 0);
+  });
+
+  test('every theme is set in M PLUS Rounded 1c', () {
+    for (final theme in AppThemes.all) {
+      final data = theme.themeData;
+      expect(
+        data.textTheme.bodyMedium?.fontFamily,
+        appFontFamily,
+        reason: '${theme.id} body',
+      );
+      expect(
+        data.primaryTextTheme.titleLarge?.fontFamily,
+        appFontFamily,
+        reason: '${theme.id} app bar',
+      );
+    }
+  });
+
+  testWidgets('the time wheel is drawn in it too', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<CupertinoDatePicker>(
+      find.byKey(const ValueKey('timeWheel')),
+    );
+    expect(picker, isNotNull);
+    final cupertino = CupertinoTheme.of(
+      tester.element(find.byKey(const ValueKey('timeWheel'))),
+    );
+    expect(
+      cupertino.textTheme.dateTimePickerTextStyle.fontFamily,
+      appFontFamily,
+      reason: 'Cupertino carries its own theme and would use its own face',
+    );
   });
 }

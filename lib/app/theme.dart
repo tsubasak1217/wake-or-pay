@@ -1,5 +1,16 @@
 import 'package:flutter/material.dart';
 
+/// The app's own typeface, on every theme and every screen.
+///
+/// M PLUS Rounded 1c — a rounded gothic with a full Japanese glyph set, which
+/// the platform default (Roboto falling through to the system CJK font) is not:
+/// the app is Japanese throughout, and a rounded face keeps a screen about
+/// burning money from reading as a bank statement. Bundled rather than fetched,
+/// so it looks the same on every device and works with no network.
+///
+/// SIL Open Font License 1.1 — see `assets/fonts/LICENSE.md` and `OFL.txt`.
+const appFontFamily = 'MPLUSRounded1c';
+
 /// A selectable colour scheme. `price` is in reward tokens; 0 = free.
 class AppTheme {
   const AppTheme({
@@ -21,6 +32,10 @@ class AppTheme {
   ThemeData get themeData => ThemeData(
     colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: brightness),
     useMaterial3: true,
+    // Set on the theme rather than on individual styles: everything that reads
+    // a text style off the theme — which is everything — picks it up, including
+    // the Cupertino time wheel, whose style is built from `textTheme`.
+    fontFamily: appFontFamily,
   );
 }
 
