@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+/// Corner radius of the jar, as a fraction of its width. Shared with the clip
+/// the board wraps its contents in, so the two never disagree.
+const jarCornerFactor = 0.17;
+
 /// The glass jar: a rounded capsule with a soil layer at the bottom and one
 /// highlight down the left shoulder. Placeholder art — a real illustration
 /// replaces this painter without touching anything that lays items out.
@@ -20,7 +24,7 @@ class TerrariumPainter extends CustomPainter {
 
   RRect _body(Size size) => RRect.fromRectAndRadius(
     Offset.zero & size,
-    Radius.circular(size.width * 0.26),
+    Radius.circular(size.width * jarCornerFactor),
   );
 
   @override

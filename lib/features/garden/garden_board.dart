@@ -74,25 +74,26 @@ class GardenBoard extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         const wall = 12.0;
+        // A band above the floor for the hut and the glass shoulder, sized in
+        // cells so the jar never squashes the two together.
+        const hutBandCells = 1.9;
         final size = constraints.biggest;
-        final innerWidth = size.width - wall * 2;
-        // A band above the floor for the hut and the glass shoulder.
-        final hutBand = (size.height - wall * 2) * 0.22;
-        final floorHeight = size.height - wall * 2 - hutBand;
 
         final cell = math.min(
-          innerWidth / gardenGridWidth,
-          floorHeight / gardenGridHeight,
+          (size.width - wall * 2) / gardenGridWidth,
+          (size.height - wall * 2) / (gardenGridHeight + hutBandCells),
         );
         final gridWidth = cell * gardenGridWidth;
         final gridHeight = cell * gardenGridHeight;
         final geometry = GardenGeometry(
           cell: cell,
-          left: wall + (innerWidth - gridWidth) / 2,
-          bottom: wall,
+          left: wall + (size.width - wall * 2 - gridWidth) / 2,
+          // Lifted off the floor of the jar so its rounded corners bite into
+          // the soil rather than into the corner cells.
+          bottom: wall + cell * 0.5,
         );
 
-        return CustomPaint(
+        final jar = CustomPaint(
           painter: TerrariumPainter(
             glass: scheme.primaryContainer,
             rim: scheme.outlineVariant,
@@ -100,7 +101,7 @@ class GardenBoard extends StatelessWidget {
               scheme.tertiary.withValues(alpha: 0.35),
               const Color(0xFF6B4B2E),
             ),
-            soilTop: size.height - wall - gridHeight - cell * 0.35,
+            soilTop: size.height - geometry.bottom - gridHeight - cell * 0.35,
           ),
           child: Stack(
             children: [
@@ -151,6 +152,13 @@ class GardenBoard extends StatelessWidget {
                 ),
             ],
           ),
+        );
+
+        // Clipped to the jar, or the floor grid runs out past its rounded
+        // corners.
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(size.width * jarCornerFactor),
+          child: jar,
         );
       },
     );
