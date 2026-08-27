@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/domain/models.dart';
+import 'package:wake_or_pay/domain/sound_library.dart';
 import 'package:wake_or_pay/services/alarm_settings_builder.dart';
+import 'package:wake_or_pay/services/sound_preview_player.dart';
 
 void main() {
   group('platformAlarmId', () {
@@ -97,6 +99,41 @@ void main() {
         ).notificationSettings.body,
         isNot(contains('100')),
       );
+    });
+  });
+
+  group('the sound', () {
+    test('a library alarm rings with that library sound', () {
+      final s = buildAlarmSettings(
+        const Alarm(id: '1', hour: 7, minute: 0, soundId: 'siren'),
+        DateTime(2026, 8, 27, 7),
+      );
+      expect(s.assetAudioPath, 'assets/audio/siren.wav');
+    });
+
+    test('an imported sound is handed over as a path on disk', () {
+      const path = '/data/user/0/app/files/sounds/1700_morning.mp3';
+      final s = buildAlarmSettings(
+        Alarm(id: '1', hour: 7, minute: 0, soundId: deviceSoundIdFor(path)),
+        DateTime(2026, 8, 27, 7),
+      );
+      expect(s.assetAudioPath, path, reason: 'no assets/ prefix, no file:');
+    });
+
+    test(
+      'an id that matches nothing falls back to the bell, never silence',
+      () {
+        final s = buildAlarmSettings(
+          const Alarm(id: '1', hour: 7, minute: 0, soundId: 'no-such-sound'),
+          DateTime(2026, 8, 27, 7),
+        );
+        expect(s.assetAudioPath, alarmAssetPath);
+      },
+    );
+
+    test('the preview strips the prefix audioplayers adds back', () {
+      expect(previewAssetPath('assets/audio/alarm.wav'), 'audio/alarm.wav');
+      expect(previewAssetPath('/tmp/x.wav'), '/tmp/x.wav');
     });
   });
 }

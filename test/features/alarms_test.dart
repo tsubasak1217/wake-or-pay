@@ -9,8 +9,14 @@ import 'package:wake_or_pay/services/alarm_service.dart';
 
 import '../helpers.dart';
 
-Future<ProviderContainer> pumpHome(WidgetTester tester, {int coins = 0}) async {
-  final container = await testContainer(extra: [fakeAlarmServiceOverride()]);
+Future<ProviderContainer> pumpHome(
+  WidgetTester tester, {
+  int coins = 0,
+  List<Override> extra = const [],
+}) async {
+  final container = await testContainer(
+    extra: [fakeAlarmServiceOverride(), ...extra],
+  );
   if (coins > 0) {
     await container.read(walletRepositoryProvider).write(Wallet(coins: coins));
   }

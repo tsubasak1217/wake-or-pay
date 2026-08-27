@@ -2,7 +2,10 @@ import 'package:alarm/alarm.dart' as pkg;
 import 'package:flutter/material.dart';
 
 import '../domain/models.dart' as domain;
+import '../domain/sound_library.dart';
 
+/// The sound every alarm rang with before the library existed, kept as the
+/// fallback for an id that matches nothing.
 const alarmAssetPath = 'assets/audio/alarm.wav';
 
 /// The plugin keys alarms by int. Our ids are strings generated from
@@ -32,12 +35,18 @@ ScheduleAction scheduleActionFor({
 /// Builds the plugin's settings for one ring of [alarm] at [fireAt]. Pure, so
 /// the scheduling decisions can be tested without the platform.
 ///
-/// No snooze is configured, ever: the only way out is the wake check.
+/// `assetAudioPath` takes either an asset path or a path on disk, which is
+/// exactly the two shapes [soundPathFor] produces — so a sound the user
+/// imported and one that ships with the app are handed over the same way.
+///
+/// No platform snooze is configured, ever. Snooze is a free feature of this
+/// app, but it has to run through the app so the session can record it; the
+/// plugin's own snooze would silence the alarm behind our back.
 pkg.AlarmSettings buildAlarmSettings(domain.Alarm alarm, DateTime fireAt) {
   return pkg.AlarmSettings(
     id: platformAlarmId(alarm.id),
     dateTime: fireAt,
-    assetAudioPath: alarmAssetPath,
+    assetAudioPath: soundPathFor(alarm.soundId),
     loopAudio: true,
     vibrate: true,
     androidFullScreenIntent: true,

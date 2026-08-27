@@ -31,6 +31,11 @@ bool isDeviceSound(String soundId) => soundId.startsWith(deviceSoundPrefix);
 
 String deviceSoundIdFor(String path) => '$deviceSoundPrefix$path';
 
+/// Imported files are stored under a timestamp prefix so two files of the same
+/// name cannot collide. That is bookkeeping, not part of what the sound is
+/// called, so it comes off again for display.
+final _importPrefix = RegExp(r'^\d+_');
+
 String deviceSoundPathOf(String soundId) =>
     soundId.substring(deviceSoundPrefix.length);
 
@@ -45,7 +50,11 @@ SoundDef? soundDefById(String soundId) {
 /// What the sound is called in the UI. A device file shows its file name.
 /// Pure.
 String soundLabel(String soundId) {
-  if (isDeviceSound(soundId)) return p.basename(deviceSoundPathOf(soundId));
+  if (isDeviceSound(soundId)) {
+    return p
+        .basename(deviceSoundPathOf(soundId))
+        .replaceFirst(_importPrefix, '');
+  }
   return (soundDefById(soundId) ?? soundLibrary.first).label;
 }
 
