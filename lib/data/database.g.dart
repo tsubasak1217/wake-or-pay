@@ -1813,6 +1813,631 @@ class OjisanRowsCompanion extends UpdateCompanion<OjisanRow> {
   }
 }
 
+class $GardenPlacementRowsTable extends GardenPlacementRows
+    with TableInfo<$GardenPlacementRowsTable, GardenPlacementRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GardenPlacementRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _itemIdMeta = const VerificationMeta('itemId');
+  @override
+  late final GeneratedColumn<String> itemId = GeneratedColumn<String>(
+    'item_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _xMeta = const VerificationMeta('x');
+  @override
+  late final GeneratedColumn<int> x = GeneratedColumn<int>(
+    'x',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _yMeta = const VerificationMeta('y');
+  @override
+  late final GeneratedColumn<int> y = GeneratedColumn<int>(
+    'y',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _placedAtMsMeta = const VerificationMeta(
+    'placedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> placedAtMs = GeneratedColumn<int>(
+    'placed_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _growthStageMeta = const VerificationMeta(
+    'growthStage',
+  );
+  @override
+  late final GeneratedColumn<int> growthStage = GeneratedColumn<int>(
+    'growth_stage',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    itemId,
+    x,
+    y,
+    placedAtMs,
+    growthStage,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'garden_placement_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GardenPlacementRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('item_id')) {
+      context.handle(
+        _itemIdMeta,
+        itemId.isAcceptableOrUnknown(data['item_id']!, _itemIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemIdMeta);
+    }
+    if (data.containsKey('x')) {
+      context.handle(_xMeta, x.isAcceptableOrUnknown(data['x']!, _xMeta));
+    } else if (isInserting) {
+      context.missing(_xMeta);
+    }
+    if (data.containsKey('y')) {
+      context.handle(_yMeta, y.isAcceptableOrUnknown(data['y']!, _yMeta));
+    } else if (isInserting) {
+      context.missing(_yMeta);
+    }
+    if (data.containsKey('placed_at_ms')) {
+      context.handle(
+        _placedAtMsMeta,
+        placedAtMs.isAcceptableOrUnknown(
+          data['placed_at_ms']!,
+          _placedAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_placedAtMsMeta);
+    }
+    if (data.containsKey('growth_stage')) {
+      context.handle(
+        _growthStageMeta,
+        growthStage.isAcceptableOrUnknown(
+          data['growth_stage']!,
+          _growthStageMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  GardenPlacementRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GardenPlacementRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      itemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_id'],
+      )!,
+      x: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}x'],
+      )!,
+      y: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}y'],
+      )!,
+      placedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}placed_at_ms'],
+      )!,
+      growthStage: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}growth_stage'],
+      )!,
+    );
+  }
+
+  @override
+  $GardenPlacementRowsTable createAlias(String alias) {
+    return $GardenPlacementRowsTable(attachedDatabase, alias);
+  }
+}
+
+class GardenPlacementRow extends DataClass
+    implements Insertable<GardenPlacementRow> {
+  final String id;
+
+  /// Catalogue id. Definitions live in code, so nothing here has to migrate
+  /// when an item is renamed or repriced.
+  final String itemId;
+  final int x;
+  final int y;
+  final int placedAtMs;
+
+  /// Cached growth stage. Recomputed from session history on every read; kept
+  /// here only so the garden can paint before history arrives.
+  final int growthStage;
+  const GardenPlacementRow({
+    required this.id,
+    required this.itemId,
+    required this.x,
+    required this.y,
+    required this.placedAtMs,
+    required this.growthStage,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['item_id'] = Variable<String>(itemId);
+    map['x'] = Variable<int>(x);
+    map['y'] = Variable<int>(y);
+    map['placed_at_ms'] = Variable<int>(placedAtMs);
+    map['growth_stage'] = Variable<int>(growthStage);
+    return map;
+  }
+
+  GardenPlacementRowsCompanion toCompanion(bool nullToAbsent) {
+    return GardenPlacementRowsCompanion(
+      id: Value(id),
+      itemId: Value(itemId),
+      x: Value(x),
+      y: Value(y),
+      placedAtMs: Value(placedAtMs),
+      growthStage: Value(growthStage),
+    );
+  }
+
+  factory GardenPlacementRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GardenPlacementRow(
+      id: serializer.fromJson<String>(json['id']),
+      itemId: serializer.fromJson<String>(json['itemId']),
+      x: serializer.fromJson<int>(json['x']),
+      y: serializer.fromJson<int>(json['y']),
+      placedAtMs: serializer.fromJson<int>(json['placedAtMs']),
+      growthStage: serializer.fromJson<int>(json['growthStage']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'itemId': serializer.toJson<String>(itemId),
+      'x': serializer.toJson<int>(x),
+      'y': serializer.toJson<int>(y),
+      'placedAtMs': serializer.toJson<int>(placedAtMs),
+      'growthStage': serializer.toJson<int>(growthStage),
+    };
+  }
+
+  GardenPlacementRow copyWith({
+    String? id,
+    String? itemId,
+    int? x,
+    int? y,
+    int? placedAtMs,
+    int? growthStage,
+  }) => GardenPlacementRow(
+    id: id ?? this.id,
+    itemId: itemId ?? this.itemId,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    placedAtMs: placedAtMs ?? this.placedAtMs,
+    growthStage: growthStage ?? this.growthStage,
+  );
+  GardenPlacementRow copyWithCompanion(GardenPlacementRowsCompanion data) {
+    return GardenPlacementRow(
+      id: data.id.present ? data.id.value : this.id,
+      itemId: data.itemId.present ? data.itemId.value : this.itemId,
+      x: data.x.present ? data.x.value : this.x,
+      y: data.y.present ? data.y.value : this.y,
+      placedAtMs: data.placedAtMs.present
+          ? data.placedAtMs.value
+          : this.placedAtMs,
+      growthStage: data.growthStage.present
+          ? data.growthStage.value
+          : this.growthStage,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GardenPlacementRow(')
+          ..write('id: $id, ')
+          ..write('itemId: $itemId, ')
+          ..write('x: $x, ')
+          ..write('y: $y, ')
+          ..write('placedAtMs: $placedAtMs, ')
+          ..write('growthStage: $growthStage')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, itemId, x, y, placedAtMs, growthStage);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GardenPlacementRow &&
+          other.id == this.id &&
+          other.itemId == this.itemId &&
+          other.x == this.x &&
+          other.y == this.y &&
+          other.placedAtMs == this.placedAtMs &&
+          other.growthStage == this.growthStage);
+}
+
+class GardenPlacementRowsCompanion extends UpdateCompanion<GardenPlacementRow> {
+  final Value<String> id;
+  final Value<String> itemId;
+  final Value<int> x;
+  final Value<int> y;
+  final Value<int> placedAtMs;
+  final Value<int> growthStage;
+  final Value<int> rowid;
+  const GardenPlacementRowsCompanion({
+    this.id = const Value.absent(),
+    this.itemId = const Value.absent(),
+    this.x = const Value.absent(),
+    this.y = const Value.absent(),
+    this.placedAtMs = const Value.absent(),
+    this.growthStage = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GardenPlacementRowsCompanion.insert({
+    required String id,
+    required String itemId,
+    required int x,
+    required int y,
+    required int placedAtMs,
+    this.growthStage = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       itemId = Value(itemId),
+       x = Value(x),
+       y = Value(y),
+       placedAtMs = Value(placedAtMs);
+  static Insertable<GardenPlacementRow> custom({
+    Expression<String>? id,
+    Expression<String>? itemId,
+    Expression<int>? x,
+    Expression<int>? y,
+    Expression<int>? placedAtMs,
+    Expression<int>? growthStage,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (itemId != null) 'item_id': itemId,
+      if (x != null) 'x': x,
+      if (y != null) 'y': y,
+      if (placedAtMs != null) 'placed_at_ms': placedAtMs,
+      if (growthStage != null) 'growth_stage': growthStage,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GardenPlacementRowsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? itemId,
+    Value<int>? x,
+    Value<int>? y,
+    Value<int>? placedAtMs,
+    Value<int>? growthStage,
+    Value<int>? rowid,
+  }) {
+    return GardenPlacementRowsCompanion(
+      id: id ?? this.id,
+      itemId: itemId ?? this.itemId,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      placedAtMs: placedAtMs ?? this.placedAtMs,
+      growthStage: growthStage ?? this.growthStage,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (itemId.present) {
+      map['item_id'] = Variable<String>(itemId.value);
+    }
+    if (x.present) {
+      map['x'] = Variable<int>(x.value);
+    }
+    if (y.present) {
+      map['y'] = Variable<int>(y.value);
+    }
+    if (placedAtMs.present) {
+      map['placed_at_ms'] = Variable<int>(placedAtMs.value);
+    }
+    if (growthStage.present) {
+      map['growth_stage'] = Variable<int>(growthStage.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GardenPlacementRowsCompanion(')
+          ..write('id: $id, ')
+          ..write('itemId: $itemId, ')
+          ..write('x: $x, ')
+          ..write('y: $y, ')
+          ..write('placedAtMs: $placedAtMs, ')
+          ..write('growthStage: $growthStage, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $GardenInventoryRowsTable extends GardenInventoryRows
+    with TableInfo<$GardenInventoryRowsTable, GardenInventoryRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GardenInventoryRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _itemIdMeta = const VerificationMeta('itemId');
+  @override
+  late final GeneratedColumn<String> itemId = GeneratedColumn<String>(
+    'item_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _countMeta = const VerificationMeta('count');
+  @override
+  late final GeneratedColumn<int> count = GeneratedColumn<int>(
+    'count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [itemId, count];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'garden_inventory_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GardenInventoryRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('item_id')) {
+      context.handle(
+        _itemIdMeta,
+        itemId.isAcceptableOrUnknown(data['item_id']!, _itemIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemIdMeta);
+    }
+    if (data.containsKey('count')) {
+      context.handle(
+        _countMeta,
+        count.isAcceptableOrUnknown(data['count']!, _countMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {itemId};
+  @override
+  GardenInventoryRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GardenInventoryRow(
+      itemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_id'],
+      )!,
+      count: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}count'],
+      )!,
+    );
+  }
+
+  @override
+  $GardenInventoryRowsTable createAlias(String alias) {
+    return $GardenInventoryRowsTable(attachedDatabase, alias);
+  }
+}
+
+class GardenInventoryRow extends DataClass
+    implements Insertable<GardenInventoryRow> {
+  final String itemId;
+  final int count;
+  const GardenInventoryRow({required this.itemId, required this.count});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['item_id'] = Variable<String>(itemId);
+    map['count'] = Variable<int>(count);
+    return map;
+  }
+
+  GardenInventoryRowsCompanion toCompanion(bool nullToAbsent) {
+    return GardenInventoryRowsCompanion(
+      itemId: Value(itemId),
+      count: Value(count),
+    );
+  }
+
+  factory GardenInventoryRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GardenInventoryRow(
+      itemId: serializer.fromJson<String>(json['itemId']),
+      count: serializer.fromJson<int>(json['count']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'itemId': serializer.toJson<String>(itemId),
+      'count': serializer.toJson<int>(count),
+    };
+  }
+
+  GardenInventoryRow copyWith({String? itemId, int? count}) =>
+      GardenInventoryRow(
+        itemId: itemId ?? this.itemId,
+        count: count ?? this.count,
+      );
+  GardenInventoryRow copyWithCompanion(GardenInventoryRowsCompanion data) {
+    return GardenInventoryRow(
+      itemId: data.itemId.present ? data.itemId.value : this.itemId,
+      count: data.count.present ? data.count.value : this.count,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GardenInventoryRow(')
+          ..write('itemId: $itemId, ')
+          ..write('count: $count')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(itemId, count);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GardenInventoryRow &&
+          other.itemId == this.itemId &&
+          other.count == this.count);
+}
+
+class GardenInventoryRowsCompanion extends UpdateCompanion<GardenInventoryRow> {
+  final Value<String> itemId;
+  final Value<int> count;
+  final Value<int> rowid;
+  const GardenInventoryRowsCompanion({
+    this.itemId = const Value.absent(),
+    this.count = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GardenInventoryRowsCompanion.insert({
+    required String itemId,
+    this.count = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : itemId = Value(itemId);
+  static Insertable<GardenInventoryRow> custom({
+    Expression<String>? itemId,
+    Expression<int>? count,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (itemId != null) 'item_id': itemId,
+      if (count != null) 'count': count,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GardenInventoryRowsCompanion copyWith({
+    Value<String>? itemId,
+    Value<int>? count,
+    Value<int>? rowid,
+  }) {
+    return GardenInventoryRowsCompanion(
+      itemId: itemId ?? this.itemId,
+      count: count ?? this.count,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (itemId.present) {
+      map['item_id'] = Variable<String>(itemId.value);
+    }
+    if (count.present) {
+      map['count'] = Variable<int>(count.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GardenInventoryRowsCompanion(')
+          ..write('itemId: $itemId, ')
+          ..write('count: $count, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1822,6 +2447,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $WalletRowsTable walletRows = $WalletRowsTable(this);
   late final $OjisanRowsTable ojisanRows = $OjisanRowsTable(this);
+  late final $GardenPlacementRowsTable gardenPlacementRows =
+      $GardenPlacementRowsTable(this);
+  late final $GardenInventoryRowsTable gardenInventoryRows =
+      $GardenInventoryRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1831,6 +2460,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     alarmSessionRows,
     walletRows,
     ojisanRows,
+    gardenPlacementRows,
+    gardenInventoryRows,
   ];
 }
 
@@ -2760,6 +3391,404 @@ typedef $$OjisanRowsTableProcessedTableManager =
       OjisanRow,
       PrefetchHooks Function()
     >;
+typedef $$GardenPlacementRowsTableCreateCompanionBuilder =
+    GardenPlacementRowsCompanion Function({
+      required String id,
+      required String itemId,
+      required int x,
+      required int y,
+      required int placedAtMs,
+      Value<int> growthStage,
+      Value<int> rowid,
+    });
+typedef $$GardenPlacementRowsTableUpdateCompanionBuilder =
+    GardenPlacementRowsCompanion Function({
+      Value<String> id,
+      Value<String> itemId,
+      Value<int> x,
+      Value<int> y,
+      Value<int> placedAtMs,
+      Value<int> growthStage,
+      Value<int> rowid,
+    });
+
+class $$GardenPlacementRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $GardenPlacementRowsTable> {
+  $$GardenPlacementRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get x => $composableBuilder(
+    column: $table.x,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get y => $composableBuilder(
+    column: $table.y,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get placedAtMs => $composableBuilder(
+    column: $table.placedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get growthStage => $composableBuilder(
+    column: $table.growthStage,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GardenPlacementRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $GardenPlacementRowsTable> {
+  $$GardenPlacementRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get x => $composableBuilder(
+    column: $table.x,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get y => $composableBuilder(
+    column: $table.y,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get placedAtMs => $composableBuilder(
+    column: $table.placedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get growthStage => $composableBuilder(
+    column: $table.growthStage,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GardenPlacementRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GardenPlacementRowsTable> {
+  $$GardenPlacementRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get itemId =>
+      $composableBuilder(column: $table.itemId, builder: (column) => column);
+
+  GeneratedColumn<int> get x =>
+      $composableBuilder(column: $table.x, builder: (column) => column);
+
+  GeneratedColumn<int> get y =>
+      $composableBuilder(column: $table.y, builder: (column) => column);
+
+  GeneratedColumn<int> get placedAtMs => $composableBuilder(
+    column: $table.placedAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get growthStage => $composableBuilder(
+    column: $table.growthStage,
+    builder: (column) => column,
+  );
+}
+
+class $$GardenPlacementRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GardenPlacementRowsTable,
+          GardenPlacementRow,
+          $$GardenPlacementRowsTableFilterComposer,
+          $$GardenPlacementRowsTableOrderingComposer,
+          $$GardenPlacementRowsTableAnnotationComposer,
+          $$GardenPlacementRowsTableCreateCompanionBuilder,
+          $$GardenPlacementRowsTableUpdateCompanionBuilder,
+          (
+            GardenPlacementRow,
+            BaseReferences<
+              _$AppDatabase,
+              $GardenPlacementRowsTable,
+              GardenPlacementRow
+            >,
+          ),
+          GardenPlacementRow,
+          PrefetchHooks Function()
+        > {
+  $$GardenPlacementRowsTableTableManager(
+    _$AppDatabase db,
+    $GardenPlacementRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GardenPlacementRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GardenPlacementRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$GardenPlacementRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> itemId = const Value.absent(),
+                Value<int> x = const Value.absent(),
+                Value<int> y = const Value.absent(),
+                Value<int> placedAtMs = const Value.absent(),
+                Value<int> growthStage = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GardenPlacementRowsCompanion(
+                id: id,
+                itemId: itemId,
+                x: x,
+                y: y,
+                placedAtMs: placedAtMs,
+                growthStage: growthStage,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String itemId,
+                required int x,
+                required int y,
+                required int placedAtMs,
+                Value<int> growthStage = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GardenPlacementRowsCompanion.insert(
+                id: id,
+                itemId: itemId,
+                x: x,
+                y: y,
+                placedAtMs: placedAtMs,
+                growthStage: growthStage,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GardenPlacementRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GardenPlacementRowsTable,
+      GardenPlacementRow,
+      $$GardenPlacementRowsTableFilterComposer,
+      $$GardenPlacementRowsTableOrderingComposer,
+      $$GardenPlacementRowsTableAnnotationComposer,
+      $$GardenPlacementRowsTableCreateCompanionBuilder,
+      $$GardenPlacementRowsTableUpdateCompanionBuilder,
+      (
+        GardenPlacementRow,
+        BaseReferences<
+          _$AppDatabase,
+          $GardenPlacementRowsTable,
+          GardenPlacementRow
+        >,
+      ),
+      GardenPlacementRow,
+      PrefetchHooks Function()
+    >;
+typedef $$GardenInventoryRowsTableCreateCompanionBuilder =
+    GardenInventoryRowsCompanion Function({
+      required String itemId,
+      Value<int> count,
+      Value<int> rowid,
+    });
+typedef $$GardenInventoryRowsTableUpdateCompanionBuilder =
+    GardenInventoryRowsCompanion Function({
+      Value<String> itemId,
+      Value<int> count,
+      Value<int> rowid,
+    });
+
+class $$GardenInventoryRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $GardenInventoryRowsTable> {
+  $$GardenInventoryRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get count => $composableBuilder(
+    column: $table.count,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GardenInventoryRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $GardenInventoryRowsTable> {
+  $$GardenInventoryRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get count => $composableBuilder(
+    column: $table.count,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GardenInventoryRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GardenInventoryRowsTable> {
+  $$GardenInventoryRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get itemId =>
+      $composableBuilder(column: $table.itemId, builder: (column) => column);
+
+  GeneratedColumn<int> get count =>
+      $composableBuilder(column: $table.count, builder: (column) => column);
+}
+
+class $$GardenInventoryRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GardenInventoryRowsTable,
+          GardenInventoryRow,
+          $$GardenInventoryRowsTableFilterComposer,
+          $$GardenInventoryRowsTableOrderingComposer,
+          $$GardenInventoryRowsTableAnnotationComposer,
+          $$GardenInventoryRowsTableCreateCompanionBuilder,
+          $$GardenInventoryRowsTableUpdateCompanionBuilder,
+          (
+            GardenInventoryRow,
+            BaseReferences<
+              _$AppDatabase,
+              $GardenInventoryRowsTable,
+              GardenInventoryRow
+            >,
+          ),
+          GardenInventoryRow,
+          PrefetchHooks Function()
+        > {
+  $$GardenInventoryRowsTableTableManager(
+    _$AppDatabase db,
+    $GardenInventoryRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GardenInventoryRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GardenInventoryRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$GardenInventoryRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> itemId = const Value.absent(),
+                Value<int> count = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GardenInventoryRowsCompanion(
+                itemId: itemId,
+                count: count,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String itemId,
+                Value<int> count = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GardenInventoryRowsCompanion.insert(
+                itemId: itemId,
+                count: count,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GardenInventoryRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GardenInventoryRowsTable,
+      GardenInventoryRow,
+      $$GardenInventoryRowsTableFilterComposer,
+      $$GardenInventoryRowsTableOrderingComposer,
+      $$GardenInventoryRowsTableAnnotationComposer,
+      $$GardenInventoryRowsTableCreateCompanionBuilder,
+      $$GardenInventoryRowsTableUpdateCompanionBuilder,
+      (
+        GardenInventoryRow,
+        BaseReferences<
+          _$AppDatabase,
+          $GardenInventoryRowsTable,
+          GardenInventoryRow
+        >,
+      ),
+      GardenInventoryRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2772,4 +3801,8 @@ class $AppDatabaseManager {
       $$WalletRowsTableTableManager(_db, _db.walletRows);
   $$OjisanRowsTableTableManager get ojisanRows =>
       $$OjisanRowsTableTableManager(_db, _db.ojisanRows);
+  $$GardenPlacementRowsTableTableManager get gardenPlacementRows =>
+      $$GardenPlacementRowsTableTableManager(_db, _db.gardenPlacementRows);
+  $$GardenInventoryRowsTableTableManager get gardenInventoryRows =>
+      $$GardenInventoryRowsTableTableManager(_db, _db.gardenInventoryRows);
 }

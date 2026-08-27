@@ -5,6 +5,7 @@ import '../domain/models.dart';
 import 'database.dart';
 import 'repositories/alarm_repository.dart';
 import 'repositories/alarm_session_repository.dart';
+import 'repositories/garden_repository.dart';
 import 'repositories/ojisan_repository.dart';
 import 'repositories/settings_repository.dart';
 import 'repositories/wallet_repository.dart';
@@ -37,6 +38,13 @@ final ojisanRepositoryProvider = Provider(
   (ref) => OjisanRepository(ref.watch(appDatabaseProvider)),
 );
 
+final gardenRepositoryProvider = Provider(
+  (ref) => GardenRepository(
+    ref.watch(appDatabaseProvider),
+    ref.watch(sharedPreferencesProvider),
+  ),
+);
+
 final settingsRepositoryProvider = Provider(
   (ref) => SettingsRepository(ref.watch(sharedPreferencesProvider)),
 );
@@ -52,6 +60,15 @@ final walletProvider = StreamProvider<Wallet>(
 final ojisanProvider = StreamProvider<OjisanState>(
   (ref) => ref.watch(ojisanRepositoryProvider).watch(),
 );
+
+/// Emits after the free starter set has been handed out, so the garden never
+/// paints an empty terrarium on a first launch.
+final gardenProvider = StreamProvider<GardenState>((ref) {
+  final repository = ref.watch(gardenRepositoryProvider);
+  // The grant runs first and its result is discarded: `watch` re-reads it.
+  return Stream.fromFuture(repository.grantInitialIfNeeded())
+      .asyncExpand((_) => repository.watch());
+});
 
 final sessionHistoryProvider = StreamProvider<List<AlarmSession>>(
   (ref) => ref.watch(alarmSessionRepositoryProvider).watchRecent(),

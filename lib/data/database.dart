@@ -65,7 +65,45 @@ class OjisanRows extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [AlarmRows, AlarmSessionRows, WalletRows, OjisanRows])
+/// One placed garden item. Grid coordinates have their origin at the bottom
+/// left of the terrarium floor.
+class GardenPlacementRows extends Table {
+  TextColumn get id => text()();
+
+  /// Catalogue id. Definitions live in code, so nothing here has to migrate
+  /// when an item is renamed or repriced.
+  TextColumn get itemId => text()();
+  IntColumn get x => integer()();
+  IntColumn get y => integer()();
+  IntColumn get placedAtMs => integer()();
+
+  /// Cached growth stage. Recomputed from session history on every read; kept
+  /// here only so the garden can paint before history arrives.
+  IntColumn get growthStage => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Owned but unplaced items, one row per catalogue id.
+class GardenInventoryRows extends Table {
+  TextColumn get itemId => text()();
+  IntColumn get count => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {itemId};
+}
+
+@DriftDatabase(
+  tables: [
+    AlarmRows,
+    AlarmSessionRows,
+    WalletRows,
+    OjisanRows,
+    GardenPlacementRows,
+    GardenInventoryRows,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
@@ -76,11 +114,15 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(inMemoryExecutor());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   /// v1 → v2 adds the per alarm grace window. Both columns default to 1, which
   /// is the rule every existing row was written under, so no stored session's
   /// loss changes under the upgrade.
+  ///
+  /// v2 → v3 adds the two garden tables. They start empty; the first grant is
+  /// handed out by [GardenRepository], not by the migration, so an upgrading
+  /// install gets the same free items a fresh one does.
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
@@ -88,6 +130,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         await m.addColumn(alarmRows, alarmRows.graceMinutes);
         await m.addColumn(alarmSessionRows, alarmSessionRows.graceMinutes);
+      }
+      if (from < 3) {
+        await m.createTable(gardenPlacementRows);
+        await m.createTable(gardenInventoryRows);
       }
     },
   );
