@@ -96,6 +96,8 @@ class _MissingSession extends ConsumerWidget {
   );
 }
 
+const _padding = EdgeInsets.symmetric(vertical: 24, horizontal: 16);
+
 class _RingingBody extends ConsumerWidget {
   const _RingingBody({
     required this.session,
@@ -117,34 +119,56 @@ class _RingingBody extends ConsumerWidget {
     final loss = lossAt(now, session);
     final alarm = ref.watch(alarmByIdProvider(session.alarmId));
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-      child: Column(
-        children: [
-          Text(_hhmm(now), style: theme.textTheme.displayLarge),
-          Text('起きろ！！', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 24),
-          if (session.kakugoSnapshot != null)
-            _OjisanPanel(loss: loss)
-          else
-            Text('覚悟モードはオフです', style: theme.textTheme.bodyLarge),
-          const SizedBox(height: 32),
-          // Never guess the wake check: showing long press while the alarm
-          // loads would let the user clear a check they did not choose. An
-          // alarm that has since been deleted still needs a way out, so that
-          // — and only that — falls back to long press.
-          alarm.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(),
+    // A bare Column inside a scroll view shrinks to its widest child and lands
+    // in the top left corner. Forcing it to the full width of the viewport
+    // centres it horizontally; the minHeight plus mainAxisAlignment.center
+    // centres it vertically whenever it fits, and lets it scroll when it does
+    // not (small screens, large font scale, the keyboard on the typing check).
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: _padding,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: (constraints.maxWidth - _padding.horizontal).clamp(
+              0.0,
+              double.infinity,
             ),
-            error: (e, _) => _wakeCheckFor(WakeCheckType.longPress, onCleared),
-            data: (data) => _wakeCheckFor(
-              data?.wakeCheck ?? WakeCheckType.longPress,
-              onCleared,
+            minHeight: (constraints.maxHeight - _padding.vertical).clamp(
+              0.0,
+              double.infinity,
             ),
           ),
-        ],
+          child: Column(
+            key: const ValueKey('ringingContent'),
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(_hhmm(now), style: theme.textTheme.displayLarge),
+              Text('起きろ！！', style: theme.textTheme.headlineMedium),
+              const SizedBox(height: 24),
+              if (session.kakugoSnapshot != null)
+                _OjisanPanel(loss: loss)
+              else
+                Text('覚悟モードはオフです', style: theme.textTheme.bodyLarge),
+              const SizedBox(height: 32),
+              // Never guess the wake check: showing long press while the alarm
+              // loads would let the user clear a check they did not choose. An
+              // alarm that has since been deleted still needs a way out, so that
+              // — and only that — falls back to long press.
+              alarm.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+                error: (e, _) =>
+                    _wakeCheckFor(WakeCheckType.longPress, onCleared),
+                data: (data) => _wakeCheckFor(
+                  data?.wakeCheck ?? WakeCheckType.longPress,
+                  onCleared,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

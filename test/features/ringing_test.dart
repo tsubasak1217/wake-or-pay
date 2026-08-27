@@ -70,6 +70,31 @@ void main() {
     );
   });
 
+  testWidgets('the ringing content is centred, not stuck in the corner', (
+    tester,
+  ) async {
+    await openRinging(tester, ringingFor: const Duration(minutes: 3));
+
+    final screen = tester.getSize(find.byType(MaterialApp));
+    for (final label in ['起きろ！！', '💸 あなた：−300', '解除']) {
+      final box = tester.getRect(find.text(label));
+      expect(
+        box.center.dx,
+        moreOrLessEquals(screen.width / 2, epsilon: 1),
+        reason: '$label is not horizontally centred',
+      );
+    }
+
+    // The content block itself fills the viewport rather than shrink wrapping
+    // into the top left corner, so it sits in the middle on both axes.
+    final content = tester.getRect(
+      find.byKey(const ValueKey('ringingContent')),
+    );
+    expect(content.center.dx, moreOrLessEquals(screen.width / 2, epsilon: 1));
+    expect(content.center.dy, moreOrLessEquals(screen.height / 2, epsilon: 1));
+    expect(content.width, moreOrLessEquals(screen.width - 32, epsilon: 1));
+  });
+
   testWidgets('letting go of the long press resets it', (tester) async {
     await openRinging(tester);
 
