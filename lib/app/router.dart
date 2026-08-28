@@ -25,6 +25,10 @@ class AppRoute {
   static const settings = '/settings';
 
   static String alarmEdit(String id) => '/alarm/$id';
+
+  /// The editor opened on a *copy* of [id] — same settings, new alarm.
+  static String alarmDuplicate(String id) => '/alarm/$id/duplicate';
+
   static String ringing(String sessionId) => '/ringing/$sessionId';
   static String result(String sessionId) => '/result/$sessionId';
 }
@@ -81,6 +85,14 @@ GoRouter createAppRouter() => GoRouter(
     GoRoute(
       path: '/alarm/new',
       builder: (context, state) => const AlarmEditScreen(),
+    ),
+    // Before '/alarm/:id' so the longer path is the one that matches it.
+    GoRoute(
+      path: '/alarm/:id/duplicate',
+      builder: (context, state) => AlarmEditScreen(
+        alarmId: state.pathParameters['id'],
+        duplicate: true,
+      ),
     ),
     GoRoute(
       path: '/alarm/:id',

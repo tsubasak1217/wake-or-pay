@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,16 +29,7 @@ class HomeScreen extends ConsumerWidget {
       body: alarms.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('$e')),
-        data: (list) => list.isEmpty
-            ? const Center(child: Text('アラームはまだありません'))
-            : ListView.separated(
-                itemCount: list.length,
-                // The same hairline between every pair of rows. A 覚悟 row is
-                // not a card any more — it is the same row in different
-                // colours — so it gets the same separator as the calm ones.
-                separatorBuilder: (context, index) => const Divider(height: 1),
-                itemBuilder: (context, index) => _AlarmTile(alarm: list[index]),
-              ),
+        data: (list) => _AlarmList(initial: list),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push(AppRoute.alarmNew),
@@ -47,8 +40,138 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
+/// The list body, mirroring [alarmsProvider] into a local list so a deletion
+/// can be *animated* away instead of vanishing between two frames.
+///
+/// [AnimatedList] cannot be driven straight off a provider: it needs to be told
+/// about a removal while the removed row still has something to draw. So the
+/// state holds its own copy of the alarms and diffs each emission by id —
+/// removals first (so the indices it hands `removeItem` are still valid), then
+/// insertions, then in-place content changes.
+class _AlarmList extends ConsumerStatefulWidget {
+  const _AlarmList({required this.initial});
+
+  /// The alarms as of the frame this widget was created on. Read once, in
+  /// `initState`; every later emission arrives through the listener.
+  final List<Alarm> initial;
+
+  @override
+  ConsumerState<_AlarmList> createState() => _AlarmListState();
+}
+
+class _AlarmListState extends ConsumerState<_AlarmList> {
+  static const _removeDuration = Duration(milliseconds: 250);
+
+  final _listKey = GlobalKey<AnimatedListState>();
+  late final List<Alarm> _items = [...widget.initial];
+
+  /// Rows that are gone from [_items] but still collapsing on screen. The empty
+  /// state must wait for them: swapping 「アラームはまだありません」 in the moment the
+  /// last alarm is deleted would tear the animation out of the tree.
+  final _collapsing = <Timer>{};
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual<AsyncValue<List<Alarm>>>(alarmsProvider, (_, next) {
+      final list = next.valueOrNull;
+      if (list != null) _sync(list);
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _collapsing) {
+      timer.cancel();
+    }
+    super.dispose();
+  }
+
+  void _sync(List<Alarm> next) {
+    final list = _listKey.currentState;
+    final nextIds = {for (final alarm in next) alarm.id};
+
+    // Back to front: every index handed to removeItem is an index into the list
+    // as it stands at that moment, and removing from the tail never shifts one.
+    for (var i = _items.length - 1; i >= 0; i--) {
+      if (nextIds.contains(_items[i].id)) continue;
+      final gone = _items.removeAt(i);
+      if (list == null) continue;
+      list.removeItem(
+        i,
+        (context, animation) => SizeTransition(
+          sizeFactor: animation,
+          // Anchored at the top, so the row collapses upwards into the gap it
+          // is leaving rather than sliding through the rows below.
+          alignment: Alignment.topCenter,
+          child: FadeTransition(
+            opacity: animation,
+            // A row on its way out is scenery: it must not be swipeable, or
+            // deletable a second time.
+            child: IgnorePointer(child: _AlarmTile(alarm: gone)),
+          ),
+        ),
+        duration: _removeDuration,
+      );
+      late final Timer timer;
+      timer = Timer(_removeDuration, () {
+        _collapsing.remove(timer);
+        if (mounted) setState(() {});
+      });
+      _collapsing.add(timer);
+    }
+
+    for (var i = 0; i < next.length; i++) {
+      if (_items.any((alarm) => alarm.id == next[i].id)) continue;
+      final at = i > _items.length ? _items.length : i;
+      _items.insert(at, next[i]);
+      list?.insertItem(at);
+    }
+
+    // Same alarm, new content — no animation, just the new values.
+    for (var i = 0; i < _items.length && i < next.length; i++) {
+      if (_items[i].id == next[i].id) _items[i] = next[i];
+    }
+
+    setState(() {});
+  }
+
+  Widget _buildItem(
+    BuildContext context,
+    int index,
+    Animation<double> animation,
+  ) {
+    final alarm = _items[index];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Keyed by identity. Without it the swipe state — which row is open —
+        // is reused by position, so the row that moves up into a deleted row's
+        // slot arrives already swiped open.
+        _AlarmTile(key: ValueKey(alarm.id), alarm: alarm),
+        // The same hairline between every pair of rows, and none after the
+        // last. A 覚悟 row is not a card any more — it is the same row in
+        // different colours — so it gets the same separator as the calm ones.
+        if (index != _items.length - 1) const Divider(height: 1),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_items.isEmpty && _collapsing.isEmpty) {
+      return const Center(child: Text('アラームはまだありません'));
+    }
+    return AnimatedList(
+      key: _listKey,
+      initialItemCount: _items.length,
+      itemBuilder: _buildItem,
+    );
+  }
+}
+
 class _AlarmTile extends ConsumerWidget {
-  const _AlarmTile({required this.alarm});
+  const _AlarmTile({super.key, required this.alarm});
 
   final Alarm alarm;
 
@@ -79,6 +202,8 @@ class _AlarmTile extends ConsumerWidget {
   }
 }
 
+enum _RowAction { duplicate, delete }
+
 /// One row, whatever is at stake.
 ///
 /// A 覚悟 alarm and a plain one are the *same* row: same structure, same
@@ -92,6 +217,56 @@ class _AlarmRow extends ConsumerWidget {
 
   final Alarm alarm;
   final ({String id, DateTime until})? snoozed;
+
+  /// 複製 / 削除, the two things a row can do that a tap cannot say.
+  ///
+  /// 削除 deletes straight away: choosing it out of a menu that only a long
+  /// press opens is already the deliberate second step the swipe gets from its
+  /// reveal-then-tap.
+  Future<void> _showActions(BuildContext context, WidgetRef ref) async {
+    final theme = Theme.of(context);
+    final choice = await showDialog<_RowAction>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        key: const ValueKey('alarmActionsDialog'),
+        title: Text(hhmm(alarm.hour, alarm.minute)),
+        children: [
+          SimpleDialogOption(
+            key: const ValueKey('alarmActionDuplicate'),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_RowAction.duplicate),
+            child: const Row(
+              children: [
+                Icon(Icons.copy_outlined),
+                SizedBox(width: 16),
+                Text('複製'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            key: const ValueKey('alarmActionDelete'),
+            onPressed: () => Navigator.of(dialogContext).pop(_RowAction.delete),
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, color: theme.colorScheme.error),
+                const SizedBox(width: 16),
+                Text('削除', style: TextStyle(color: theme.colorScheme.error)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    switch (choice) {
+      case null:
+        return;
+      case _RowAction.duplicate:
+        if (context.mounted) context.push(AppRoute.alarmDuplicate(alarm.id));
+      case _RowAction.delete:
+        await ref.read(alarmControllerProvider).delete(alarm);
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -126,6 +301,7 @@ class _AlarmRow extends ConsumerWidget {
 
     final tile = ListTile(
       onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
+      onLongPress: () => _showActions(context, ref),
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

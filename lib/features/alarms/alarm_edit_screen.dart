@@ -19,10 +19,15 @@ import 'widgets/settings_island.dart';
 import 'widgets/slider_number_field.dart';
 
 class AlarmEditScreen extends ConsumerStatefulWidget {
-  const AlarmEditScreen({super.key, this.alarmId});
+  const AlarmEditScreen({super.key, this.alarmId, this.duplicate = false});
 
   /// null when creating a new alarm.
   final String? alarmId;
+
+  /// Opened on a copy of [alarmId] rather than on the alarm itself: every
+  /// setting is carried over, only the id is new, and saving inserts a second
+  /// alarm instead of overwriting the first.
+  final bool duplicate;
 
   @override
   ConsumerState<AlarmEditScreen> createState() => _AlarmEditScreenState();
@@ -54,8 +59,17 @@ class _AlarmEditScreenState extends ConsumerState<AlarmEditScreen> {
       );
     }
 
+    final duplicate = widget.duplicate;
     final seeded = _seed;
-    if (seeded != null) return _AlarmEditForm(seed: seeded, existing: seeded);
+    if (seeded != null) {
+      return _AlarmEditForm(
+        seed: seeded,
+        // A copy has nothing to overwrite and nothing to delete: it is a new
+        // alarm that merely started from an old one.
+        existing: duplicate ? null : seeded,
+        duplicate: duplicate,
+      );
+    }
 
     return ref
         .watch(alarmByIdProvider(id))
@@ -65,18 +79,34 @@ class _AlarmEditScreenState extends ConsumerState<AlarmEditScreen> {
           error: (e, _) => Scaffold(body: Center(child: Text('$e'))),
           data: (data) => data == null
               ? const Scaffold(body: Center(child: Text('アラームが見つかりません')))
+              : duplicate
+              ? _AlarmEditForm(
+                  // Everything copied — time, days, wake check, sound, grace,
+                  // snooze, 覚悟, contact, share — and only the id renewed, so
+                  // the save inserts rather than replaces.
+                  seed: _seed = data.copyWith(id: AlarmController.newId()),
+                  duplicate: true,
+                )
               : _AlarmEditForm(seed: _seed = data, existing: data),
         );
   }
 }
 
 class _AlarmEditForm extends ConsumerStatefulWidget {
-  const _AlarmEditForm({required this.seed, this.existing});
+  const _AlarmEditForm({
+    required this.seed,
+    this.existing,
+    this.duplicate = false,
+  });
 
   /// The key of this editor's [alarmDraftProvider].
   final Alarm seed;
 
   final Alarm? existing;
+
+  /// Copying an existing alarm. Changes the wording, and adds the one rule the
+  /// other two modes do not have: no two alarms may share a clock time.
+  final bool duplicate;
 
   @override
   ConsumerState<_AlarmEditForm> createState() => _AlarmEditFormState();
@@ -141,9 +171,30 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
   Widget build(BuildContext context) {
     debugAlarmEditBuildCount++;
     final seed = widget.seed;
+
+    // Only in duplicate mode is the time itself watched here: everywhere else
+    // the wheel must be able to write the draft on every frame of a drag
+    // without rebuilding the form around it.
+    var clash = false;
+    if (widget.duplicate) {
+      final (hour, minute) = ref.watch(
+        alarmDraftProvider(seed).select((a) => (a.hour, a.minute)),
+      );
+      clash = hasTimeClash(
+        ref.watch(alarmsProvider).valueOrNull ?? const <Alarm>[],
+        seed.copyWith(hour: hour, minute: minute),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existing == null ? 'アラームを追加' : 'アラームを編集'),
+        title: Text(
+          widget.duplicate
+              ? 'アラームを複製'
+              : widget.existing == null
+              ? 'アラームを追加'
+              : 'アラームを編集',
+        ),
         actions: [
           if (widget.existing != null)
             IconButton(
@@ -157,6 +208,7 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
           TimeWheel(seed: seed),
+          if (widget.duplicate) _DuplicateTimeWarning(seed: seed),
           const SizedBox(height: 24),
           _BasicIsland(seed: seed),
           _SnoozeIsland(seed: seed),
@@ -164,9 +216,44 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _save,
+        key: const ValueKey('alarmSaveFab'),
+        // Disabled, not hidden: the warning above the fold explains why, and a
+        // button that vanishes reads as a bug.
+        onPressed: clash ? null : _save,
         icon: const Icon(Icons.check),
-        label: const Text('保存'),
+        label: Text(widget.duplicate ? '複製' : '保存'),
+      ),
+    );
+  }
+}
+
+/// 「同じ時刻のアラームがすでにあります」 — shown right under the wheel, because the
+/// wheel is the only thing that can clear it.
+///
+/// Its own widget so that the time changing repaints this line and nothing
+/// else; the form above it rebuilds too, but only in duplicate mode.
+class _DuplicateTimeWarning extends ConsumerWidget {
+  const _DuplicateTimeWarning({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (hour, minute) = ref.watch(
+      alarmDraftProvider(seed).select((a) => (a.hour, a.minute)),
+    );
+    final clash = hasTimeClash(
+      ref.watch(alarmsProvider).valueOrNull ?? const <Alarm>[],
+      seed.copyWith(hour: hour, minute: minute),
+    );
+    if (!clash) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        '同じ時刻のアラームがすでにあります。別の時刻にしてください。',
+        key: const ValueKey('duplicateTimeWarning'),
+        style: TextStyle(color: Theme.of(context).colorScheme.error),
       ),
     );
   }

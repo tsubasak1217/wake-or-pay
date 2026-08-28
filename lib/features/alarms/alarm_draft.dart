@@ -33,6 +33,18 @@ class AlarmDraft extends AutoDisposeFamilyNotifier<Alarm, Alarm> {
   void update(Alarm Function(Alarm draft) change) => state = change(state);
 }
 
+/// Whether [draft] would land on the same clock time as an alarm that already
+/// exists. Pure.
+///
+/// Repeat days are deliberately not considered: two alarms at 07:00 are a
+/// confusing pair of rows whether or not their weekdays overlap, and the point
+/// of the rule is that a copy cannot be saved as an invisible twin of the row
+/// it was copied from. The draft's own id is excluded, so an alarm never
+/// clashes with itself.
+bool hasTimeClash(List<Alarm> all, Alarm draft) => all.any(
+  (a) => a.id != draft.id && a.hour == draft.hour && a.minute == draft.minute,
+);
+
 /// How many times the editor's body has been rebuilt. Test-only: the spec
 /// requires that spinning the time wheel does not rebuild the editor around it,
 /// and a counter is the only way to see a rebuild that produces identical

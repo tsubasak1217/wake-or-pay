@@ -24,15 +24,21 @@ class SwipeToDelete extends StatefulWidget {
   static const _snapDuration = Duration(milliseconds: 150);
 
   @override
-  State<SwipeToDelete> createState() => _SwipeToDeleteState();
+  State<SwipeToDelete> createState() => SwipeToDeleteState();
 }
 
-class _SwipeToDeleteState extends State<SwipeToDelete> {
+class SwipeToDeleteState extends State<SwipeToDelete> {
   /// 0 = closed, -[SwipeToDelete.actionWidth] = fully revealed. Never positive:
   /// there is nothing to reveal on the right.
   double _offset = 0;
 
   bool get _isOpen => _offset < 0;
+
+  /// Whether the row is swiped aside with its 削除 showing. Tests assert on it
+  /// because a row that inherits another row's open state is exactly the bug
+  /// the per-alarm [ValueKey] on the tile exists to prevent.
+  @visibleForTesting
+  bool get isRevealed => _isOpen;
 
   void _drag(DragUpdateDetails d) => setState(
     () => _offset = (_offset + d.delta.dx).clamp(-SwipeToDelete.actionWidth, 0),
