@@ -8,9 +8,12 @@
 # The Discord webhook the completion notice goes to lives in tools/notify_webhook.txt,
 # which is gitignored and must never be committed.
 #
-# NOTE: no global $ErrorActionPreference='Stop' — under Windows PowerShell a native
-# tool writing to stderr (gh's "release not found", flutter's warnings) would then abort
-# the script. Exit codes are checked explicitly instead.
+# ASCII only on purpose: Windows PowerShell 5.1 mis-parses a .ps1 that contains
+# non-ASCII bytes without a BOM (brace matching breaks). Keep this file ASCII.
+#
+# No global $ErrorActionPreference='Stop' either: a native tool writing to stderr
+# (gh's "release not found", flutter's warnings) would otherwise abort the script.
+# Exit codes are checked explicitly instead.
 
 $env:Path = "C:\Users\k023g\dev\flutter\bin;$env:Path"
 $gh = "C:\Program Files\GitHub CLI\gh.exe"
@@ -35,18 +38,20 @@ if ($LASTEXITCODE -ne 0) { Write-Error "flutter build failed (exit $LASTEXITCODE
 
 Copy-Item build/app/outputs/flutter-apk/app-release.apk $asset -Force
 # Keep a local copy on the desktop too.
-Copy-Item $asset "$env:USERPROFILE\OneDrive\デスクトップ\WakeOrPay.apk" -Force -ErrorAction SilentlyContinue
+Copy-Item $asset "$env:USERPROFILE\OneDrive\Desktop\WakeOrPay.apk" -Force -ErrorAction SilentlyContinue
+Copy-Item $asset "$env:USERPROFILE\OneDrive\$([char]0x30C7)$([char]0x30B9)$([char]0x30AF)$([char]0x30C8)$([char]0x30C3)$([char]0x30D7)\WakeOrPay.apk" -Force -ErrorAction SilentlyContinue
 
 # One release, kept at the fixed "latest" URL; its asset is clobbered each build.
-$notes = "自動ビルド v$verName (build $build)"
+$title = "latest v$verName (build $build)"
+$notes = "Automated build v$verName (build $build)"
 # Does the fixed release already exist? On the very first run it does not, and gh prints
-# "release not found" to stderr — that is expected, not a failure.
+# "release not found" to stderr - that is expected, not a failure.
 & $gh release view latest *> $null
 if ($LASTEXITCODE -eq 0) {
   & $gh release upload latest $asset --clobber
-  & $gh release edit latest --title "最新ビルド v$verName (build $build)" --notes $notes --latest
+  & $gh release edit latest --title $title --notes $notes --latest
 } else {
-  & $gh release create latest $asset --title "最新ビルド v$verName (build $build)" --notes $notes --latest
+  & $gh release create latest $asset --title $title --notes $notes --latest
 }
 if ($LASTEXITCODE -ne 0) { Write-Error "gh release publish failed (exit $LASTEXITCODE)"; exit 1 }
 
@@ -56,15 +61,16 @@ Remove-Item $asset -Force -ErrorAction SilentlyContinue
 $hookRaw = Get-Content "$PSScriptRoot\notify_webhook.txt" -Raw -ErrorAction SilentlyContinue
 if ($hookRaw) {
   $hook = $hookRaw.Trim()
-  $body = @{ content = "🔔 Wake or Pay の新しいビルドができました  v$verName (build $build)`nインストール／更新はこちら: $dlUrl" } | ConvertTo-Json
+  $msg = "New Wake or Pay build v$verName (build $build)`nInstall/update: $dlUrl"
+  $body = @{ content = $msg } | ConvertTo-Json
   try {
     Invoke-RestMethod -Uri $hook -Method Post -ContentType 'application/json' -Body $body | Out-Null
-    Write-Host "Discord へ通知しました。"
+    Write-Host "Notified Discord."
   } catch {
-    Write-Warning "Discord 通知に失敗: $($_.Exception.Message)"
+    Write-Warning "Discord notify failed: $($_.Exception.Message)"
   }
 } else {
-  Write-Warning "tools/notify_webhook.txt が無いため Discord 通知はスキップしました。"
+  Write-Warning "tools/notify_webhook.txt missing - Discord notify skipped."
 }
 
 Write-Host "Published: $dlUrl"
