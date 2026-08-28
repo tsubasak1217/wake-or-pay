@@ -6,6 +6,7 @@ import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 
 import '../domain/discord_oauth.dart';
+import 'discord_exchange.dart';
 import 'discord_sender.dart';
 
 /// Opens an authorize URL and waits for the browser to come back on
@@ -187,5 +188,122 @@ final discordOAuthServiceProvider = Provider(
   (ref) => DiscordOAuthService(
     ref.watch(oauthAuthorizerProvider),
     ref.watch(httpClientProvider),
+  ),
+);
+
+/// Why 「チャンネルを連携」 ended the way it did.
+enum DiscordChannelLinkStatus {
+  ok,
+
+  /// No 連携サーバー is configured. Not a failure so much as a step not yet
+  /// taken, and it gets its own sentence because the fix is in a README and
+  /// not in this app.
+  noEndpoint,
+
+  cancelled,
+  stateMismatch,
+  denied,
+
+  /// The Worker did not hand back a webhook — it is down, the code was
+  /// already spent, or the secret was never put on it.
+  exchangeFailed,
+}
+
+/// The outcome of 「チャンネルを連携」, as a value.
+@immutable
+class DiscordChannelLinkResult {
+  const DiscordChannelLinkResult(this.status, [this.grant]);
+
+  final DiscordChannelLinkStatus status;
+  final DiscordWebhookGrant? grant;
+
+  bool get ok => status == DiscordChannelLinkStatus.ok && grant != null;
+
+  String get label => switch (status) {
+    DiscordChannelLinkStatus.ok => '共有先を追加しました',
+    DiscordChannelLinkStatus.noEndpoint => '連携サーバーURL が未設定です',
+    DiscordChannelLinkStatus.cancelled => '連携をやめました',
+    DiscordChannelLinkStatus.stateMismatch =>
+      '確認に失敗しました。アプリからもう一度お試しください',
+    DiscordChannelLinkStatus.denied => 'Discord で許可されませんでした',
+    DiscordChannelLinkStatus.exchangeFailed => 'チャンネルを連携できませんでした',
+  };
+}
+
+/// 「チャンネルを連携（Discord で選ぶ）」, end to end.
+///
+/// The **code** grant, not the implicit one, because `webhook.incoming` only
+/// hands the webhook over with the token — and that exchange needs the client
+/// secret, which is why [endpoint] (the Worker) has to exist at all. The app
+/// never sees a token: what comes back over [endpoint] is a webhook URL and a
+/// couple of names.
+class DiscordChannelLinker {
+  const DiscordChannelLinker(this._authorizer, this._exchange);
+
+  final OAuthAuthorizer _authorizer;
+  final DiscordExchangeClient _exchange;
+
+  Future<DiscordChannelLinkResult> link({required String endpoint}) async {
+    if (!isDiscordExchangeEndpoint(endpoint)) {
+      return const DiscordChannelLinkResult(
+        DiscordChannelLinkStatus.noEndpoint,
+      );
+    }
+
+    final state = randomOAuthState();
+    final callback = await _authorizer.authorize(
+      url: buildDiscordAuthorizeUrl(
+        responseType: 'code',
+        // `webhook.incoming` is what makes Discord show the channel picker;
+        // `identify` is only so the Worker can name the server it landed in.
+        scopes: kDiscordWebhookScopes,
+        state: state,
+        // No prompt=consent here: picking a channel *is* the consent screen,
+        // and Discord shows it every time regardless.
+      ),
+      callbackUrlScheme: kDiscordCallbackScheme,
+    );
+    if (callback == null) {
+      return const DiscordChannelLinkResult(
+        DiscordChannelLinkStatus.cancelled,
+      );
+    }
+
+    final parsed = parseDiscordCallback(callback, expectedState: state);
+    if (!parsed.ok) {
+      return DiscordChannelLinkResult(switch (parsed.error) {
+        DiscordCallbackError.stateMismatch =>
+          DiscordChannelLinkStatus.stateMismatch,
+        DiscordCallbackError.denied => DiscordChannelLinkStatus.denied,
+        _ => DiscordChannelLinkStatus.exchangeFailed,
+      });
+    }
+    final code = parsed.code;
+    if (code == null || code.isEmpty) {
+      return const DiscordChannelLinkResult(
+        DiscordChannelLinkStatus.exchangeFailed,
+      );
+    }
+
+    final grant = await _exchange.exchange(
+      endpoint: endpoint,
+      code: code,
+      // The same redirect that went out with the authorize request. Discord
+      // checks the two match, and a mismatch here is a 400 on a code that is
+      // then spent and unusable.
+      redirectUri: kDiscordRedirectUri,
+    );
+    return grant == null
+        ? const DiscordChannelLinkResult(
+            DiscordChannelLinkStatus.exchangeFailed,
+          )
+        : DiscordChannelLinkResult(DiscordChannelLinkStatus.ok, grant);
+  }
+}
+
+final discordChannelLinkerProvider = Provider(
+  (ref) => DiscordChannelLinker(
+    ref.watch(oauthAuthorizerProvider),
+    ref.watch(discordExchangeClientProvider),
   ),
 );

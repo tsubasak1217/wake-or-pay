@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
 import '../../domain/models.dart';
+import '../../services/discord_exchange.dart';
+import '../../services/discord_oauth.dart';
 import '../../services/discord_sender.dart';
 
 /// Discord 共有先設定, per spec 11.6.
@@ -38,6 +40,10 @@ class DiscordWebhooksSubScreen extends ConsumerStatefulWidget {
 class _DiscordWebhooksSubScreenState
     extends ConsumerState<DiscordWebhooksSubScreen> {
   late final Set<String> _selected = {...widget.initial};
+
+  /// True while the browser is up. Two flows in the air would share one
+  /// callback scheme, and the second would be answered by the first's redirect.
+  bool _linking = false;
 
   @override
   Widget build(BuildContext context) {
@@ -101,14 +107,83 @@ class _DiscordWebhooksSubScreenState
                   ],
                 ),
         ),
-        floatingActionButton: FloatingActionButton(
-          key: const ValueKey('webhookAdd'),
-          tooltip: '共有先を追加',
-          onPressed: () => _openForm(context, ref),
-          child: const Icon(Icons.add),
+        // The ＋ is gone. It was one button behind which the only way to add
+        // anything was a URL the user had to go and make in Discord's settings
+        // first — five steps in another app, and the step most people never
+        // finish. The two ways in are now both named, and the one that does
+        // the work for you is first.
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton.icon(
+                  key: const ValueKey('webhookLinkChannel'),
+                  onPressed: _linking
+                      ? null
+                      : () => unawaited(_linkChannel(context, ref)),
+                  icon: const Icon(Icons.add_link),
+                  label: const Text('チャンネルを連携（Discord で選ぶ）'),
+                ),
+                TextButton(
+                  // Same key as the old ＋: this is still 「the other way to
+                  // add one」, and the dialog behind it has not changed.
+                  key: const ValueKey('webhookAdd'),
+                  onPressed: () => _openForm(context, ref),
+                  child: const Text('Webhook URL を手動で登録'),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
+  }
+
+  /// 「チャンネルを連携」: Discord shows the channel picker and the 連携サーバー
+  /// turns the code it hands back into a webhook.
+  ///
+  /// Registers the 共有先 **and ticks it on for this alarm**. Somebody who just
+  /// picked a channel meant to post there; making them tap the row afterwards
+  /// would be asking the same question twice.
+  Future<void> _linkChannel(BuildContext context, WidgetRef ref) async {
+    if (_linking) return;
+    setState(() => _linking = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final endpoint = ref.read(discordExchangeEndpointProvider);
+    final result = await ref
+        .read(discordChannelLinkerProvider)
+        .link(endpoint: endpoint);
+    final grant = result.grant;
+    if (result.ok && grant != null) {
+      final webhook = DiscordWebhook(
+        id: grant.id,
+        url: grant.url,
+        displayName: grant.displayName,
+        createdAt: DateTime.now(),
+      );
+      await ref.read(discordWebhookRepositoryProvider).save(webhook);
+      if (mounted) setState(() => _selected.add(webhook.id));
+    }
+    if (mounted) setState(() => _linking = false);
+
+    if (result.status == DiscordChannelLinkStatus.noEndpoint) {
+      // The fix is not in this screen and not even in this app, so pointing
+      // at it is the whole message.
+      messenger.showSnackBar(
+        const SnackBar(
+          duration: Duration(seconds: 8),
+          content: Text(
+            '先に連携サーバー（Cloudflare Worker）を立てて、'
+            'プロフィールの「連携サーバーURL」にその URL を入れてください。'
+            '手順は worker/README.md にあります。',
+          ),
+        ),
+      );
+      return;
+    }
+    messenger.showSnackBar(SnackBar(content: Text(result.label)));
   }
 }
 
@@ -120,7 +195,8 @@ class _EmptyList extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.all(32),
       child: Text(
-        'まだ共有先がありません。\n右下の ＋ から Webhook を追加してください。',
+        'まだ共有先がありません。\n'
+        '下の「チャンネルを連携」を押すと、Discord が投稿先のチャンネルを選ばせてくれます。',
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyLarge,
       ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/app/profile_controller.dart';
 import 'package:wake_or_pay/main.dart';
+import 'package:wake_or_pay/services/discord_exchange.dart';
 
 import '../helpers.dart';
 
@@ -172,5 +173,52 @@ void main() {
     );
     await container.read(profileProvider.notifier).setDiscordUserId('<@111>');
     expect(container.read(profileProvider).discordUsername, '花子');
+  });
+
+  testWidgets('連携サーバーURL is on the overlay and takes a pasted Worker URL', (
+    tester,
+  ) async {
+    final container = await openOverlay(tester);
+
+    await scrollTo(
+      tester,
+      find.byKey(const ValueKey('profileDiscordEndpointRow')),
+    );
+    expect(find.text('連携サーバーURL'), findsOneWidget);
+    expect(find.text('未設定'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('profileDiscordEndpointRow')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('discordEndpointField')),
+      'https://wake-or-pay-discord.example.workers.dev/',
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(discordExchangeEndpointProvider),
+      'https://wake-or-pay-discord.example.workers.dev/',
+    );
+    // The row shows the host, not a URL nobody could read on a phone.
+    expect(find.text('wake-or-pay-discord.example.workers.dev'), findsOneWidget);
+  });
+
+  testWidgets('an http:// endpoint is refused at the field', (tester) async {
+    await openOverlay(tester);
+    await scrollTo(
+      tester,
+      find.byKey(const ValueKey('profileDiscordEndpointRow')),
+    );
+    await tester.tap(find.byKey(const ValueKey('profileDiscordEndpointRow')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('discordEndpointField')),
+      'http://plain.example',
+    );
+    await tester.pumpAndSettle();
+
+    // The body carries an authorization code, so unencrypted is not an option.
+    expect(find.textContaining('https:// で始まる URL'), findsOneWidget);
   });
 }

@@ -8,6 +8,7 @@ import '../../domain/profile_catalog.dart';
 import '../../services/mail_settings.dart';
 import '../alarms/edit_sub_screens.dart';
 import '../alarms/widgets/settings_island.dart';
+import 'discord_endpoint_row.dart';
 import 'discord_link_row.dart';
 import 'discord_user_id_screen.dart';
 import 'mail_settings_screen.dart';
@@ -219,6 +220,7 @@ class _ProfileSettingsIsland extends ConsumerWidget {
               pushEditorSubScreen(context, const DiscordUserIdSubScreen()),
         ),
         const DiscordLinkRow(),
+        const DiscordEndpointRow(),
         // 設定済み only when the app could actually send: a half-filled account
         // is 未設定 as far as every other screen is concerned, so this row must
         // not be the one place that calls it done.

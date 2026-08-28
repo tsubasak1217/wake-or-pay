@@ -189,6 +189,7 @@ class FakeHttpClient extends http.BaseClient {
     this.responses = const {},
     this.throws = false,
     this.postStatus = 204,
+    this.postBody,
   });
 
   /// URL → the body to answer a **GET** with. A URL that is not in here
@@ -201,6 +202,10 @@ class FakeHttpClient extends http.BaseClient {
   /// What a **POST** answers with. Discord's own webhook answer is a 204 with
   /// no body; a revoked webhook is a 404.
   final int postStatus;
+
+  /// The body a **POST** answers with. Null is an empty body, which is what
+  /// Discord's webhook endpoint sends; the 連携サーバー answers with JSON.
+  final String? postBody;
 
   final requested = <String>[];
 
@@ -227,10 +232,18 @@ class FakeHttpClient extends http.BaseClient {
           filenames: request is http.MultipartRequest
               ? [for (final f in request.files) f.filename ?? '']
               : const [],
+          // A plain (non-multipart) POST — the 連携サーバー's JSON body.
+          body: request is http.Request ? request.body : '',
         ),
       );
       if (throws) throw const SocketException('offline');
-      return http.StreamedResponse(const Stream.empty(), postStatus);
+      return http.StreamedResponse(
+        postBody == null
+            ? const Stream<List<int>>.empty()
+            : Stream.value(utf8.encode(postBody!)),
+        postStatus,
+        headers: const {'content-type': 'application/json; charset=utf-8'},
+      );
     }
     if (throws) throw const SocketException('offline');
     final body = responses[url];
@@ -247,11 +260,19 @@ class FakeHttpClient extends http.BaseClient {
 
 /// One POST as [FakeHttpClient] saw it.
 class FakePost {
-  FakePost({required this.url, required this.fields, required this.filenames});
+  FakePost({
+    required this.url,
+    required this.fields,
+    required this.filenames,
+    this.body = '',
+  });
 
   final String url;
   final Map<String, String> fields;
   final List<String> filenames;
+
+  /// The raw request body, for the POSTs that are not multipart.
+  final String body;
 
   /// The `content` Discord would have posted, dug back out of `payload_json`.
   String get content =>
