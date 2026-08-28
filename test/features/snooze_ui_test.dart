@@ -66,8 +66,12 @@ void main() {
     await openRinging(tester, plain);
 
     expect(find.text('スヌーズ'), findsOneWidget);
-    // Spec 12.2: a visible bordered control now, but still secondary to 解除 —
-    // an OutlinedButton, not the FilledButton the wake check uses.
+    // Spec 12.2 (revised): an unmistakable button now — a tonal fill, so it no
+    // longer vanishes into the near-black background as the bare-text and the
+    // outline-only treatments did. Still secondary to the primary 解除 control,
+    // which is the big primaryContainer circle the wake check draws (a
+    // GestureDetector, not any button widget), so the tonal FilledButton reads
+    // one step down without being the way out.
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('snoozeButton')),
@@ -75,17 +79,16 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      tester.widget<OutlinedButton>(find.byKey(const ValueKey('snoozeButton'))),
-      isNotNull,
+    final snooze = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('snoozeButton')),
     );
+    // The tonal variant, not the full-strength filled button reserved for
+    // primary actions.
+    expect(snooze.style, isNotNull);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('snoozeButton')),
-        matching: find.byType(FilledButton),
-      ),
-      findsNothing,
-      reason: 'not the primary control',
+      find.byKey(const ValueKey('snoozeButton')),
+      findsOneWidget,
+      reason: 'visible and tappable',
     );
   });
 

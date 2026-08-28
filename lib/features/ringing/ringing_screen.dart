@@ -421,23 +421,22 @@ class _SnoozeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 24),
-      // Spec 12.2: a bordered control, so it reads as a button rather than
-      // vanishing into the background as bare text did. Still a step below the
-      // primary 解除 (which is filled): an outline and a muted foreground, not a
-      // fill — snoozing is the thing you do instead of getting up, and it
-      // should not look like the main way out.
-      child: OutlinedButton(
+      // A little more room below than a plain SizedBox: the button is the last
+      // thing on the screen, and it should not sit flush against the edge.
+      padding: const EdgeInsets.only(top: 24, bottom: 8),
+      // Spec 12.2: a *tonal fill*, so it reads unmistakably as a button rather
+      // than vanishing into the near-black background as bare text — and as the
+      // earlier outline-only treatment — did. A solid block of secondaryContainer
+      // is a step below the primary 解除 (drawn in the brighter primaryContainer),
+      // so snoozing still does not look like the main way out, but it is now
+      // obviously tappable. ~48dp tall with generous horizontal padding.
+      child: FilledButton.tonal(
         key: const ValueKey('snoozeButton'),
         onPressed: onSnooze,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: theme.colorScheme.onSurfaceVariant,
-          side: BorderSide(
-            color: theme.colorScheme.outline.withValues(alpha: 0.8),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
         ),
         child: Text(snoozeButtonLabel(session.kakugoSnapshot)),
       ),
