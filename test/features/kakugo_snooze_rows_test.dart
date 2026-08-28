@@ -27,6 +27,22 @@ Future<void> scrollTo(WidgetTester tester, Finder target) async {
 String textOf(WidgetTester tester, Key key) =>
     tester.widget<Text>(find.byKey(key)).data!;
 
+const resetTile = ValueKey('snoozeClockReset');
+const continuousTile = ValueKey('snoozeClockContinuous');
+
+/// Whether the radio tile behind [key] is the chosen one. The tile is driven by
+/// a [RadioGroup] ancestor, so its selection is read off the tile itself.
+bool selected(WidgetTester tester, Key key) =>
+    tester.widget<RadioListTile<bool>>(find.byKey(key)).selected;
+
+/// Taps one of the 「スヌーズ中の加算」 tiles, scrolling it into view first.
+Future<void> tapOption(WidgetTester tester, String label) async {
+  await tester.ensureVisible(find.text(label));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+}
+
 Future<void> toggle(WidgetTester tester, String label) async {
   await scrollTo(tester, find.text(label));
   await tester.tap(find.widgetWithText(SwitchListTile, label));
@@ -124,7 +140,9 @@ void main() {
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       expect(find.text('0〜1000コイン'), findsOneWidget);
       await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
+        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
+        // its footer — 起床猶予 — and the screen's own field is the one above it.
+        find.byKey(const ValueKey('sliderNumberInput')).first,
         '250',
       );
       await tester.pumpAndSettle();
@@ -143,7 +161,9 @@ void main() {
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
+        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
+        // its footer — 起床猶予 — and the screen's own field is the one above it.
+        find.byKey(const ValueKey('sliderNumberInput')).first,
         '99999',
       );
       await tester.pumpAndSettle();
@@ -160,7 +180,9 @@ void main() {
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
+        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
+        // its footer — 起床猶予 — and the screen's own field is the one above it.
+        find.byKey(const ValueKey('sliderNumberInput')).first,
         '0',
       );
       await tester.pumpAndSettle();
@@ -180,11 +202,21 @@ void main() {
         expect(find.text('規定時刻から加算し続ける'), findsOneWidget);
         // 改訂5: the pausing mode is the recommended default and reads 「（推奨）」.
         expect(find.text('次に鳴る時刻を起点にし直す（推奨）'), findsOneWidget);
+
+        // Two radios on the left, the recommended one selected to begin with.
+        expect(find.byKey(resetTile), findsOneWidget);
+        expect(find.byKey(continuousTile), findsOneWidget);
+        expect(selected(tester, resetTile), isTrue);
+        expect(selected(tester, continuousTile), isFalse);
+
         // Flip to continuous and back, to prove the choice sticks either way.
-        await tester.tap(find.text('規定時刻から加算し続ける'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('次に鳴る時刻を起点にし直す（推奨）'));
-        await tester.pumpAndSettle();
+        // The sub-screen scrolls, so each tile is brought into view first.
+        await tapOption(tester, '規定時刻から加算し続ける');
+        expect(selected(tester, continuousTile), isTrue);
+        expect(selected(tester, resetTile), isFalse);
+
+        await tapOption(tester, '次に鳴る時刻を起点にし直す（推奨）');
+        expect(selected(tester, resetTile), isTrue);
       });
 
       expect((await save(tester, container)).kakugo!.snoozeResetsClock, isTrue);
@@ -200,6 +232,20 @@ void main() {
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       expect(find.text('スヌーズ中の加算'), findsNothing);
       expect(find.byKey(const ValueKey('kakugoGauge')), findsOneWidget);
+    });
+  });
+
+  testWidgets('起床猶予 sits in the 寝坊ペナルティ sub-screen even with スヌーズ off', (
+    tester,
+  ) async {
+    await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    await inSubScreen(tester, '寝坊ペナルティ', () async {
+      expect(find.text('起床猶予'), findsOneWidget);
+      expect(find.byKey(const ValueKey('graceSelector')), findsOneWidget);
+      expect(textOf(tester, const ValueKey('graceValue')), '1分');
+      expect(find.text('1〜5分'), findsOneWidget);
     });
   });
 
@@ -220,7 +266,9 @@ void main() {
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
+        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
+        // its footer — 起床猶予 — and the screen's own field is the one above it.
+        find.byKey(const ValueKey('sliderNumberInput')).first,
         '1000',
       );
       await tester.pumpAndSettle();
@@ -243,7 +291,9 @@ void main() {
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       expect(find.text('0〜1000コイン/分'), findsOneWidget);
       await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
+        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
+        // its footer — 起床猶予 — and the screen's own field is the one above it.
+        find.byKey(const ValueKey('sliderNumberInput')).first,
         '0',
       );
       await tester.pumpAndSettle();
@@ -269,7 +319,9 @@ void main() {
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       await tester.enterText(
-        find.byKey(const ValueKey('sliderNumberInput')),
+        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
+        // its footer — 起床猶予 — and the screen's own field is the one above it.
+        find.byKey(const ValueKey('sliderNumberInput')).first,
         '0',
       );
       await tester.pumpAndSettle();

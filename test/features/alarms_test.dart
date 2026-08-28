@@ -65,10 +65,13 @@ Future<void> toggleInEditor(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
-/// Types [value] into the one numeric field of a number sub-screen.
+/// Types [value] into the numeric field a number sub-screen owns.
+///
+/// `.first` because the 寝坊ペナルティ screen carries a second one in its footer —
+/// the 起床猶予 slider — and the screen's own field is always the one above it.
 Future<void> enterNumber(WidgetTester tester, String value) async {
   await tester.enterText(
-    find.byKey(const ValueKey('sliderNumberInput')),
+    find.byKey(const ValueKey('sliderNumberInput')).first,
     value,
   );
   await tester.pumpAndSettle();
@@ -186,9 +189,14 @@ void main() {
       reason: 'kakugo is off on a new alarm',
     );
     expect(find.text('スヌーズ設定'), findsNothing);
-    for (final row in ['曜日', '起床確認方法', 'サウンド', '起床猶予', 'スヌーズ', '覚悟']) {
+    for (final row in ['曜日', '起床確認方法', 'サウンド', 'スヌーズ', '覚悟']) {
       expect(find.text(row), findsOneWidget, reason: row);
     }
+    expect(
+      find.text('起床猶予'),
+      findsNothing,
+      reason: 'it lives in the 寝坊ペナルティ sub-screen, not 基本設定',
+    );
   });
 
   testWidgets(
@@ -256,31 +264,53 @@ void main() {
     );
   });
 
-  testWidgets('the grace window defaults to one minute and is editable', (
-    tester,
-  ) async {
-    final container = await pumpHome(tester, coins: 5000);
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'the grace window defaults to one minute and is editable in 寝坊ペナルティ',
+    (tester) async {
+      final container = await pumpHome(tester, coins: 5000);
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
 
-    expect(find.text('1分'), findsOneWidget, reason: 'today\'s rule, unchanged');
+      await toggleInEditor(tester, '覚悟');
 
-    await inSubScreen(tester, '起床猶予', () async {
-      await enterNumber(tester, '5');
-      expect(find.textContaining('鳴り始めからこの時間以内'), findsOneWidget);
-    });
-    expect(find.text('5分'), findsOneWidget);
+      await inSubScreen(tester, '寝坊ペナルティ', () async {
+        expect(find.text('起床猶予'), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.byKey(const ValueKey('graceValue'))).data,
+          '1分',
+          reason: 'today\'s rule, unchanged',
+        );
+        expect(find.textContaining('鳴り始めからこの時間以内'), findsOneWidget);
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+        // Two numeric fields share this screen — the rate's and the grace's —
+        // so the grace one is addressed through the section that owns it.
+        await tester.enterText(
+          find.descendant(
+            of: find.byKey(const ValueKey('graceSelector')),
+            matching: find.byKey(const ValueKey('sliderNumberInput')),
+          ),
+          '5',
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<Text>(find.byKey(const ValueKey('graceValue'))).data,
+          '5分',
+        );
+      });
 
-    expect(
-      (await container.read(alarmRepositoryProvider).getAll())
-          .single
-          .graceMinutes,
-      5,
-    );
-  });
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+
+      final saved =
+          (await container.read(alarmRepositoryProvider).getAll()).single;
+      expect(saved.graceMinutes, 5);
+      expect(
+        saved.kakugo!.ratePerMinute,
+        defaultKakugo.ratePerMinute,
+        reason: 'editing the grace left the rate alone',
+      );
+    },
+  );
 
   testWidgets('a cap above the balance warns but still saves', (tester) async {
     final container = await pumpHome(tester, coins: 100);

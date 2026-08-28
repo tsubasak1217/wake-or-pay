@@ -16,6 +16,7 @@ import 'contact_share_screen.dart';
 import 'edit_sub_screens.dart';
 import 'sound_screen.dart';
 import 'widgets/settings_island.dart';
+import 'widgets/slider_number_field.dart';
 
 class AlarmEditScreen extends ConsumerStatefulWidget {
   const AlarmEditScreen({super.key, this.alarmId});
@@ -183,7 +184,6 @@ class _BasicIsland extends StatelessWidget {
       _DaysRow(seed: seed),
       _WakeCheckRow(seed: seed),
       _SoundRow(seed: seed),
-      _GraceRow(seed: seed),
       _SnoozeToggleRow(seed: seed),
       _KakugoToggleRow(seed: seed),
     ],
@@ -265,39 +265,6 @@ class _SoundRow extends ConsumerWidget {
           onCommit: (id) => ref
               .read(alarmDraftProvider(seed).notifier)
               .update((a) => a.copyWith(soundId: id)),
-        ),
-      ),
-    );
-  }
-}
-
-class _GraceRow extends ConsumerWidget {
-  const _GraceRow({required this.seed});
-
-  final Alarm seed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final grace = ref.watch(
-      alarmDraftProvider(seed).select((a) => a.graceMinutes),
-    );
-    return SettingRow(
-      label: '起床猶予',
-      value: '$grace分',
-      onTap: () => pushEditorSubScreen(
-        context,
-        NumberSubScreen(
-          title: '起床猶予',
-          initial: grace,
-          min: minGraceMinutes,
-          max: maxGraceMinutes,
-          suffix: '分',
-          description:
-              '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
-              '過ぎるとその瞬間から燃え始めます。',
-          onCommit: (v) => ref
-              .read(alarmDraftProvider(seed).notifier)
-              .update((a) => a.copyWith(graceMinutes: v)),
         ),
       ),
     );
@@ -495,9 +462,9 @@ class _KakugoIsland extends ConsumerWidget {
           _ContactShareRow(seed: seed),
           _RateRow(seed: seed),
           // Only means anything when the alarm can be snoozed at all, so it
-          // follows the スヌーズ toggle in the island above. 「スヌーズ中の加算」
-          // is no longer a row of its own: it lives inside the 寝坊ペナルティ
-          // sub-screen, which is the number it modifies.
+          // follows the スヌーズ toggle in the island above. Neither 「スヌーズ中
+          // の加算」 nor 「起床猶予」 is a row of its own: both live inside the
+          // 寝坊ペナルティ sub-screen, which holds the number they qualify.
           if (canSnooze) _SnoozePenaltyRow(seed: seed),
           _CapRow(seed: seed),
         ],
@@ -651,26 +618,146 @@ class _SnoozeClockSelector extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Divider(height: 32),
-        Text('スヌーズ中の加算', style: theme.textTheme.titleMedium),
-        for (final option in _options)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            onTap: () => ref
+        Text(
+          'スヌーズ中の加算',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        // RadioGroup, not the deprecated Radio.groupValue/onChanged pair: the
+        // group owns the selection now, and each tile only names its value.
+        RadioGroup<bool>(
+          groupValue: resets,
+          onChanged: (value) {
+            if (value == null) return;
+            ref
                 .read(draft.notifier)
                 .update(
                   (a) => a.copyWith(
                     kakugo: (a.kakugo ?? defaultKakugo).copyWith(
-                      snoozeResetsClock: option.value,
+                      snoozeResetsClock: value,
+                    ),
+                  ),
+                );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final option in _options)
+                RadioListTile<bool>(
+                  key: ValueKey(
+                    option.value ? 'snoozeClockReset' : 'snoozeClockContinuous',
+                  ),
+                  value: option.value,
+                  selected: resets == option.value,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    option.label,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: resets == option.value
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  subtitle: Text(
+                    option.description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.4,
                     ),
                   ),
                 ),
-            title: Text(option.label),
-            subtitle: Text(option.description),
-            trailing: resets == option.value ? const Icon(Icons.check) : null,
+            ],
           ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'どちらを選んでも、スヌーズを1回でも押した朝は起床失敗です。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 起床猶予: how long the alarm may ring before the burn starts.
+///
+/// It lives inside the 寝坊ペナルティ sub-screen rather than in 基本設定 because
+/// the rate above it is only charged for the minutes this window does not
+/// cover — the two numbers are one decision.
+///
+/// Like [_SnoozeClockSelector], it writes the draft on every change rather than
+/// on the way out: it is already inside a sub-screen that commits its own value
+/// on pop, and a second deferred commit would race with it.
+class _GraceSelector extends ConsumerWidget {
+  const _GraceSelector({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final draft = alarmDraftProvider(seed);
+    final grace = ref.watch(draft.select((a) => a.graceMinutes));
+    final theme = Theme.of(context);
+    return Column(
+      key: const ValueKey('graceSelector'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 32),
         Text(
-          'どちらを選んでも、スヌーズを1回でも押した朝は起床失敗です。',
-          style: theme.textTheme.bodyMedium,
+          '起床猶予',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '$grace分',
+          key: const ValueKey('graceValue'),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+        SliderNumberField(
+          value: grace,
+          min: minGraceMinutes,
+          max: maxGraceMinutes,
+          suffix: '分',
+          semanticLabel: '起床猶予',
+          onChanged: (v) => ref
+              .read(draft.notifier)
+              .update((a) => a.copyWith(graceMinutes: v)),
+        ),
+        Text(
+          '$minGraceMinutes〜$maxGraceMinutes分',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
+          '過ぎるとその瞬間から燃え始めます。',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            height: 1.4,
+          ),
         ),
       ],
     );
@@ -758,6 +845,7 @@ class _RateRow extends ConsumerWidget {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
+              _GraceSelector(seed: seed),
               _SnoozeClockSelector(seed: seed),
             ],
           ),
