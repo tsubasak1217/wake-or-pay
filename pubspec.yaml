@@ -28,6 +28,11 @@ dependencies:
   flutter_tts: ^4.2.5
   record: ^7.1.1
   http: ^1.2.0
+  # Discord OAuth2（段階E）。ブラウザを開いて wakeorpay:// で戻ってくるところ
+  # だけを担う。url_launcher + deep link ではなくこちらにしたのは、暗黙フロー
+  # の答えが **フラグメント**（#access_token=…）にあるため：このプラグインは
+  # 専用の CallbackActivity で intent を受け取り、フラグメントごと返す。
+  flutter_web_auth_2: ^5.1.0
   # 段階D。SMTP 送信と、そのアプリパスワードの保管先。
   mailer: ^7.2.0
   flutter_secure_storage: ^11.0.0

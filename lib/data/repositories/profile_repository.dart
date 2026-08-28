@@ -11,6 +11,8 @@ class ProfileRepository {
 
   static const _userNameKey = 'profile.userName';
   static const _discordUserIdKey = 'profile.discordUserId';
+  static const _discordUsernameKey = 'profile.discordUsername';
+  static const _discordAvatarKey = 'profile.discordAvatar';
   static const _xpKey = 'profile.xp';
   static const _iconKey = 'profile.iconId';
   static const _plateKey = 'profile.plateBackgroundId';
@@ -33,6 +35,8 @@ class ProfileRepository {
         _prefs.getString(legacyUserNameKey) ??
         '',
     discordUserId: _prefs.getString(_discordUserIdKey) ?? '',
+    discordUsername: _prefs.getString(_discordUsernameKey) ?? '',
+    discordAvatar: _prefs.getString(_discordAvatarKey) ?? '',
     xp: _prefs.getInt(_xpKey) ?? 0,
     iconId: _prefs.getString(_iconKey) ?? ProfileCatalog.defaultIconId,
     plateBackgroundId:
@@ -59,6 +63,11 @@ class ProfileRepository {
       _discordUserIdKey,
       normalizeDiscordUserId(profile.discordUserId),
     );
+    // No access token is written here or anywhere else. The OAuth token is
+    // spent once on `/users/@me` and dropped; what survives is a public id, a
+    // display name and an avatar hash, none of which can act as the user.
+    await _prefs.setString(_discordUsernameKey, profile.discordUsername);
+    await _prefs.setString(_discordAvatarKey, profile.discordAvatar);
     await _prefs.setInt(_xpKey, profile.xp);
     await _prefs.setString(_iconKey, profile.iconId);
     await _prefs.setString(_plateKey, profile.plateBackgroundId);

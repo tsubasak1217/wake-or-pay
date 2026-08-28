@@ -19,8 +19,48 @@ class ProfileController extends Notifier<Profile> {
 
   /// Digits only — the repository strips the rest, and doing it here too keeps
   /// what the screen shows next frame equal to what was stored.
-  Future<void> setDiscordUserId(String id) =>
-      _update((p) => p.copyWith(discordUserId: normalizeDiscordUserId(id)));
+  /// Typing a **different** ID drops the linked name and avatar with it: those
+  /// are the evidence that the ID came from an authorised account, and leaving
+  /// 「連携済み：@なまえ」 over a hand-typed ID would vouch for something nobody
+  /// checked. Re-typing the same ID changes nothing.
+  Future<void> setDiscordUserId(String id) => _update((p) {
+    final normalized = normalizeDiscordUserId(id);
+    if (normalized == p.discordUserId) return p;
+    return p.copyWith(
+      discordUserId: normalized,
+      discordUsername: '',
+      discordAvatar: '',
+    );
+  });
+
+  /// Stores what an authorised Discord account said about itself.
+  ///
+  /// Overwrites a hand-typed ID on purpose: the user just proved which account
+  /// is theirs, which is a better answer than whatever they pasted.
+  Future<void> linkDiscordAccount({
+    required String id,
+    required String username,
+    String avatar = '',
+  }) => _update(
+    (p) => p.copyWith(
+      discordUserId: normalizeDiscordUserId(id),
+      discordUsername: username,
+      discordAvatar: avatar,
+    ),
+  );
+
+  /// 連携を解除. Clears the ID as well as the name.
+  ///
+  /// Leaving the ID behind would keep mentioning the user from an account they
+  /// just said to forget — and 「連携を解除」 that leaves the mention working is a
+  /// button that lies. The ID can still be typed back in by hand.
+  Future<void> unlinkDiscordAccount() => _update(
+    (p) => p.copyWith(
+      discordUserId: '',
+      discordUsername: '',
+      discordAvatar: '',
+    ),
+  );
 
   Future<void> selectIcon(String id) =>
       _update((p) => p.copyWith(iconId: id));

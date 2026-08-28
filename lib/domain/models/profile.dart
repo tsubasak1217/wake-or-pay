@@ -12,6 +12,8 @@ class Profile {
   const Profile({
     this.userName = '',
     this.discordUserId = '',
+    this.discordUsername = '',
+    this.discordAvatar = '',
     this.xp = 0,
     this.iconId = ProfileCatalog.defaultIconId,
     this.plateBackgroundId = ProfileCatalog.defaultPlateBackgroundId,
@@ -33,6 +35,24 @@ class Profile {
   /// mention", and the post falls back to the name.
   final String discordUserId;
 
+  /// The name Discord answered `/users/@me` with when the user linked their
+  /// account — `global_name` if they have one, otherwise `username`.
+  ///
+  /// Display only: 「連携済み：@なまえ」 is the confirmation that the ID above
+  /// belongs to the account they meant. Nothing sends it anywhere, and an ID
+  /// typed by hand simply leaves it empty.
+  final String discordUsername;
+
+  /// The avatar hash from the same answer. Kept because it is free and the
+  /// profile will want a real picture eventually; nothing draws it yet.
+  final String discordAvatar;
+
+  /// Whether the ID came from an authorised Discord account rather than being
+  /// typed in. The name is the evidence — there is no way to obtain it by
+  /// hand — so the two are one fact and not two.
+  bool get discordLinked =>
+      discordUserId.isNotEmpty && discordUsername.isNotEmpty;
+
   /// Earned by waking up, never spent. Levels are derived from it, so a level
   /// can never be lost by buying something.
   final int xp;
@@ -51,6 +71,8 @@ class Profile {
   Profile copyWith({
     String? userName,
     String? discordUserId,
+    String? discordUsername,
+    String? discordAvatar,
     int? xp,
     String? iconId,
     String? plateBackgroundId,
@@ -61,6 +83,8 @@ class Profile {
   }) => Profile(
     userName: userName ?? this.userName,
     discordUserId: discordUserId ?? this.discordUserId,
+    discordUsername: discordUsername ?? this.discordUsername,
+    discordAvatar: discordAvatar ?? this.discordAvatar,
     xp: xp ?? this.xp,
     iconId: iconId ?? this.iconId,
     plateBackgroundId: plateBackgroundId ?? this.plateBackgroundId,
@@ -76,6 +100,8 @@ class Profile {
       other is Profile &&
       other.userName == userName &&
       other.discordUserId == discordUserId &&
+      other.discordUsername == discordUsername &&
+      other.discordAvatar == discordAvatar &&
       other.xp == xp &&
       other.iconId == iconId &&
       other.plateBackgroundId == plateBackgroundId &&
@@ -88,6 +114,8 @@ class Profile {
   int get hashCode => Object.hash(
     userName,
     discordUserId,
+    discordUsername,
+    discordAvatar,
     xp,
     iconId,
     plateBackgroundId,

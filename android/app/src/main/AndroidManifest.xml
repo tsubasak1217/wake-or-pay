@@ -62,6 +62,26 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Discord OAuth2 の戻り先（段階E）。ブラウザが
+             `wakeorpay://discord/callback#access_token=…` を投げてくる先で、
+             flutter_web_auth_2 がこの Activity で受け取り、待っている
+             authenticate() にフラグメントごと渡す。
+             **本体のマニフェストに置く**：INTERNET のときと同じで、debug に
+             しか無ければリリース版だけが壊れる。
+             exported="true" は必須（ブラウザという別プロセスから来るため）。
+             掴むのは wakeorpay スキームだけで、https は掴まない。 -->
+        <activity
+            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+            android:exported="true"
+            android:taskAffinity="">
+            <intent-filter android:label="flutter_web_auth_2">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wakeorpay" />
+            </intent-filter>
+        </activity>
+
         <!-- Warns the user when the app is killed while alarms are scheduled. -->
         <service android:name="com.gdelataillade.alarm.services.NotificationOnKillService" />
 
@@ -106,6 +126,18 @@
              the oversleep contact countdown would be silent on a real device. -->
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+        <!-- 同じ理由（Android 11+ のパッケージ可視性）で、Discord の認可ページを
+             開く先が見えるようにしておく。上が Custom Tab を出せるブラウザ、
+             下が普通のブラウザ。どちらも見えないと 0 件になり、
+             flutter_web_auth_2 は何も開けないまま失敗する。 -->
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <category android:name="android.intent.category.BROWSABLE"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

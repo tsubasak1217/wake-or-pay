@@ -14,6 +14,7 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
+import 'package:wake_or_pay/services/discord_oauth.dart';
 import 'package:wake_or_pay/services/discord_sender.dart';
 import 'package:wake_or_pay/services/mail_sender.dart';
 import 'package:wake_or_pay/services/phone_caller.dart';
@@ -203,6 +204,10 @@ class FakeHttpClient extends http.BaseClient {
 
   final requested = <String>[];
 
+  /// The headers of every request, in the same order as [requested]. The
+  /// `Authorization: Bearer …` on `/users/@me` is only checkable here.
+  final headers = <Map<String, String>>[];
+
   /// Every POST, with its multipart body already decoded — the fields as
   /// Discord would have parsed them, and the filenames of the parts.
   final posted = <FakePost>[];
@@ -211,6 +216,7 @@ class FakeHttpClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final url = request.url.toString();
     requested.add(url);
+    headers.add(Map.of(request.headers));
     if (request.method == 'POST') {
       posted.add(
         FakePost(
@@ -359,3 +365,35 @@ RecordingPhoneCaller phoneCallerOf(ProviderContainer container) =>
 
 Override recordingPhoneCallerOverride(RecordingPhoneCaller caller) =>
     phoneCallerProvider.overrideWithValue(caller);
+
+/// An authorizer that opens no browser.
+///
+/// [callbackFor] is handed the authorize URL and answers with the callback URL
+/// the browser would have come back on — which lets a test echo the real
+/// `state` back, or deliberately not.
+class FakeOAuthAuthorizer implements OAuthAuthorizer {
+  FakeOAuthAuthorizer(this.callbackFor);
+
+  /// Cancels the flow, as closing the browser does.
+  FakeOAuthAuthorizer.cancelled() : callbackFor = ((_) => null);
+
+  final String? Function(String authorizeUrl) callbackFor;
+
+  final opened = <String>[];
+
+  @override
+  Future<String?> authorize({
+    required String url,
+    required String callbackUrlScheme,
+  }) async {
+    opened.add(url);
+    return callbackFor(url);
+  }
+}
+
+/// The `state` the app put in an authorize URL, read back out of it.
+String stateOf(String authorizeUrl) =>
+    Uri.parse(authorizeUrl).queryParameters['state']!;
+
+Override fakeOAuthAuthorizerOverride(FakeOAuthAuthorizer authorizer) =>
+    oauthAuthorizerProvider.overrideWithValue(authorizer);
