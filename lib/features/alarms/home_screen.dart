@@ -52,14 +52,15 @@ class _AlarmTile extends ConsumerWidget {
 
   final Alarm alarm;
 
-  /// The re-ring time of this alarm's snoozed session, if it has one waiting.
-  DateTime? _snoozedUntil(WidgetRef ref) {
+  /// This alarm's snoozed session — its id and its re-ring time — if it has one
+  /// waiting. The id is what the 「起きた（解除）」 button settles.
+  ({String id, DateTime until})? _snoozed(WidgetRef ref) {
     final now = DateTime.now();
     for (final session
         in ref.watch(ringingSessionsProvider).valueOrNull ??
             const <AlarmSession>[]) {
       if (session.alarmId == alarm.id && isSnoozePending(session, now)) {
-        return session.currentRingAt;
+        return (id: session.id, until: session.currentRingAt);
       }
     }
     return null;
@@ -67,13 +68,13 @@ class _AlarmTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final snoozedUntil = _snoozedUntil(ref);
+    final snoozed = _snoozed(ref);
     return SwipeToDelete(
       // Goes through the controller, so the platform alarm is cancelled before
       // the row disappears — a deleted alarm that still rings is the one bug
       // this screen must never have.
       onDelete: () => ref.read(alarmControllerProvider).delete(alarm),
-      child: _AlarmRow(alarm: alarm, snoozedUntil: snoozedUntil),
+      child: _AlarmRow(alarm: alarm, snoozed: snoozed),
     );
   }
 }
@@ -87,10 +88,10 @@ class _AlarmTile extends ConsumerWidget {
 /// around, and a list whose rows do not line up is harder to read than one
 /// loud row is worth.
 class _AlarmRow extends ConsumerWidget {
-  const _AlarmRow({required this.alarm, required this.snoozedUntil});
+  const _AlarmRow({required this.alarm, required this.snoozed});
 
   final Alarm alarm;
-  final DateTime? snoozedUntil;
+  final ({String id, DateTime until})? snoozed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -169,7 +170,12 @@ class _AlarmRow extends ConsumerWidget {
                   : kakugoDanger,
             ),
           ),
-          if (snoozedUntil != null) _SnoozingLabel(until: snoozedUntil!),
+          if (snoozed != null)
+            _SnoozingRow(
+              until: snoozed!.until,
+              onWake: () =>
+                  ref.read(alarmControllerProvider).dismissSnoozed(snoozed!.id),
+            ),
         ],
       ),
       trailing: Switch(
@@ -255,23 +261,44 @@ class _AlarmRow extends ConsumerWidget {
   ].join(' ・ ');
 }
 
-/// 「スヌーズ中 7:05」. The same on both kinds of row: a pending re-ring is a
-/// fact about the alarm, not about the pledge.
-class _SnoozingLabel extends StatelessWidget {
-  const _SnoozingLabel({required this.until});
+/// 「スヌーズ中 7:05」 and the way out of it — spec 12.1, the 一覧経由 path. The
+/// label is the same on both kinds of row: a pending re-ring is a fact about
+/// the alarm, not about the pledge. The 「起きた（解除）」 button below it lets a
+/// user who ignored the notification clear the snooze early without waiting for
+/// the re-ring — no wake check, since a snooze already stopped one alarm.
+class _SnoozingRow extends StatelessWidget {
+  const _SnoozingRow({required this.until, required this.onWake});
 
   final DateTime until;
+  final VoidCallback onWake;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Text(
-      snoozeUntilLabel(until),
-      key: const ValueKey('snoozedUntil'),
-      style: theme.textTheme.bodyMedium?.copyWith(
-        color: theme.colorScheme.primary,
-        fontWeight: FontWeight.bold,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          snoozeUntilLabel(until),
+          key: const ValueKey('snoozedUntil'),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton(
+            key: const ValueKey('wakeNowButton'),
+            onPressed: onWake,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: theme.colorScheme.primary,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('起きた（解除）'),
+          ),
+        ),
+      ],
     );
   }
 }

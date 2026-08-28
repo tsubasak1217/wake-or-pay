@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/profile_controller.dart';
+import '../../app/router.dart';
 import '../../data/providers.dart';
 import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
@@ -42,5 +44,16 @@ class AlarmController {
   Future<void> delete(Alarm alarm) async {
     await _ref.read(alarmServiceProvider).cancel(alarm);
     await _ref.read(alarmRepositoryProvider).delete(alarm.id);
+  }
+
+  /// The user got up during a snooze and pressed 「起きた（解除）」 on the list —
+  /// spec 12.1, the 一覧経由 path. Same idempotent settlement as the
+  /// notification's 解除, then the result screen.
+  Future<void> dismissSnoozed(String sessionId) async {
+    await _ref.read(alarmServiceProvider).dismissSnoozed(sessionId);
+    // A success would have paid XP behind the cached profile; drop it so the
+    // header level is fresh, exactly as the ring screen's dismiss does.
+    _ref.invalidate(profileProvider);
+    _ref.read(appRouterProvider).go(AppRoute.result(sessionId));
   }
 }

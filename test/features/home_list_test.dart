@@ -216,6 +216,70 @@ void main() {
     expect(find.byKey(const ValueKey('snoozedUntil')), findsOneWidget);
   });
 
+  testWidgets('the snoozed row offers 起きた（解除）; other rows do not', (
+    tester,
+  ) async {
+    final container = await pumpHome(
+      tester,
+      alarms: const [kakugoAlarm, plainAlarm],
+    );
+    await container
+        .read(alarmSessionRepositoryProvider)
+        .save(
+          AlarmSession(
+            id: 's1',
+            alarmId: kakugoAlarm.id,
+            firedAt: DateTime.now().subtract(const Duration(minutes: 3)),
+            graceMinutes: 1,
+            kakugoSnapshot: kakugoAlarm.kakugo,
+            snoozes: [DateTime.now()],
+            currentRingAt: DateTime.now().add(const Duration(minutes: 7)),
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Exactly one button: on the snoozed row, never on the plain one.
+    expect(find.byKey(const ValueKey('wakeNowButton')), findsOneWidget);
+    expect(find.text('起きた（解除）'), findsOneWidget);
+  });
+
+  testWidgets('起きた（解除） settles the session and routes to the result', (
+    tester,
+  ) async {
+    final container = await pumpHome(tester, alarms: const [kakugoAlarm]);
+    await container
+        .read(walletRepositoryProvider)
+        .write(const Wallet(coins: 5000));
+    await container
+        .read(alarmSessionRepositoryProvider)
+        .save(
+          AlarmSession(
+            id: 's1',
+            alarmId: kakugoAlarm.id,
+            firedAt: DateTime.now().subtract(const Duration(minutes: 3)),
+            graceMinutes: 1,
+            kakugoSnapshot: kakugoAlarm.kakugo,
+            coinsAtFire: 5000,
+            snoozes: [DateTime.now()],
+            currentRingAt: DateTime.now().add(const Duration(minutes: 7)),
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('wakeNowButton')));
+    await tester.pumpAndSettle();
+
+    // Settled exactly like a cleared wake check: failed, no longer ringing.
+    final settled = await container
+        .read(alarmSessionRepositoryProvider)
+        .getById('s1');
+    expect(settled!.status, SessionStatus.failed);
+    expect(settled.isRinging, isFalse);
+    // And the result screen is up, reading the settled outcome.
+    expect(find.text('起床失敗'), findsOneWidget);
+    expect(find.textContaining('消費'), findsOneWidget);
+  });
+
   testWidgets('swipe to delete still works on a 覚悟 row', (tester) async {
     final container = await pumpHome(tester, alarms: const [kakugoAlarm]);
     await tester.drag(find.byType(SwipeToDelete), const Offset(-120, 0));
