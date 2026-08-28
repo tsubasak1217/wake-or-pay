@@ -212,6 +212,22 @@ void main() {
       );
     });
 
+    test('accepts the second App Link path the landing page navigates to', () {
+      // 段階H. Chromium will not hand the app a verified App Link it reached
+      // as the end of a redirect chain — which is exactly how Discord
+      // delivers /discord/callback. The landing page therefore starts a fresh
+      // top-level navigation to this path, and it has to be routed the same.
+      expect(
+        isDiscordCallbackUri(
+          Uri.parse(
+            'https://wake-or-pay-discord.wakeorpay.workers.dev'
+            '/discord/callback/return?code=C&state=S',
+          ),
+        ),
+        isTrue,
+      );
+    });
+
     test('rejects an unrelated https host or path', () {
       // Only the exact host and path count: MainActivity's autoVerify filter
       // has no others, and a stray https intent that happened to reach the

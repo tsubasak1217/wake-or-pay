@@ -50,6 +50,25 @@ void main() {
     );
   });
 
+  test('delivers a callback that arrives on the /return App Link path',
+      () async {
+    // 段階H. This is the path the landing page navigates to as a *fresh*
+    // top-level navigation, because Chromium refuses to hand the app the one
+    // it arrived at by redirect. Same query, so the flow must accept it.
+    final future = router.awaitCallback('abc');
+    links.add(
+      Uri.parse(
+        'https://wake-or-pay-discord.wakeorpay.workers.dev'
+        '/discord/callback/return?code=CODE&state=abc',
+      ),
+    );
+    expect(
+      await future,
+      'https://wake-or-pay-discord.wakeorpay.workers.dev'
+      '/discord/callback/return?code=CODE&state=abc',
+    );
+  });
+
   test('ignores a URI whose scheme is not wakeorpay, leaving the flow '
       'pending', () async {
     final future = router.awaitCallback(

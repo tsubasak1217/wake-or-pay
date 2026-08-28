@@ -43,16 +43,30 @@ const kDiscordCallbackHost = 'wake-or-pay-discord.wakeorpay.workers.dev';
 /// The path both forms of the callback share.
 const kDiscordCallbackPath = '/discord/callback';
 
-/// Whether [uri] is a Discord callback this app should route — either form.
+/// The Worker's **second** App Link path, carrying the same query.
 ///
-/// The https one only counts on the exact host and path: `MainActivity` has an
-/// `autoVerify` filter for them and nothing else, and a stray https intent
-/// that happened to reach the app is not an answer to anything.
+/// It exists because of one Chromium rule: a verified App Link that a browser
+/// arrives at as the **end of a redirect chain** — which is exactly how
+/// Discord delivers [kDiscordCallbackPath] — is not handed to the app. The
+/// landing page therefore starts a *fresh* top-level navigation to this path,
+/// which some Chromium builds do hand over. Same parameters, different door.
+///
+/// [MainActivity] claims it with the same `autoVerify` filter, so an intent on
+/// it arrives here identically; nothing downstream reads the path.
+const kDiscordCallbackReturnPath = '/discord/callback/return';
+
+/// Whether [uri] is a Discord callback this app should route — any of the
+/// three forms.
+///
+/// The https ones only count on the exact host and one of the two paths:
+/// `MainActivity` has an `autoVerify` filter for exactly those, and a stray
+/// https intent that happened to reach the app is not an answer to anything.
 bool isDiscordCallbackUri(Uri uri) {
   if (uri.scheme == kDiscordCallbackScheme) return true;
   return uri.scheme == 'https' &&
       uri.host == kDiscordCallbackHost &&
-      uri.path == kDiscordCallbackPath;
+      (uri.path == kDiscordCallbackPath ||
+          uri.path == kDiscordCallbackReturnPath);
 }
 
 /// `identify` is the whole of what 「Discord で連携」 asks for: it is exactly

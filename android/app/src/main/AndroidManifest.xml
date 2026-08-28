@@ -118,9 +118,18 @@
                  `wakeorpay://` に跳ね返す（上の intent-filter が受ける）。
                  つまり検証の成否は速さの差であって、成否の差ではない。
 
-                 パスは /discord/callback ちょうどに限る。ホスト全体を
-                 掴むと Worker の他のパス（assetlinks.json 自身も含む）まで
-                 アプリに来てしまう。 -->
+                 パスは 2 本ちょうどに限る。ホスト全体を掴むと Worker の
+                 他のパス（assetlinks.json 自身も含む）までアプリに来てしまう。
+
+                 **/discord/callback/return を足した理由（段階H）。**
+                 実機（Pixel・既定ブラウザ Brave）では OS 側は全部正しかった：
+                 `pm get-app-links` は verified、`pm query-activities` は
+                 MainActivity を返す。それでも認証後にアプリが開かなかった。
+                 Chromium は「リダイレクトの終着点として着いた」App Link を
+                 アプリに渡さない——Discord のリダイレクトはまさにその形。
+                 そこで着地ページから **新しいトップレベル遷移**として
+                 この 2 本目のパスへ飛ぶ。同じパラメータ、別の扉。
+                 検証はホスト単位なので、パスを足しても再検証の可否は変わらない。 -->
             <intent-filter android:autoVerify="true" android:label="Discord 連携">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -128,6 +137,9 @@
                 <data android:scheme="https"
                       android:host="wake-or-pay-discord.wakeorpay.workers.dev"
                       android:path="/discord/callback" />
+                <data android:scheme="https"
+                      android:host="wake-or-pay-discord.wakeorpay.workers.dev"
+                      android:path="/discord/callback/return" />
             </intent-filter>
         </activity>
 

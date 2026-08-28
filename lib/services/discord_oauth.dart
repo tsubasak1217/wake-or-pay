@@ -35,6 +35,21 @@ const kDiscordTimedOutMessage =
     'と出ていた場合は、Developer Portal の OAuth2 → Redirects に '
     '$kDiscordRedirectUri を 1 文字違わず登録してください。';
 
+/// Prints the `state` to logcat, **debug builds only**.
+///
+/// It exists because the emulator check has no other way to learn it. The
+/// value goes out inside the authorize URL, and Chrome's omnibox truncates
+/// that URL long before the `state` at its end — so without this line, driving
+/// a real pending flow from `adb am start` is guesswork.
+///
+/// Not a leak. `state` is a CSRF nonce, not a credential: it authorises
+/// nothing, it is already in a URL bar and in the browser's history, and it is
+/// worthless the moment its flow ends. The **code** is the credential, and the
+/// code is printed nowhere, ever.
+void _logStateForEmulatorCheck(String state) {
+  if (kDebugMode) debugPrint('wop-discord-state=$state');
+}
+
 /// Why 「Discord で連携」 ended the way it did.
 enum DiscordLinkStatus {
   ok,
@@ -148,6 +163,7 @@ class DiscordOAuthService {
     }
 
     final state = randomOAuthState();
+    _logStateForEmulatorCheck(state);
     final url = buildDiscordAuthorizeUrl(
       responseType: 'code',
       scopes: kDiscordIdentifyScopes,
@@ -321,6 +337,7 @@ class DiscordChannelLinker {
     }
 
     final state = randomOAuthState();
+    _logStateForEmulatorCheck(state);
     final url = buildDiscordAuthorizeUrl(
       responseType: 'code',
       // `webhook.incoming` is what makes Discord show the channel picker;

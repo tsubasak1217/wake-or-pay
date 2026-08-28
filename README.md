@@ -762,19 +762,82 @@ https にすると「ブラウザに着地したあと、どうやってアプ�
    adb shell pm get-app-links com.wakeorpay.wake_or_pay
    ```
 
-2. **Worker のページからの `wakeorpay://` 跳ね返し。** 検証が効いていないときは
-   ブラウザが `GET /discord/callback?code=…&state=…` を開く。返るのは小さな HTML 1 枚で、
-   読み込んだ瞬間に `location.replace('wakeorpay://discord/callback?code=…&state=…')` を撃つ。
-   `assign` ではなく `replace` なのは、「戻る」でリダイレクトの中を歩き直さないため。
-   `wakeorpay` の intent-filter は段階F から**そのまま残してある**——これがその受け皿。
-3. **`intent://` のリンクと、押せるボタン。** スクリプトからの未知スキーム遷移を
-   拒むブラウザでも、ユーザーのタップは通す。
-   `intent://discord/callback?…#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;S.browser_fallback_url=…;end`。
-   画面には「**Wake or Pay に戻っています… 戻らない場合はこちら**」とボタンが出る。
+2. **着地ページの「Wake or Pay を開く」ボタン（＝実際に効く道）。** 詳しくは次の
+   「段階H」。ブラウザに着地してしまったら、**確実なのはユーザーのタップだけ**なので、
+   ページはそのボタンを主役にしてある。`wakeorpay` の intent-filter は段階F から
+   **そのまま残してある**——`intent://` が解決した先がこれ。
+3. **自動の再挑戦（best effort）。** ページが読み込まれた直後に `intent://` へ、
+   1.2 秒後に 2 本目の App Link パス `/discord/callback/return` へ、それぞれ 1 回だけ
+   遷移を試みる。通ればユーザーは何も押さずに戻ってくる。通らなくても何も壊れない。
 
 **認可コードはどこにも記録しない。** Worker はログを出さないし、このページは `no-store` で、
-コードは 2 本の URL の中にしか現れない。ページが持ち越すのは `code` `state` `error`
-`error_description` の 4 つだけで、それ以外のパラメータは落とす。
+コードはページ内の URL の中にしか現れない。ページが持ち越すのは `code` `state` `error`
+`error_description` の 4 つだけで、それ以外のパラメータは落とす（値は URL エンコードを
+経てから HTML エスケープされるので、引用符もタグも属性の外には出られない）。
+
+### 段階Hで直したこと（Brave/Chrome から本当に戻ってくるようにする）
+
+段階G のあと、実機（Pixel・既定ブラウザ **Brave**）で報告された症状はこう:
+**認証したあと着地ページまでは戻ってくるのに、アプリが開かない。ブラウザのまま止まる。**
+
+**Android 側は全部正しかった。** 実機で測ってある:
+
+- `pm get-app-links` は `wake-or-pay-discord.wakeorpay.workers.dev: verified`
+- `pm query-activities` はコールバック URL を `MainActivity` に解決する
+
+つまり犯人は OS ではなく、**ブラウザの中の受け渡し**。Chromium にはこの症状を
+そのまま説明する規則が 2 つある。
+
+1. **リダイレクトの終着点として着いた App Link は、アプリに渡されない。**
+   Chromium がアプリに譲るのは「ユーザーが始めた」と見なせる遷移だけで、
+   Discord の認可 → リダイレクト の連鎖はまさにそれに当たらない。
+2. **ユーザー操作なしの、未知スキームへのスクリプト遷移はブロックされる。**
+   段階G のページがやっていた `location.replace('wakeorpay://…')` は
+   ちょうどこの形で、黙って捨てられていた。
+
+だから段階H は、**押せるボタンを主役に据え直した**。
+
+- **主役は大きなボタン 1 個。** `href` は
+  `intent://discord/callback?code=…&state=…#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;S.browser_fallback_url=…;end`。
+  タップはユーザー操作なので Chromium は通すし、`intent://` にパッケージ名まで
+  書いてあるのは Chromium がいちばん素直に従う形。文言は「**Wake or Pay を開く**」。
+- **ページが「終わった」ように見えないようにした。** 見出しは
+  「**認証できました。あと 1 タップです。**」、その下に
+  「この画面のままでは連携は終わりません。下のボタンでアプリに戻ってください。」。
+  前のページは「Wake or Pay に戻っています…」とだけ書いてあり、ユーザーは
+  終わったと思ってブラウザを閉じていた。
+- **自動の再挑戦は残すが、best effort と割り切った。** `setTimeout` で `intent://`、
+  1.2 秒後に `/discord/callback/return`。**1 フローにつき 1 回だけ**
+  （`sessionStorage` に `state` で印を付ける）で、アプリが前に出たあと
+  （`document.visibilityState !== 'visible'`）は撃たない。
+- **2 本目の App Link パス `/discord/callback/return` を足した。** 上の規則 1 の裏返しで、
+  **新しいトップレベル遷移**なら渡してくれる Chromium ビルドがある。マニフェストの
+  `autoVerify` フィルタに追加し、`isDiscordCallbackUri` も受け付ける。検証はホスト単位
+  なので、パスを足しても検証のやり直しは要らない。
+- **`browser_fallback_url` は着地ページ自身ではなく `/discord/callback/return` に向けた。**
+  自分自身に戻すと、また自動遷移して、また失敗して、と使い切ったコードを
+  アドレスバーに載せたままループする。`/return` は自動遷移を**一切しない**行き止まり。
+- 「戻らない場合はこちら」の下には `https のリンクで開く`（＝`/return`）と
+  `wakeorpay:// で開く` も残してある。
+
+**ユーザーがやること**：認証のあと戻ってこなかったら、
+ブラウザに出ている「**Wake or Pay を開く**」を押す。それだけ。
+
+エミュレータでの確認（`emulator-5554`）:
+
+```bash
+adb shell pm verify-app-links --re-verify com.wakeorpay.wake_or_pay
+adb shell pm get-app-links com.wakeorpay.wake_or_pay          # → verified
+adb shell pm query-activities -a android.intent.action.VIEW \
+  -c android.intent.category.BROWSABLE \
+  -d 'https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback/return?code=x&state=y'
+# ボタンのタップと同じもの（am は intent: URI を Intent.parseUri で読む）
+adb shell am start 'intent://discord/callback?code=…&state=…#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;end'
+```
+
+`state` は**デバッグビルドだけ** logcat に出る（`wop-discord-state=…`）。
+Chrome の URL バーは認可 URL を途中で切ってしまい、末尾の `state` が読めないため。
+`state` は CSRF 用のノンスであってクレデンシャルではない（**コードはどこにも出さない**）。
 
 ### 新しいフロー
 
@@ -783,8 +846,10 @@ https にすると「ブラウザに着地したあと、どうやってアプ�
   `/oauth2/authorize` も `discord:` スキームも登録していないので、狙う先が存在しない）。
   開けなければ「ブラウザが見つかりませんでした」と出る。
 - 戻り先は **`app_links`**。受けるのは **MainActivity ただ 1 つ**（`launchMode="singleTask"`）で、
-  intent-filter は 2 本：`https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback`
-  （`autoVerify="true"`。これが本命）と、`wakeorpay` スキーム（Worker のページからの跳ね返し用）。
+  intent-filter は 2 本：https の `autoVerify="true"`（ホスト
+  `wake-or-pay-discord.wakeorpay.workers.dev`、パスは `/discord/callback` と
+  `/discord/callback/return` の 2 本ちょうど。これが本命）と、`wakeorpay` スキーム
+  （着地ページの `intent://` ボタンが解決した先）。
   **どちらが来ても同じ 1 本の解釈器**が読む（`isDiscordCallbackUri` / `parseDiscordCallback`）。
   `flutter_web_auth_2` は依存から**外した**。
 - 同時に走らせられるフローは **1 つだけ**。`state` で照合し、**5 分**で時間切れになる。
