@@ -22,6 +22,7 @@ import 'package:wake_or_pay/services/phone_caller.dart';
 import 'package:wake_or_pay/services/route_permissions.dart';
 import 'package:wake_or_pay/services/secret_store.dart';
 import 'package:wake_or_pay/services/sms_sender.dart';
+import 'package:wake_or_pay/services/snooze_service.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
 
 /// Overrides backing the app with an in-memory database and in-memory
@@ -95,6 +96,11 @@ Override fakeAlarmServiceOverride() =>
 /// already a [RecordingNotifier]; this just reads it back with a type.
 RecordingNotifier notifierOf(ProviderContainer container) =>
     container.read(appNotifierProvider) as RecordingNotifier;
+
+/// The スヌーズ中 foreground service a test's container drove. The provider's
+/// default is already a [RecordingSnoozeService]; this reads it back typed.
+RecordingSnoozeService snoozeServiceOf(ProviderContainer container) =>
+    container.read(snoozeForegroundServiceProvider) as RecordingSnoozeService;
 
 /// A recorder that never touches a microphone: it remembers the path it was
 /// asked to write, hands the same one back from [stop], and lets the test push

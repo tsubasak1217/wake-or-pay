@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/router.dart';
 import 'app/theme_controller.dart';
 import 'data/providers.dart';
+import 'domain/loss_calculator.dart';
+import 'domain/snooze_rules.dart';
 import 'services/alarm_service.dart';
 import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
@@ -16,18 +18,34 @@ import 'services/phone_caller.dart';
 import 'services/route_permissions.dart';
 import 'services/secret_store.dart';
 import 'services/sms_sender.dart';
+import 'services/snooze_service.dart';
 import 'services/speaker.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
 
-  final container = ProviderContainer(
+  late final ProviderContainer container;
+  container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
       // Only the real app reaches the notification plugin; every test keeps
       // the recording default.
       localAppNotifierOverride(),
+      // The スヌーズ中 foreground service, whose notification body is the live
+      // loss computed here in Dart (spec 12.1). Returns null once the snooze is
+      // over, which is the signal for the service to stop.
+      platformSnoozeServiceOverride((sessionId) async {
+        final session = await container
+            .read(alarmSessionRepositoryProvider)
+            .getById(sessionId);
+        final now = DateTime.now();
+        if (session == null || !isSnoozePending(session, now)) return null;
+        return snoozeNotificationText(
+          session.currentRingAt,
+          loss: lossAt(now, session),
+        ).body;
+      }),
       ttsSpeakerOverride(),
       // The SMTP app password. Only the real app reaches the platform
       // keystore; every test keeps the in-memory store.

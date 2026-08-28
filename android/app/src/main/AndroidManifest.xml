@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!-- 仕様 12.1：スヌーズ中だけ動く前景サービス（SnoozeService）。ロック解除を
+         検知して常駐通知をヘッドアップで再掲し、解除ボタンを載せる。API 34+ は
+         種別の宣言が必須で、この用途に合う既定の種別が無いため specialUse。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
@@ -142,6 +146,18 @@
                       android:path="/discord/callback/return" />
             </intent-filter>
         </activity>
+
+        <!-- 仕様 12.1：スヌーズ中の常駐通知（解除アクション付き）を持つ前景サービス。
+             ロック解除の検知は onCreate 内で registerReceiver する（マニフェスト
+             宣言の USER_PRESENT は Android 8+ で発火しないため）。 -->
+        <service
+            android:name=".SnoozeService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="snooze_dismiss" />
+        </service>
 
         <!-- Warns the user when the app is killed while alarms are scheduled. -->
         <service android:name="com.gdelataillade.alarm.services.NotificationOnKillService" />

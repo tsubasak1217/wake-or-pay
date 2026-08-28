@@ -136,9 +136,16 @@ void main() {
     test('the re-ring time reads as a clock, zero padded', () {
       expect(snoozeUntilLabel(DateTime(2026, 8, 27, 7, 5)), 'スヌーズ中 7:05');
       expect(snoozeUntilLabel(DateTime(2026, 8, 27, 23, 0)), 'スヌーズ中 23:00');
+      // No loss: the notification names the re-ring and the way out, and says
+      // nothing about money that is not moving.
       expect(snoozeNotificationText(DateTime(2026, 8, 27, 7, 5)), (
         title: 'スヌーズ中',
-        body: '7:05 に再鳴動',
+        body: '7:05 に再鳴動します。起きたら『解除』を押してください。',
+      ));
+      // With loss it puts the running meter in the middle, spec 12.1.
+      expect(snoozeNotificationText(DateTime(2026, 8, 27, 7, 5), loss: 300), (
+        title: 'スヌーズ中',
+        body: '7:05 に再鳴動します。これまでの損失 300 コイン。起きたら『解除』を押してください。',
       ));
     });
 

@@ -6,17 +6,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../app/profile_controller.dart';
 import '../app/router.dart';
 import '../data/providers.dart';
+import '../domain/loss_calculator.dart';
 import '../domain/models.dart' as domain;
 import '../domain/schedule.dart';
 import '../domain/snooze_rules.dart';
 import 'alarm_settings_builder.dart';
-import 'app_notifier.dart';
 import 'background_dispatch.dart';
 import 'oversleep_notifier.dart';
 import 'phone_caller.dart';
 import 'session_service.dart';
+import 'snooze_service.dart';
 
 final sessionServiceProvider = Provider(
   (ref) => SessionService(
@@ -38,6 +40,7 @@ class AlarmService {
   final Ref _ref;
   StreamSubscription<pkg.AlarmSet>? _ringingSub;
   StreamSubscription<bool>? _callSub;
+  StreamSubscription<String>? _dismissSub;
   final _handled = <String>{};
 
   /// The alarms silenced for the duration of an oversleep call, waiting to be
@@ -51,12 +54,41 @@ class AlarmService {
     _ref.onDispose(() => _ringingSub?.cancel());
     watchCalls();
 
+    // 解除 from the スヌーズ中 notification, when the app was already alive.
+    _dismissSub = _ref
+        .read(snoozeForegroundServiceProvider)
+        .dismissRequests
+        .listen((sessionId) => unawaited(_onSnoozeDismissRequested(sessionId)));
+    _ref.onDispose(() => _dismissSub?.cancel());
+
     await requestPermissions();
     // Recovery first: it settles sessions the safety valve wrote off and
     // switches their one-shot alarms back off, which the reschedule pass would
     // otherwise arm again for tomorrow.
     await resumePendingSession();
     await rescheduleAll();
+    // Last: a cold start caused by tapping 解除 on the スヌーズ中 notification.
+    await _consumeLaunchDismiss();
+  }
+
+  /// The user pressed 解除 on the スヌーズ中 notification while the app was alive.
+  Future<void> _onSnoozeDismissRequested(String sessionId) async {
+    await dismissSnoozed(sessionId);
+    // The settlement is done; the routing is a courtesy that must not be able
+    // to undo it, so it comes after and is never awaited against it.
+    _ref.invalidate(profileProvider);
+    _ref.read(appRouterProvider).go(AppRoute.result(sessionId));
+  }
+
+  /// The app was cold-launched by 解除: settle, then land on the result.
+  Future<void> _consumeLaunchDismiss() async {
+    final sessionId = await _ref
+        .read(snoozeForegroundServiceProvider)
+        .consumeLaunchDismiss();
+    if (sessionId == null) return;
+    await dismissSnoozed(sessionId);
+    _ref.invalidate(profileProvider);
+    _ref.read(appRouterProvider).go(AppRoute.result(sessionId));
   }
 
   /// Silences the ring while an oversleep call is up, and brings it back when
@@ -219,14 +251,16 @@ class AlarmService {
     _handled.remove(alarm.id);
     await setRingAt(alarm, snoozed.currentRingAt);
 
-    final text = snoozeNotificationText(snoozed.currentRingAt);
+    // The ongoing, actionable 「スヌーズ中」 notification, owned by the foreground
+    // service (spec 12.1). Its body carries the loss so far so a glance reveals
+    // the meter running; the service refreshes it while the snooze lasts.
+    final text = snoozeNotificationText(
+      snoozed.currentRingAt,
+      loss: lossAt(at, snoozed),
+    );
     await _ref
-        .read(appNotifierProvider)
-        .show(
-          id: snoozeNotificationId(platformAlarmId(alarm.id)),
-          title: text.title,
-          body: text.body,
-        );
+        .read(snoozeForegroundServiceProvider)
+        .start(sessionId: snoozed.id, title: text.title, body: text.body);
 
     _ref.read(appRouterProvider).go(AppRoute.home);
     return snoozed;
@@ -270,7 +304,13 @@ class AlarmService {
     final alarm = await _ref
         .read(alarmRepositoryProvider)
         .getById(session.alarmId);
-    if (alarm != null) await _afterRing(alarm);
+    if (alarm != null) {
+      await _afterRing(alarm);
+    } else {
+      // The alarm was deleted out from under the snooze; _afterRing cannot run,
+      // but the notification it would have taken down still has to go.
+      await _ref.read(snoozeForegroundServiceProvider).stop();
+    }
 
     _ref.invalidate(sessionByIdProvider(sessionId));
     return settled;
@@ -285,10 +325,9 @@ class AlarmService {
   Future<void> _afterRing(domain.Alarm alarm) async {
     await cancel(alarm);
     _handled.remove(alarm.id);
-    // Whatever the morning cost, the "snoozing until 7:05" line is now a lie.
-    await _ref
-        .read(appNotifierProvider)
-        .cancel(snoozeNotificationId(platformAlarmId(alarm.id)));
+    // Whatever the morning cost, the "snoozing until 7:05" line is now a lie —
+    // stop the foreground service that was holding it.
+    await _ref.read(snoozeForegroundServiceProvider).stop();
 
     if (alarm.repeatDays.isEmpty) {
       // A one-shot has done its job. Switching it off is also what stops the
@@ -318,6 +357,11 @@ class AlarmService {
     // ringing session is not necessarily this alarm's.
     final sessions = _ref.read(alarmSessionRepositoryProvider);
     final existing = await sessions.getRingingForAlarm(alarmId);
+    // A re-ring or a relaunch mid-ring: the snooze is over, so the スヌーズ中
+    // foreground service has nothing left to hold.
+    if (existing != null) {
+      await _ref.read(snoozeForegroundServiceProvider).stop();
+    }
     // firedAt is the *scheduled* time, not now: ignoring the notification for
     // ten minutes must already have cost ten minutes' worth.
     final session =
@@ -382,14 +426,13 @@ class AlarmService {
             session: session,
             now: now ?? DateTime.now(),
           );
-      final text = snoozeNotificationText(session.currentRingAt);
+      final text = snoozeNotificationText(
+        session.currentRingAt,
+        loss: lossAt(now ?? DateTime.now(), session),
+      );
       await _ref
-          .read(appNotifierProvider)
-          .show(
-            id: snoozeNotificationId(platformAlarmId(alarm.id)),
-            title: text.title,
-            body: text.body,
-          );
+          .read(snoozeForegroundServiceProvider)
+          .start(sessionId: session.id, title: text.title, body: text.body);
     }
 
     if (outcome.resumed != null) {

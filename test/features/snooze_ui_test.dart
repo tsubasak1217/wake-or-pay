@@ -122,9 +122,9 @@ void main() {
         reason: 'Home',
       );
 
-      final posted = notifierOf(r.container).posted.single;
-      expect(posted.title, 'スヌーズ中');
-      expect(posted.body, contains('に再鳴動'));
+      final started = snoozeServiceOf(r.container).started.single;
+      expect(started.title, 'スヌーズ中');
+      expect(started.body, contains('に再鳴動'));
 
       final service =
           r.container.read(alarmServiceProvider) as FakeAlarmService;

@@ -50,9 +50,25 @@ String snoozeRingAtLabel(DateTime ringAt) =>
 String snoozeUntilLabel(DateTime ringAt) =>
     'スヌーズ中 ${snoozeRingAtLabel(ringAt)}';
 
-/// The notification posted when the button is pressed, per spec 4. Pure.
-({String title, String body}) snoozeNotificationText(DateTime ringAt) =>
-    (title: 'スヌーズ中', body: '${snoozeRingAtLabel(ringAt)} に再鳴動');
+/// The ongoing 「スヌーズ中」 notification, spec 12.1. Pure.
+///
+/// Body: the re-ring time, the loss so far when there is any, and the prompt to
+/// press 解除. The loss line is dropped at 0 — a plain alarm, or a reset-clock
+/// pledge still inside its grace — because 「これまでの損失 0 コイン」 on a
+/// notification is the same kind of noise 「1分ごとに 0 コイン」 is on the ring
+/// screen. A glance at the body is meant to reveal money is moving; when none
+/// is, it should say so by staying quiet about it.
+({String title, String body}) snoozeNotificationText(
+  DateTime ringAt, {
+  int loss = 0,
+}) => (
+  title: 'スヌーズ中',
+  body: [
+    '${snoozeRingAtLabel(ringAt)} に再鳴動します。',
+    if (loss > 0) 'これまでの損失 $loss コイン。',
+    '起きたら『解除』を押してください。',
+  ].join(''),
+);
 
 /// What the snooze button says. Pure.
 ///

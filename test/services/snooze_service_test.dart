@@ -60,9 +60,15 @@ void main() {
       expect(r.service.cancelled, ['a1'], reason: 'this ring is silenced');
       expect(r.service.rearmed, [(alarmId: 'a1', ringAt: at(minutes: 7))]);
 
-      final posted = notifierOf(r.container).posted.single;
-      expect(posted.title, 'スヌーズ中');
-      expect(posted.body, '7:07 に再鳴動');
+      // The スヌーズ中 foreground service is started, not a plain notification —
+      // its body carries the re-ring time and the loss so far (250, from two
+      // billed minutes plus one press).
+      final started = snoozeServiceOf(r.container).started.single;
+      expect(started.sessionId, r.id);
+      expect(started.title, 'スヌーズ中');
+      expect(started.body, contains('7:07 に再鳴動します'));
+      expect(started.body, contains('これまでの損失 250 コイン'));
+      expect(started.body, contains('起きたら『解除』を押してください'));
     });
 
     test('the penalty is on the screen the moment it is pressed', () async {
@@ -80,7 +86,7 @@ void main() {
       expect(await r.service.snooze(r.id, now: at(minutes: 2)), isNull);
       expect((await stored(r.container, r.id))!.snoozes, isEmpty);
       expect(r.service.rearmed, isEmpty);
-      expect(notifierOf(r.container).posted, isEmpty);
+      expect(snoozeServiceOf(r.container).started, isEmpty);
     });
 
     test('the last press is the last: maxCount is a hard stop', () async {
@@ -138,7 +144,7 @@ void main() {
       final r = await ringing(snoozable);
       await r.service.snooze(r.id, now: at(minutes: 2));
       r.service.rearmed.clear();
-      notifierOf(r.container).posted.clear();
+      snoozeServiceOf(r.container).started.clear();
 
       final outcome = await r.container
           .read(sessionServiceProvider)
@@ -150,7 +156,10 @@ void main() {
 
       await r.service.resumePendingSession(now: at(minutes: 4));
       expect(r.service.rearmed, [(alarmId: 'a1', ringAt: at(minutes: 7))]);
-      expect(notifierOf(r.container).posted.single.body, '7:07 に再鳴動');
+      expect(
+        snoozeServiceOf(r.container).started.single.body,
+        contains('7:07 に再鳴動します'),
+      );
       expect((await stored(r.container, r.id))!.isRinging, isTrue);
     });
 
@@ -217,7 +226,7 @@ void main() {
       expect(settled.loss, 750, reason: '7 billed minutes plus one press');
 
       await r.service.stopRinging(snoozable);
-      expect(notifierOf(r.container).cancelled, isNotEmpty);
+      expect(snoozeServiceOf(r.container).stops, greaterThan(0));
       expect(
         await r.container.read(walletRepositoryProvider).read(),
         const Wallet(coins: 5000 - 750),
@@ -250,9 +259,9 @@ void main() {
         reason: 'the background contact trigger is dropped',
       );
       expect(
-        notifierOf(r.container).cancelled,
-        isNotEmpty,
-        reason: 'the スヌーズ中 notification is removed',
+        snoozeServiceOf(r.container).stops,
+        greaterThan(0),
+        reason: 'the スヌーズ中 foreground service is stopped',
       );
 
       expect(
