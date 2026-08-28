@@ -72,12 +72,22 @@ Deployed wake-or-pay-discord triggers (1.23 sec)
   https://wake-or-pay-discord.<あなたのサブドメイン>.workers.dev
 ```
 
-5. **その URL をアプリに貼る。**
-   プロフィール（ヘッダーのアイコン）→ Discord の島 →「連携サーバーURL」に
-   `https://wake-or-pay-discord.<あなたのサブドメイン>.workers.dev` を入れて閉じます。
-   末尾の `/discord/exchange` は**付けません**（アプリが付けます）。
+5. **その URL を `kDiscordExchangeEndpoint` に書いてビルドし直す。**
+   `lib/services/discord_exchange.dart` の `kDiscordExchangeEndpoint` に
+   `https://wake-or-pay-discord.<あなたのサブドメイン>.workers.dev` を入れて、
+   アプリをビルドし直します。末尾の `/discord/exchange` は**付けません**（アプリが付けます）。
 
-再ビルドは要りません。URL は端末に保存され、いつでも消したり差し替えたりできます。
+   このリポジトリのビルドはすでにデプロイ済みの URL を指しています：
+
+   ```dart
+   const kDiscordExchangeEndpoint =
+       'https://wake-or-pay-discord.wakeorpay.workers.dev';
+   ```
+
+   プロフィールに URL を貼る場所はもうありません（`kDiscordExchangeEndpoint` が唯一の
+   設定箇所です）。自分の Worker を建てたら、必ずこの定数を自分の URL に書き換えて
+   **ビルドし直してください**。他人の Worker を指したままのビルドは、その人の
+   クライアントシークレットを自分のユーザーの認可に使うことになります。
 
 ### シークレットの取り方
 
