@@ -76,8 +76,14 @@ const kDiscordIdentifyScopes = ['identify'];
 
 /// 「チャンネルを連携」. `webhook.incoming` is what makes Discord show the
 /// channel picker and hand a ready-made webhook back with the token; `identify`
-/// rides along only so the Worker can name the server the webhook landed in.
-const kDiscordWebhookScopes = ['webhook.incoming', 'identify'];
+/// rides along so the Worker knows whose token it is. `guilds` is the one that
+/// actually earns its place: it authorises `GET /users/@me/guilds`, and that
+/// call is the only way the Worker turns the webhook's `guild_id` into the
+/// server's human name. Without it that call is 401, `guild_name` comes back
+/// null, and the webhook row falls back to the webhook's own name — so
+/// server-name auto-fill never happens in production until `guilds` is asked
+/// for here.
+const kDiscordWebhookScopes = ['webhook.incoming', 'identify', 'guilds'];
 
 /// Builds the URL the browser opens. Pure, so the exact string is testable
 /// without a browser, a plugin, or a network.

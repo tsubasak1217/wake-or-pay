@@ -625,6 +625,10 @@ Discord 共有先設定の下には**名前の付いたボタンが 1 つ**だ�
 4. 選んで「認証」を押すと**自動でアプリに戻り**、**共有先が追加され、このアラームで ON になっている**
 
 Discord 側で Webhook を作る作業はまったく無い（Discord が代わりに作ってくれる）。
+**この連携の同意画面では、チャンネルの選択に加えて「参加中のサーバーを確認」（`guilds`）
+の許可も求められる。** これは連携サーバーが `GET /users/@me/guilds` で Webhook の
+`guild_id` を**サーバー名**に変えるためで、**一覧の表示名が既定でサーバー名になるのは
+この許可があるからこそ**（許可が無いと 401 で名前が取れず、Webhook 自身の名前に落ちる）。
 表示名は**サーバー名**が入る（サーバー名も取れなければ Webhook 自身の名前「Wake or Pay」、
 それも無ければ「Discord 連携先」——`webhookDefaultName` の優先順）。**チャンネル名は
 ユーザー OAuth では取れない**ので、同じサーバーの 2 チャンネルは同じ表示名で並ぶ。
@@ -653,7 +657,7 @@ Discord には 2 か所つながる。**どちらも同じ認可コードフロ�
 | 何をするか | 使う流れ | 連携サーバーが返すもの |
 |---|---|---|
 | **Discord で連携**（プロフィール）＝ ユーザーID を自動で入れる | 認可コードフロー（`response_type=code`・`scope=identify`） | `{"user":{"id","username","global_name","avatar"}}` |
-| **チャンネルを連携**（Discord 共有先設定）＝ 投稿先を Discord に選ばせる | 認可コードフロー（`response_type=code`・`scope=webhook.incoming identify`） | `{"webhook":{…},"guild_name":…}` |
+| **チャンネルを連携**（Discord 共有先設定）＝ 投稿先を Discord に選ばせる | 認可コードフロー（`response_type=code`・`scope=webhook.incoming identify guilds`） | `{"webhook":{…},"guild_name":…}` |
 
 **段階Gで「Discord で連携」も暗黙フローをやめた。** 理由は下の「段階Gで直したこと」の 1 番——
 リダイレクト先が https になった以上、暗黙フローの `#access_token=…`（フラグメント）は

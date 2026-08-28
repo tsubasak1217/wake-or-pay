@@ -61,11 +61,37 @@ void main() {
         scopes: kDiscordWebhookScopes,
         state: 's',
       );
+      // The webhook flow now also asks for `guilds`: without it the Worker's
+      // `GET /users/@me/guilds` is 401 and the server name never resolves.
       expect(
         Uri.parse(url).queryParameters['scope'],
-        'webhook.incoming identify',
+        'webhook.incoming identify guilds',
       );
-      expect(url, contains('scope=webhook.incoming%20identify'));
+      // Spaces are `%20` here, not `+` — this builder uses Uri.encodeComponent
+      // on purpose so Discord's scope parser splits on the space.
+      expect(url, contains('scope=webhook.incoming%20identify%20guilds'));
+    });
+
+    test('the webhook flow asks for guilds, the identify flow does not', () {
+      final webhookScope = Uri.parse(
+        buildDiscordAuthorizeUrl(
+          responseType: 'code',
+          scopes: kDiscordWebhookScopes,
+          state: 's',
+        ),
+      ).queryParameters['scope']!.split(' ');
+      final identifyScope = Uri.parse(
+        buildDiscordAuthorizeUrl(
+          responseType: 'code',
+          scopes: kDiscordIdentifyScopes,
+          state: 's',
+        ),
+      ).queryParameters['scope']!.split(' ');
+
+      // `guilds` is what lets the Worker name the server for 「チャンネルを連携」.
+      expect(webhookScope, contains('guilds'));
+      // 「Discord で連携」 only reads /users/@me, so it must not ask for guilds.
+      expect(identifyScope, isNot(contains('guilds')));
     });
   });
 
