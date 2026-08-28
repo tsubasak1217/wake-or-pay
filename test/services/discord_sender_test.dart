@@ -109,6 +109,58 @@ void main() {
     });
   });
 
+  group('HttpDiscordWebhookDeleter', () {
+    test('a 204 is a delete, against the bare webhook URL', () async {
+      final http = FakeHttpClient(deleteStatus: 204);
+      final result = await HttpDiscordWebhookDeleter(http).deleteRemote(url);
+
+      expect(result.outcome, DiscordDeleteOutcome.deleted);
+      expect(result.removeLocalSilently, isTrue);
+      expect(http.deleted.single, url);
+    });
+
+    test('a /messages tail is stripped before the DELETE goes out', () async {
+      final http = FakeHttpClient(deleteStatus: 204);
+      await HttpDiscordWebhookDeleter(http).deleteRemote('$url/messages');
+      expect(http.deleted.single, url);
+    });
+
+    for (final code in const [401, 403, 404]) {
+      test('a $code is "already gone" — still remove locally', () async {
+        final http = FakeHttpClient(deleteStatus: code);
+        final result = await HttpDiscordWebhookDeleter(http).deleteRemote(url);
+
+        expect(result.outcome, DiscordDeleteOutcome.alreadyGoneOrInvalid);
+        expect(result.statusCode, code);
+        expect(
+          result.removeLocalSilently,
+          isTrue,
+          reason: 'the remote webhook is already absent; the two are in sync',
+        );
+      });
+    }
+
+    test('any other status is an httpError that names itself', () async {
+      final http = FakeHttpClient(deleteStatus: 500);
+      final result = await HttpDiscordWebhookDeleter(http).deleteRemote(url);
+
+      expect(result.outcome, DiscordDeleteOutcome.httpError);
+      expect(result.statusCode, 500);
+      expect(result.removeLocalSilently, isFalse);
+      expect(result.reason, 'HTTP 500');
+    });
+
+    test('being offline is a networkError, never a throw', () async {
+      final http = FakeHttpClient(throws: true);
+      final result = await HttpDiscordWebhookDeleter(http).deleteRemote(url);
+
+      expect(result.outcome, DiscordDeleteOutcome.networkError);
+      expect(result.statusCode, isNull);
+      expect(result.removeLocalSilently, isFalse);
+      expect(result.reason, '通信エラー');
+    });
+  });
+
   group('DiscordSender.fetchWebhookName', () {
     test('the webhook\'s own name, when it can be had', () async {
       final http = FakeHttpClient(responses: {url: '{"name":"wake-up-bot"}'});

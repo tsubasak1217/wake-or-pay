@@ -191,6 +191,7 @@ class FakeHttpClient extends http.BaseClient {
     this.throws = false,
     this.postStatus = 204,
     this.postBody,
+    this.deleteStatus = 204,
   });
 
   /// URL → the body to answer a **GET** with. A URL that is not in here
@@ -208,7 +209,15 @@ class FakeHttpClient extends http.BaseClient {
   /// Discord's webhook endpoint sends; the 連携サーバー answers with JSON.
   final String? postBody;
 
+  /// What a **DELETE** answers with. Discord's webhook delete is a 204 with no
+  /// body; a revoked webhook is 401 / 403 / 404, and a server fault is a 5xx.
+  final int deleteStatus;
+
   final requested = <String>[];
+
+  /// Every DELETE, by URL, in order — for asserting the remote webhook delete
+  /// went out against the right URL.
+  final deleted = <String>[];
 
   /// The headers of every request, in the same order as [requested]. The
   /// `Authorization: Bearer …` on `/users/@me` is only checkable here.
@@ -223,6 +232,11 @@ class FakeHttpClient extends http.BaseClient {
     final url = request.url.toString();
     requested.add(url);
     headers.add(Map.of(request.headers));
+    if (request.method == 'DELETE') {
+      deleted.add(url);
+      if (throws) throw const SocketException('offline');
+      return http.StreamedResponse(const Stream<List<int>>.empty(), deleteStatus);
+    }
     if (request.method == 'POST') {
       posted.add(
         FakePost(

@@ -346,26 +346,118 @@ void main() {
     );
   });
 
-  testWidgets('a long press deletes a 共有先 after asking', (tester) async {
-    final container = await openNewAlarm(tester);
+  testWidgets(
+    'a 204 delete removes the row and DELETEs the remote webhook',
+    (tester) async {
+      // Discord answers a webhook delete with 204: both the remote webhook and
+      // the local row go.
+      final http = FakeHttpClient(deleteStatus: 204);
+      final container = await openNewAlarm(tester, http: http);
 
-    await inWebhookList(tester, () async {
-      await tester.longPress(find.byKey(const ValueKey('webhook-w1')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('削除'));
-      await tester.pumpAndSettle();
-      expect(find.text('みんなのサーバー/#一般 を削除しますか'), findsOneWidget);
+      await inWebhookList(tester, () async {
+        await tester.longPress(find.byKey(const ValueKey('webhook-w1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('削除'));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('webhookDeleteConfirm')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('webhook-w1')), findsNothing);
-      expect(find.byKey(const ValueKey('webhook-w2')), findsOneWidget);
-    });
+        // The confirm dialog now says both are removed.
+        expect(find.text('みんなのサーバー/#一般 を削除しますか？'), findsOneWidget);
+        expect(
+          find.text('Discord 上の Webhook も削除され、この連携先には投稿できなくなります。'),
+          findsOneWidget,
+        );
 
-    expect(
-      (await container.read(discordWebhookRepositoryProvider).getAll()).single
-          .id,
-      'w2',
-    );
-  });
+        await tester.tap(find.byKey(const ValueKey('webhookDeleteConfirm')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('webhook-w1')), findsNothing);
+        expect(find.byKey(const ValueKey('webhook-w2')), findsOneWidget);
+        expect(find.text('削除しました'), findsOneWidget);
+      });
+
+      expect(
+        http.deleted.single,
+        'https://discord.com/api/webhooks/1/aaa',
+        reason: 'the DELETE went out against the long-pressed row, bare URL',
+      );
+      expect(
+        (await container.read(discordWebhookRepositoryProvider).getAll()).single
+            .id,
+        'w2',
+      );
+    },
+  );
+
+  testWidgets(
+    'a network error offers 一覧から消す (local only) — which removes the row',
+    (tester) async {
+      // The DELETE never reaches Discord. The row must still be removable, but
+      // only after the user is told the remote webhook may survive.
+      final http = FakeHttpClient(throws: true);
+      final container = await openNewAlarm(tester, http: http);
+
+      await inWebhookList(tester, () async {
+        await tester.longPress(find.byKey(const ValueKey('webhook-w1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('削除'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('webhookDeleteConfirm')));
+        await tester.pumpAndSettle();
+
+        // The second dialog: the remote delete failed, so it asks.
+        expect(
+          find.textContaining('Discord 上の Webhook を削除できませんでした（通信エラー）'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('webhookDeleteLocalOnly')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('webhook-w1')), findsNothing);
+        expect(find.byKey(const ValueKey('webhook-w2')), findsOneWidget);
+        expect(find.text('一覧から消しました'), findsOneWidget);
+      });
+
+      expect(
+        (await container.read(discordWebhookRepositoryProvider).getAll()).single
+            .id,
+        'w2',
+      );
+    },
+  );
+
+  testWidgets(
+    'a network error with 中止 keeps everything — remote and local',
+    (tester) async {
+      final http = FakeHttpClient(throws: true);
+      final container = await openNewAlarm(tester, http: http);
+
+      await inWebhookList(tester, () async {
+        await tester.longPress(find.byKey(const ValueKey('webhook-w1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('削除'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('webhookDeleteConfirm')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Discord 上の Webhook を削除できませんでした（通信エラー）'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('中止'));
+        await tester.pumpAndSettle();
+
+        // Nothing was removed: both rows are still there.
+        expect(find.byKey(const ValueKey('webhook-w1')), findsOneWidget);
+        expect(find.byKey(const ValueKey('webhook-w2')), findsOneWidget);
+      });
+
+      expect(
+        await container.read(discordWebhookRepositoryProvider).getAll(),
+        hasLength(2),
+        reason: '中止 keeps the list untouched when Discord is unreachable',
+      );
+    },
+  );
 }

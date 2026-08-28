@@ -123,6 +123,20 @@ String normalizeDiscordWebhookUrl(String raw) {
   return bare.endsWith('/') ? bare.substring(0, bare.length - 1) : bare;
 }
 
+/// The bare webhook URL to send a `DELETE` to, per Discord's docs. Pure.
+///
+/// `DELETE https://discord.com/api/webhooks/{id}/{token}` — the stored URL with
+/// **no** `/messages` suffix and no query — removes the webhook itself (204, no
+/// auth needed: the token in the path is the credential). A URL that arrived
+/// with a `/messages` (or `/messages/{id}`) tail is the *edit-a-message*
+/// endpoint, not the webhook; delete strips it back to the webhook base.
+String discordWebhookDeleteUrl(String url) {
+  var base = normalizeDiscordWebhookUrl(url);
+  final at = base.indexOf('/messages');
+  if (at >= 0) base = base.substring(0, at);
+  return base;
+}
+
 /// Whether [raw] is a Discord webhook URL. Pure.
 ///
 /// Permissive about the token, because Discord has changed its shape before

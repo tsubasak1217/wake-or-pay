@@ -146,4 +146,32 @@ void main() {
       expect(webhookDefaultName('   ', '', '  '), 'Discord 連携先');
     });
   });
+
+  group('discordWebhookDeleteUrl', () {
+    test('a bare webhook URL is left as the DELETE target', () {
+      expect(discordWebhookDeleteUrl(good), good);
+    });
+
+    test('a trailing /messages is stripped back to the webhook base', () {
+      expect(discordWebhookDeleteUrl('$good/messages'), good);
+    });
+
+    test('a /messages/{id} edit URL is stripped back too', () {
+      expect(discordWebhookDeleteUrl('$good/messages/998877'), good);
+    });
+
+    test('query, fragment and trailing slash come off (as the sender does)', () {
+      expect(discordWebhookDeleteUrl('$good?wait=true'), good);
+      expect(discordWebhookDeleteUrl('$good/'), good);
+      expect(discordWebhookDeleteUrl('  $good/messages?wait=true  '), good);
+    });
+
+    test('the token is never confused for a /messages tail', () {
+      // The token is a single path segment, so "/messages" only ever matches a
+      // real suffix — never something inside the credential.
+      const withMessagesInToken =
+          'https://discord.com/api/webhooks/1/abcmessagesXYZ';
+      expect(discordWebhookDeleteUrl(withMessagesInToken), withMessagesInToken);
+    });
+  });
 }

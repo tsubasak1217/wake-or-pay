@@ -357,33 +357,113 @@ class _RenameDialogState extends State<_RenameDialog> {
   );
 }
 
+/// Deleting a 共有先 now deletes the **remote** Discord webhook too, not just
+/// the local row — the two are kept in sync by default. The confirm dialog says
+/// so, and it does the DELETE *before* touching the local list:
+///
+/// - 204 / already-gone → drop the local row, 「削除しました」.
+/// - a real HTTP error or the network being down → a second dialog. The remote
+///   webhook may still exist, so the user chooses 「一覧から消す」 (local only) or
+///   「中止」 (keep everything). Never trap them with an undeletable row when
+///   Discord is simply unreachable — but never silently orphan the remote one
+///   either.
 Future<void> _confirmDelete(
   BuildContext context,
   WidgetRef ref,
   DiscordWebhook webhook,
 ) async {
-  final yes = await showDialog<bool>(
+  final result = await showDialog<DiscordDeleteResult>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _DeleteDialog(webhook: webhook),
+  );
+  if (result == null || !context.mounted) return;
+
+  final repository = ref.read(discordWebhookRepositoryProvider);
+  final messenger = ScaffoldMessenger.of(context);
+
+  if (result.removeLocalSilently) {
+    await repository.delete(webhook.id);
+    messenger.showSnackBar(const SnackBar(content: Text('削除しました')));
+    return;
+  }
+
+  // The remote delete did not go through, and the webhook may still be live in
+  // Discord. Ask rather than decide: dropping the row silently would orphan it,
+  // keeping the row silently would trap the user behind a network blip.
+  final removeLocal = await showDialog<bool>(
     context: context,
     builder: (dialog) => AlertDialog(
-      title: Text('${webhook.displayName} を削除しますか'),
-      content: const Text(
-        '共有先の一覧からいなくなります。この共有先を選んでいるアラームは、'
-        'そのぶんだけ投稿先が減ります（他の共有先や連絡先はそのままです）。',
+      title: const Text('Discord 上の Webhook を削除できませんでした'),
+      content: Text(
+        'Discord 上の Webhook を削除できませんでした（${result.reason}）。'
+        'WoP の一覧からだけ消しますか？ それとも中止しますか？\n'
+        '（一覧から消しても、Discord 側の Webhook は残っているかもしれません。）',
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialog).pop(false),
-          child: const Text('やめる'),
+          child: const Text('中止'),
         ),
         FilledButton(
-          key: const ValueKey('webhookDeleteConfirm'),
+          key: const ValueKey('webhookDeleteLocalOnly'),
           onPressed: () => Navigator.of(dialog).pop(true),
-          child: const Text('削除'),
+          child: const Text('一覧から消す'),
         ),
       ],
     ),
   );
-  if (yes == true) {
-    await ref.read(discordWebhookRepositoryProvider).delete(webhook.id);
+  if (removeLocal == true) {
+    await repository.delete(webhook.id);
+    messenger.showSnackBar(const SnackBar(content: Text('一覧から消しました')));
   }
+}
+
+/// The delete-confirm dialog. Stateful because it runs the remote DELETE itself
+/// and shows a spinner while it is in flight — a network call on a button press
+/// that the user must not be able to fire twice.
+class _DeleteDialog extends ConsumerStatefulWidget {
+  const _DeleteDialog({required this.webhook});
+
+  final DiscordWebhook webhook;
+
+  @override
+  ConsumerState<_DeleteDialog> createState() => _DeleteDialogState();
+}
+
+class _DeleteDialogState extends ConsumerState<_DeleteDialog> {
+  bool _deleting = false;
+
+  Future<void> _delete() async {
+    setState(() => _deleting = true);
+    final result = await ref
+        .read(discordWebhookDeleterProvider)
+        .deleteRemote(widget.webhook.url);
+    if (mounted) Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('${widget.webhook.displayName} を削除しますか？'),
+    content: const Text(
+      'Discord 上の Webhook も削除され、この連携先には投稿できなくなります。',
+    ),
+    actions: [
+      TextButton(
+        onPressed: _deleting ? null : () => Navigator.of(context).pop(),
+        child: const Text('キャンセル'),
+      ),
+      FilledButton(
+        key: const ValueKey('webhookDeleteConfirm'),
+        onPressed: _deleting ? null : _delete,
+        child: _deleting
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('削除'),
+      ),
+    ],
+  );
 }

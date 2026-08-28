@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -141,4 +142,101 @@ class HttpDiscordWebhookSender implements DiscordWebhookSender {
 
 final discordWebhookSenderProvider = Provider<DiscordWebhookSender>(
   (ref) => HttpDiscordWebhookSender(ref.watch(httpClientProvider)),
+);
+
+/// How the `DELETE` on a 共有先 turned out.
+///
+/// - [deleted]: Discord answered 204 — the webhook is gone there too.
+/// - [alreadyGoneOrInvalid]: 401 / 403 / 404 — the remote webhook is already
+///   absent or its token no longer authorizes (someone deleted it in Discord,
+///   or reset it). There is nothing left to delete, so the local row should go
+///   too — the two are already in sync.
+/// - [httpError]: any other status. Something answered, but not with a delete
+///   we can trust; the user is asked whether to drop the local row anyway.
+/// - [networkError]: the request never got an answer (offline, timeout). Same
+///   question — never trap the user with an undeletable row when Discord is
+///   simply unreachable.
+enum DiscordDeleteOutcome { deleted, alreadyGoneOrInvalid, httpError, networkError }
+
+/// The result of [DiscordWebhookDeleter.deleteRemote]. A value, never a throw.
+@immutable
+class DiscordDeleteResult {
+  const DiscordDeleteResult(this.outcome, {this.statusCode});
+
+  final DiscordDeleteOutcome outcome;
+
+  /// The HTTP status, when there was one. Null means no answer came back.
+  final int? statusCode;
+
+  /// Whether the local row should be removed without further asking: the remote
+  /// is gone ([deleted]) or was already gone ([alreadyGoneOrInvalid]).
+  bool get removeLocalSilently =>
+      outcome == DiscordDeleteOutcome.deleted ||
+      outcome == DiscordDeleteOutcome.alreadyGoneOrInvalid;
+
+  /// One short Japanese phrase naming the failure, for the 「…できませんでした
+  /// （{reason}）」 dialog. Only meaningful when [removeLocalSilently] is false.
+  String get reason => statusCode != null ? 'HTTP $statusCode' : '通信エラー';
+
+  @override
+  bool operator ==(Object other) =>
+      other is DiscordDeleteResult &&
+      other.outcome == outcome &&
+      other.statusCode == statusCode;
+
+  @override
+  int get hashCode => Object.hash(outcome, statusCode);
+
+  @override
+  String toString() => 'DiscordDeleteResult($outcome, $statusCode)';
+}
+
+/// Deletes the **remote** Discord webhook that a 共有先 stands for.
+///
+/// An interface so tests hand in something that does not reach the network — a
+/// webhook URL is somebody's live Discord channel, and a DELETE against it is
+/// irreversible.
+abstract class DiscordWebhookDeleter {
+  /// Never throws. See [DiscordDeleteResult].
+  Future<DiscordDeleteResult> deleteRemote(String webhookUrl);
+}
+
+/// The real one, over [httpClientProvider].
+class HttpDiscordWebhookDeleter implements DiscordWebhookDeleter {
+  const HttpDiscordWebhookDeleter(this._client);
+
+  final http.Client _client;
+
+  /// `DELETE …/webhooks/{id}/{token}` — no auth header, the token in the path
+  /// is the credential (verified against Discord's docs). Every failure is a
+  /// value: this is called from a confirm dialog the user is watching, and a
+  /// throw here would leave them with a spinner that never resolves.
+  @override
+  Future<DiscordDeleteResult> deleteRemote(String webhookUrl) async {
+    try {
+      final response = await _client
+          .delete(Uri.parse(discordWebhookDeleteUrl(webhookUrl)))
+          .timeout(discordPostTimeout);
+      final code = response.statusCode;
+      if (code >= 200 && code < 300) {
+        return const DiscordDeleteResult(DiscordDeleteOutcome.deleted);
+      }
+      if (code == 401 || code == 403 || code == 404) {
+        return DiscordDeleteResult(
+          DiscordDeleteOutcome.alreadyGoneOrInvalid,
+          statusCode: code,
+        );
+      }
+      return DiscordDeleteResult(
+        DiscordDeleteOutcome.httpError,
+        statusCode: code,
+      );
+    } on Object {
+      return const DiscordDeleteResult(DiscordDeleteOutcome.networkError);
+    }
+  }
+}
+
+final discordWebhookDeleterProvider = Provider<DiscordWebhookDeleter>(
+  (ref) => HttpDiscordWebhookDeleter(ref.watch(httpClientProvider)),
 );
