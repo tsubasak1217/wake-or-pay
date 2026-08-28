@@ -2,10 +2,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import worker, { type Env } from '../src/index';
 
+/** The debug keystore's fingerprint, as wrangler.toml carries it. */
+const FINGERPRINT =
+  '11:3E:06:2F:19:63:A2:10:E1:AD:53:CE:73:E6:EF:02:D6:60:6F:AD:B6:01:EF:7F:C9:79:8E:1A:D0:78:BC:61';
+
 const ENV: Env = {
   DISCORD_CLIENT_ID: '1542696296337506415',
   DISCORD_CLIENT_SECRET: 'shhh-this-never-leaves-the-worker',
   ALLOWED_ORIGINS: '',
+  ANDROID_CERT_SHA256: FINGERPRINT,
+};
+
+/**
+ * The redirect URI both flows now use — **https, on this Worker**.
+ *
+ * It used to be `wakeorpay://discord/callback`, and Discord refuses that for
+ * this application: the authorize page ends at
+ * `oauth2/error?error=invalid_request` with 「Redirect URI … is not supported
+ * by client」 before the consent screen, so the app waited for a callback that
+ * was never sent. Everything below asserts on the https form because that is
+ * what the app now sends and what Discord now matches against.
+ */
+const REDIRECT_URI =
+  'https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback';
+
+/** A `/users/@me` body, for the `identify` mode. */
+const ME_BODY = {
+  id: '123456789012345678',
+  username: 'hanako',
+  global_name: '花子',
+  avatar: 'abcdef',
+  email: 'nope@example.com',
+  discriminator: '0',
 };
 
 /** A token response of the shape `webhook.incoming` produces. */
@@ -61,6 +89,9 @@ function stubDiscord(options: {
   tokenBody?: unknown;
   guildsStatus?: number;
   guildsBody?: unknown;
+  meStatus?: number;
+  meBody?: unknown;
+  meRaw?: string;
   throwOn?: string;
 }) {
   const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -75,9 +106,19 @@ function stubDiscord(options: {
         { status: options.tokenStatus ?? 200 },
       );
     }
-    return new Response(JSON.stringify(options.guildsBody ?? GUILDS_BODY), {
-      status: options.guildsStatus ?? 200,
-    });
+    // `/users/@me/guilds` and `/users/@me` differ by a suffix only, and
+    // matching the shorter one first would answer the guild lookup with a
+    // user object — a mistake that would make the webhook tests pass for the
+    // wrong reason.
+    if (url.endsWith('/guilds')) {
+      return new Response(JSON.stringify(options.guildsBody ?? GUILDS_BODY), {
+        status: options.guildsStatus ?? 200,
+      });
+    }
+    return new Response(
+      options.meRaw ?? JSON.stringify(options.meBody ?? ME_BODY),
+      { status: options.meStatus ?? 200 },
+    );
   });
   return calls;
 }
@@ -93,7 +134,7 @@ describe('POST /discord/exchange', () => {
     const response = await worker.fetch(
       exchangeRequest({
         code: 'THE_CODE',
-        redirect_uri: 'wakeorpay://discord/callback',
+        redirect_uri: REDIRECT_URI,
       }),
       ENV,
     );
@@ -117,7 +158,7 @@ describe('POST /discord/exchange', () => {
   it('never returns the access or refresh token', async () => {
     stubDiscord({});
     const response = await worker.fetch(
-      exchangeRequest({ code: 'C', redirect_uri: 'wakeorpay://discord/callback' }),
+      exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI }),
       ENV,
     );
     const text = await response.text();
@@ -134,7 +175,7 @@ describe('POST /discord/exchange', () => {
     await worker.fetch(
       exchangeRequest({
         code: 'THE_CODE',
-        redirect_uri: 'wakeorpay://discord/callback',
+        redirect_uri: REDIRECT_URI,
       }),
       ENV,
     );
@@ -147,7 +188,7 @@ describe('POST /discord/exchange', () => {
     const form = new URLSearchParams(token.init.body as string);
     expect(form.get('grant_type')).toBe('authorization_code');
     expect(form.get('code')).toBe('THE_CODE');
-    expect(form.get('redirect_uri')).toBe('wakeorpay://discord/callback');
+    expect(form.get('redirect_uri')).toBe(REDIRECT_URI);
     expect(form.get('client_id')).toBe(ENV.DISCORD_CLIENT_ID);
     expect(form.get('client_secret')).toBe(ENV.DISCORD_CLIENT_SECRET);
     expect(form.get('code_verifier')).toBeNull();
@@ -158,7 +199,7 @@ describe('POST /discord/exchange', () => {
     await worker.fetch(
       exchangeRequest({
         code: 'C',
-        redirect_uri: 'wakeorpay://discord/callback',
+        redirect_uri: REDIRECT_URI,
         code_verifier: 'VERIFIER',
       }),
       ENV,
@@ -172,7 +213,7 @@ describe('POST /discord/exchange', () => {
   it('falls back to a null guild name rather than failing', async () => {
     stubDiscord({ guildsStatus: 403 });
     const response = await worker.fetch(
-      exchangeRequest({ code: 'C', redirect_uri: 'wakeorpay://discord/callback' }),
+      exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI }),
       ENV,
     );
     expect(response.status).toBe(200);
@@ -186,7 +227,7 @@ describe('POST /discord/exchange', () => {
     stubDiscord({ guildsBody: [{ id: '000', name: 'よその鯖' }] });
     const body = (await (
       await worker.fetch(
-        exchangeRequest({ code: 'C', redirect_uri: 'wakeorpay://discord/callback' }),
+        exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI }),
         ENV,
       )
     ).json()) as { guild_name: string | null };
@@ -196,7 +237,7 @@ describe('POST /discord/exchange', () => {
   it('refuses a token response with no webhook in it', async () => {
     stubDiscord({ tokenBody: { access_token: 'A', scope: 'identify' } });
     const response = await worker.fetch(
-      exchangeRequest({ code: 'C', redirect_uri: 'wakeorpay://discord/callback' }),
+      exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI }),
       ENV,
     );
     expect(response.status).toBe(502);
@@ -205,7 +246,7 @@ describe('POST /discord/exchange', () => {
   it("passes Discord's refusal status on", async () => {
     stubDiscord({ tokenStatus: 400, tokenBody: { error: 'invalid_grant' } });
     const response = await worker.fetch(
-      exchangeRequest({ code: 'USED', redirect_uri: 'wakeorpay://discord/callback' }),
+      exchangeRequest({ code: 'USED', redirect_uri: REDIRECT_URI }),
       ENV,
     );
     expect(response.status).toBe(400);
@@ -216,7 +257,7 @@ describe('POST /discord/exchange', () => {
   it('answers 502 rather than throwing when Discord is unreachable', async () => {
     stubDiscord({ throwOn: '/oauth2/token' });
     const response = await worker.fetch(
-      exchangeRequest({ code: 'C', redirect_uri: 'wakeorpay://discord/callback' }),
+      exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI }),
       ENV,
     );
     expect(response.status).toBe(502);
@@ -230,7 +271,7 @@ describe('POST /discord/exchange', () => {
     expect(
       (
         await worker.fetch(
-          exchangeRequest({ redirect_uri: 'wakeorpay://discord/callback' }),
+          exchangeRequest({ redirect_uri: REDIRECT_URI }),
           ENV,
         )
       ).status,
@@ -244,7 +285,7 @@ describe('POST /discord/exchange', () => {
   it('says so when the secret was never put on the Worker', async () => {
     stubDiscord({});
     const response = await worker.fetch(
-      exchangeRequest({ code: 'C', redirect_uri: 'wakeorpay://discord/callback' }),
+      exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI }),
       { ...ENV, DISCORD_CLIENT_SECRET: '' },
     );
     expect(response.status).toBe(500);
@@ -268,7 +309,7 @@ describe('what it refuses', () => {
     stubDiscord({});
     const response = await worker.fetch(
       exchangeRequest(
-        { code: 'C', redirect_uri: 'wakeorpay://discord/callback' },
+        { code: 'C', redirect_uri: REDIRECT_URI },
         { origin: 'https://evil.example' },
       ),
       ENV,
@@ -280,7 +321,7 @@ describe('what it refuses', () => {
     stubDiscord({});
     const response = await worker.fetch(
       exchangeRequest(
-        { code: 'C', redirect_uri: 'wakeorpay://discord/callback' },
+        { code: 'C', redirect_uri: REDIRECT_URI },
         { origin: 'https://ok.example' },
       ),
       { ...ENV, ALLOWED_ORIGINS: 'https://ok.example, https://also.example' },
@@ -291,7 +332,7 @@ describe('what it refuses', () => {
   it('allows a request with no Origin at all — that is the app', async () => {
     stubDiscord({});
     const response = await worker.fetch(
-      exchangeRequest({ code: 'C', redirect_uri: 'wakeorpay://discord/callback' }),
+      exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI }),
       ENV,
     );
     expect(response.status).toBe(200);
@@ -299,7 +340,7 @@ describe('what it refuses', () => {
 
   it('rate limits one IP', async () => {
     stubDiscord({});
-    const body = { code: 'C', redirect_uri: 'wakeorpay://discord/callback' };
+    const body = { code: 'C', redirect_uri: REDIRECT_URI };
     const one = (): Request => {
       const request = exchangeRequest(body);
       const headers = new Headers(request.headers);
@@ -317,5 +358,202 @@ describe('what it refuses', () => {
     }
     expect(codes.slice(0, 10).every((c) => c === 200)).toBe(true);
     expect(codes.at(-1)).toBe(429);
+  });
+});
+
+describe('POST /discord/exchange, mode=identify', () => {
+  /** 「Discord で連携」 asks for this, and only this. */
+  const identify = (over: Record<string, unknown> = {}) =>
+    exchangeRequest({
+      code: 'THE_CODE',
+      redirect_uri: REDIRECT_URI,
+      mode: 'identify',
+      ...over,
+    });
+
+  it('returns the four public fields of the user and nothing else', async () => {
+    stubDiscord({ tokenBody: { access_token: 'ACCESS', scope: 'identify' } });
+    const response = await worker.fetch(identify(), ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      user: {
+        id: '123456789012345678',
+        username: 'hanako',
+        global_name: '花子',
+        avatar: 'abcdef',
+      },
+    });
+  });
+
+  it('never returns the token, and never the email', async () => {
+    stubDiscord({ tokenBody: { access_token: 'ACCESS', refresh_token: 'REFRESH' } });
+    const text = await (await worker.fetch(identify(), ENV)).text();
+    expect(text).not.toContain('ACCESS');
+    expect(text).not.toContain('REFRESH');
+    expect(text).not.toContain('access_token');
+    // `identify` does not grant the email and Discord does not send one — but
+    // if it ever did, it has no business in this answer.
+    expect(text).not.toContain('nope@example.com');
+    expect(text).not.toContain(ENV.DISCORD_CLIENT_SECRET);
+  });
+
+  it('spends the token on /users/@me, not on /users/@me/guilds', async () => {
+    const calls = stubDiscord({ tokenBody: { access_token: 'ACCESS' } });
+    await worker.fetch(identify(), ENV);
+    const me = calls.find((c) => c.url.endsWith('/users/@me'));
+    expect(me).toBeTruthy();
+    expect((me!.init.headers as Record<string, string>).authorization).toBe(
+      'Bearer ACCESS',
+    );
+    // The guild lookup belongs to the webhook flow; identify has no guild.
+    expect(calls.some((c) => c.url.endsWith('/guilds'))).toBe(false);
+  });
+
+  it('does not need a webhook in the token response', async () => {
+    // The same body that is a 502 for the webhook flow is the normal case here.
+    stubDiscord({ tokenBody: { access_token: 'A', scope: 'identify' } });
+    expect((await worker.fetch(identify(), ENV)).status).toBe(200);
+  });
+
+  it('is 502 when /users/@me answers with no user', async () => {
+    stubDiscord({
+      tokenBody: { access_token: 'A' },
+      meBody: { message: '401: Unauthorized' },
+    });
+    expect((await worker.fetch(identify(), ENV)).status).toBe(502);
+  });
+
+  it('is 502 when /users/@me refuses or is unreachable', async () => {
+    stubDiscord({ tokenBody: { access_token: 'A' }, meStatus: 401 });
+    expect((await worker.fetch(identify(), ENV)).status).toBe(502);
+
+    stubDiscord({ tokenBody: { access_token: 'A' }, meRaw: '<html>portal</html>' });
+    expect((await worker.fetch(identify(), ENV)).status).toBe(502);
+  });
+
+  it('an unknown mode is the webhook flow, as an old build means it', async () => {
+    stubDiscord({});
+    const response = await worker.fetch(
+      exchangeRequest({ code: 'C', redirect_uri: REDIRECT_URI, mode: 'nonsense' }),
+      ENV,
+    );
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.webhook).toBeTruthy();
+    expect(body.user).toBeUndefined();
+  });
+});
+
+describe('GET /discord/callback', () => {
+  const callback = (query: string) =>
+    new Request(`https://worker.example.com/discord/callback${query}`);
+
+  it('bounces straight back into the app, code and state intact', async () => {
+    const response = await worker.fetch(callback('?code=THE_CODE&state=ST4TE'), ENV);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    // A one-shot authorization code must not sit in any cache.
+    expect(response.headers.get('cache-control')).toBe('no-store');
+
+    const page = await response.text();
+    // (a) the immediate navigation, and (b) the tappable link, both carrying
+    // the two parameters the app's parser reads.
+    expect(page).toContain(
+      'location.replace("wakeorpay://discord/callback?code=THE_CODE&state=ST4TE")',
+    );
+    expect(page).toContain(
+      'intent://discord/callback?code=THE_CODE&amp;state=ST4TE' +
+        '#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;',
+    );
+    expect(page).toContain('S.browser_fallback_url=');
+    // (c) the sentence and the button, for when neither fired.
+    expect(page).toContain('Wake or Pay に戻っています…');
+    expect(page).toContain('戻らない場合はこちら');
+  });
+
+  it('carries a refusal across too', async () => {
+    const page = await (
+      await worker.fetch(
+        callback('?error=access_denied&error_description=The+user+denied&state=S'),
+        ENV,
+      )
+    ).text();
+    expect(page).toContain('error=access_denied');
+    expect(page).toContain('state=S');
+    // The app decides what a refusal means; the page only carries it.
+    expect(page).toContain('wakeorpay://discord/callback?');
+  });
+
+  it('drops anything that is not one of the four parameters', async () => {
+    const page = await (
+      await worker.fetch(callback('?code=C&state=S&evil=%3Cscript%3E'), ENV)
+    ).text();
+    expect(page).not.toContain('evil');
+    expect(page).not.toContain('<script>e');
+  });
+
+  it('cannot be talked into closing its own script tag', async () => {
+    const page = await (
+      await worker.fetch(
+        callback(`?code=${encodeURIComponent('a"</script><script>x')}&state=S`),
+        ENV,
+      )
+    ).text();
+    // The value is a JSON string literal with `<` escaped, so neither the
+    // quote nor the tag can escape it.
+    expect(page).not.toContain('</script><script>');
+  });
+
+  it('answers even with no parameters at all — that is the fallback link', async () => {
+    const response = await worker.fetch(callback(''), ENV);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('wakeorpay://discord/callback');
+  });
+
+  it('is GET only', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.example.com/discord/callback', { method: 'POST' }),
+      ENV,
+    );
+    expect(response.status).toBe(405);
+  });
+});
+
+describe('GET /.well-known/assetlinks.json', () => {
+  it('vouches for the app with the signing certificate’s fingerprint', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.example.com/.well-known/assetlinks.json'),
+      ENV,
+    );
+
+    expect(response.status).toBe(200);
+    // Android insists on this exact content type and on no redirect.
+    expect(response.headers.get('content-type')).toBe('application/json');
+
+    expect(await response.json()).toEqual([
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: {
+          namespace: 'android_app',
+          package_name: 'com.wakeorpay.wake_or_pay',
+          sha256_cert_fingerprints: [FINGERPRINT],
+        },
+      },
+    ]);
+  });
+
+  it('is an empty list rather than a lie when the var was never set', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.example.com/.well-known/assetlinks.json'),
+      { ...ENV, ANDROID_CERT_SHA256: '' },
+    );
+    const body = (await response.json()) as Array<{
+      target: { sha256_cert_fingerprints: string[] };
+    }>;
+    // Verification then fails and the callback lands on the fallback page,
+    // which still works. A placeholder fingerprint would fail the same way
+    // while looking configured.
+    expect(body[0].target.sha256_cert_fingerprints).toEqual([]);
   });
 });

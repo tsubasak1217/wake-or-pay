@@ -13,6 +13,21 @@ DISCORD_CLIENT_ID = "1542696296337506415"
 # has no business spending this Worker's client secret.
 ALLOWED_ORIGINS = ""
 
+# The SHA-256 fingerprint of the certificate the APK is signed with, published
+# in /.well-known/assetlinks.json so Android will hand
+# https://…/discord/callback straight to the app instead of a browser tab.
+#
+# Public by nature — it is the fingerprint of a public certificate, and the
+# whole point is that it is served to anybody who asks. This is the **debug**
+# keystore (%USERPROFILE%\.android\debug.keystore), because
+# android/app/build.gradle.kts still signs release with it. Swap in a release
+# keystore and this line has to change in the same commit, or app-link
+# verification fails and the callback lands in a browser.
+#
+#   keytool -list -v -keystore %USERPROFILE%\.android\debug.keystore \
+#           -alias androiddebugkey -storepass android
+ANDROID_CERT_SHA256 = "11:3E:06:2F:19:63:A2:10:E1:AD:53:CE:73:E6:EF:02:D6:60:6F:AD:B6:01:EF:7F:C9:79:8E:1A:D0:78:BC:61"
+
 # DISCORD_CLIENT_SECRET is **not** here and must never be.
 #   wrangler secret put DISCORD_CLIENT_SECRET
 # A secret in this file is a secret in every clone of the repository.
