@@ -63,14 +63,34 @@ Content-Type: application/json
 
 ### `GET /discord/callback?code=…&state=…`（`?error=…` も）
 
-Discord がブラウザを返してくる先。小さな HTML を 1 枚返し、
-`location.replace('wakeorpay://discord/callback?code=…&state=…')` でアプリに跳ね返します。
-`intent://…;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;…;end` のリンクと、
-「Wake or Pay に戻っています… 戻らない場合はこちら」のボタンも置いてあります。
+Discord がブラウザを返してくる先。小さな HTML を 1 枚返します。
 持ち越すのは `code` `state` `error` `error_description` の 4 つだけです。
 
-**App Links の検証が効いていれば、このページはそもそも表示されません**——
-Android が https の遷移を直接アプリに渡すためです。これは保険です。
+**主役は大きなボタン 1 個**（「**Wake or Pay を開く**」）で、その `href` が
+
+```
+intent://discord/callback?code=…&state=…#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;S.browser_fallback_url=…;end
+```
+
+です。**ブラウザに着地してしまったあと、確実に効くのはユーザーのタップだけ**だからです
+（段階H。理由は上位 README の「段階Hで直したこと」に書いてあります。Chromium は
+リダイレクトの終着点として着いた App Link をアプリに渡さないし、ユーザー操作なしの
+未知スキームへのスクリプト遷移をブロックします）。見出しは「認証できました。あと 1 タップです。」
+——ページが「終わった」ように見えると、ユーザーはここでブラウザを閉じてしまいます。
+
+自動の再挑戦も**残してありますが best effort** です。読み込み直後に `intent://` へ、
+1.2 秒後に `/discord/callback/return` へ、**1 フローにつき 1 回だけ**
+（`sessionStorage` に `state` で印を付ける）。アプリが前に出たあとは撃ちません。
+
+### `GET /discord/callback/return?code=…&state=…`
+
+**2 本目の App Link パス**。同じパラメータを運ぶだけで、返すのは同じページの
+**自動遷移なし版**です。ここに来ているということは自動遷移が効かなかったということなので、
+ここでまた自動遷移するとループになります。`intent://` の `browser_fallback_url` も
+（着地ページ自身ではなく）ここを指しています。
+
+**App Links の検証が効いていて、かつ遷移の形が条件を満たせば、これらのページは
+そもそも表示されません**——Android が https の遷移を直接アプリに渡すためです。
 
 ### `GET /.well-known/assetlinks.json`
 

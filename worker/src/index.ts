@@ -23,6 +23,21 @@
 
 const EXCHANGE_PATH = '/discord/exchange';
 const CALLBACK_PATH = '/discord/callback';
+/**
+ * A second **App Link** path, carrying the same parameters onward.
+ *
+ * Its whole reason to exist is a Chromium behaviour: a verified App Link is
+ * only handed to the app when the navigation *starts* somewhere the browser
+ * treats as a fresh top-level navigation. A redirect chain that ends on
+ * `/discord/callback` — which is exactly what Discord does — stays in the
+ * browser. A **new** navigation to a different verified path, started by the
+ * landing page's script, is a second chance at the same door.
+ *
+ * When it opens the app, this handler never runs. When it does run, the app
+ * was not there to take it, and the page it returns is the manual one: no
+ * auto-attempt, because an auto-attempt here is how a loop starts.
+ */
+const RETURN_PATH = '/discord/callback/return';
 const ASSETLINKS_PATH = '/.well-known/assetlinks.json';
 
 const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
@@ -237,43 +252,110 @@ function escapeHtml(value: string): string {
  * by client」 before the user ever sees a consent screen. So the redirect is
  * https, lands here, and this page hands the parameters onwards to the app.
  *
- * Three ways back in, in descending order of how quietly they work:
+ * **The tap is the reliable path, and it is therefore the primary one.**
+ * That is not a preference, it is what Chromium does. Measured on the user's
+ * Pixel with Brave as the default browser, everything on the Android side was
+ * already right — `pm get-app-links` said `verified`, and
+ * `pm query-activities` on the callback URL resolved to `MainActivity` — and
+ * the app still did not open after 認証. Two Chromium rules explain it and
+ * nothing else does:
  *
- * 1. **App Links.** When Android has verified `assetlinks.json`, the browser
- *    never opens this page at all — the intent goes straight to the app and
- *    the user sees nothing. That is the happy path, and this page is what
- *    happens when it did not apply.
- * 2. `location.replace('wakeorpay://…')` on load. `replace`, not `assign`, so
- *    「戻る」 does not walk back into the redirect.
- * 3. An `intent://` link naming the package, for the browsers that refuse a
- *    scripted navigation to an unknown scheme but honour a user's tap.
+ * - A verified App Link reached at the **end of a redirect chain** (which is
+ *   precisely how Discord delivers this page) is not handed to the app.
+ *   Chromium only offers the app a navigation it considers user-initiated.
+ * - A scripted navigation to an **unknown scheme** (`wakeorpay://`) without a
+ *   user gesture is blocked outright. `location.replace` from a load handler
+ *   is exactly that shape, so the old page's one automatic attempt was being
+ *   dropped on the floor silently.
+ *
+ * So the order here is, in descending reliability:
+ *
+ * 1. **A big anchor whose `href` is an `intent://` URL.** A tap is a user
+ *    gesture, and `intent://` naming the package is the form Chromium honours
+ *    most consistently. This is the one that works, and it is the one the page
+ *    is built around.
+ * 2. **Two automatic attempts**, best effort, once each: `intent://` first
+ *    (from a `setTimeout`, so it is a navigation and not a load-handler
+ *    side-effect), then a **fresh top-level navigation** to the other verified
+ *    App Link path, {@link RETURN_PATH}. Some Chromium builds hand *that* one
+ *    to the app because it is a new navigation rather than a redirect target.
+ * 3. **App Links proper.** When Android verified `assetlinks.json` *and* the
+ *    navigation qualifies, the browser never opens this page at all. Lovely
+ *    when it happens; this page is what happens when it does not.
  *
  * **The code is never logged and never rendered in text** — it is a one-shot
- * credential. It only ever appears inside the two URLs, and this page is
+ * credential. It only ever appears inside the URLs, and this page is
  * `no-store` so no cache keeps it.
+ *
+ * @param autoAttempt false on {@link RETURN_PATH}. That page is reached only
+ * *because* an automatic attempt did not open the app, so repeating it there
+ * is how the browser ends up in a navigation loop.
  */
-function callbackPage(params: URLSearchParams, selfOrigin: string): string {
+function callbackPage(
+  params: URLSearchParams,
+  selfOrigin: string,
+  autoAttempt: boolean,
+): string {
   // Only the parameters the app's parser reads are carried across. Anything
-  // else Discord or a proxy appends is dropped rather than reflected.
+  // else Discord or a proxy appends is dropped rather than reflected. What
+  // survives is percent-encoded by URLSearchParams, so the query is already
+  // free of quotes and angle brackets before anything below escapes it again.
   const carried = new URLSearchParams();
   for (const key of ['code', 'state', 'error', 'error_description']) {
     const value = params.get(key);
     if (value) carried.set(key, value);
   }
   const query = carried.toString();
+  const suffix = query ? `?${query}` : '';
 
-  const appUrl = `${APP_SCHEME}://discord/callback${query ? `?${query}` : ''}`;
-  const fallbackUrl = `${selfOrigin}${CALLBACK_PATH}`;
+  const appUrl = `${APP_SCHEME}://discord/callback${suffix}`;
+  const returnUrl = `${selfOrigin}${RETURN_PATH}${suffix}`;
+  // Where Chromium goes when the package is **not installed**. It must not be
+  // this page: this page auto-attempts, the attempt fails again, and that is a
+  // loop with a spent authorization code in the address bar. RETURN_PATH never
+  // auto-attempts, so it is a dead end on purpose.
+  const fallbackUrl = returnUrl;
   const intentUrl =
-    `intent://discord/callback${query ? `?${query}` : ''}` +
+    `intent://discord/callback${suffix}` +
     `#Intent;scheme=${APP_SCHEME};package=${ANDROID_PACKAGE};` +
     `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
 
   const appHref = escapeHtml(appUrl);
   const intentHref = escapeHtml(intentUrl);
+  const returnHref = escapeHtml(returnUrl);
   // A JSON string literal is a JS string literal here, and `<` is escaped so
-  // the value can never close this script element early.
-  const appJs = JSON.stringify(appUrl).replace(/</g, '\\u003c');
+  // no value can close this script element early.
+  const js = (value: string) =>
+    JSON.stringify(value).replace(/</g, '\\u003c');
+
+  const script = autoAttempt
+    ? `<script>
+(function () {
+  var intentUrl = ${js(intentUrl)};
+  var returnUrl = ${js(returnUrl)};
+  // Once per flow. sessionStorage survives the browser coming back to this
+  // page (the user pressing 戻る, or the intent falling through), and firing
+  // again then is how a loop starts. Keyed by the state so the *next* 連携
+  // still gets its automatic attempt.
+  var key = 'wop-return:' + ${js(carried.get('state') ?? '')};
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+  } catch (e) {}
+  // Not from the load handler: Chromium is markedly more willing to follow a
+  // navigation scheduled as a task than one performed while the page loads.
+  setTimeout(function () {
+    try { window.location.href = intentUrl; } catch (e) {}
+  }, 0);
+  // If the app took over, this document is hidden by now and must be left
+  // alone — navigating a backgrounded tab pulls the browser back over the app.
+  setTimeout(function () {
+    if (document.visibilityState !== 'visible') return;
+    try { window.location.href = returnUrl; } catch (e) {}
+  }, 1200);
+})();
+</script>`
+    : '';
 
   return `<!doctype html>
 <html lang="ja">
@@ -281,26 +363,33 @@ function callbackPage(params: URLSearchParams, selfOrigin: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Wake or Pay に戻っています…</title>
+<title>あと 1 タップ — Wake or Pay に戻る</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 2.5rem 1.5rem;
+  body { font-family: system-ui, sans-serif; margin: 0;
+         padding: 1.75rem 1.25rem 3rem;
          background: #1b1b1f; color: #e7e7ea; text-align: center; }
-  p { font-size: 1.05rem; line-height: 1.7; }
-  a.button { display: inline-block; margin-top: 1.5rem; padding: 0.9rem 1.6rem;
-             border-radius: 999px; background: #5865f2; color: #fff;
-             text-decoration: none; font-weight: 600; }
-  a.plain { display: block; margin-top: 1.2rem; color: #9aa0ff; font-size: 0.9rem; }
+  h1 { font-size: 1.35rem; line-height: 1.5; margin: 0 0 0.35rem; }
+  p { font-size: 1.05rem; line-height: 1.7; margin: 0.35rem 0; }
+  p.lead { color: #b6b6c0; }
+  p.hint { font-size: 0.95rem; color: #9a9aa4; margin-top: 2.25rem; }
+  /* The button is the deliverable of this page, so it is the first thing on
+     it and it is the size of a thumb. Everything else is below it. */
+  a.button { display: block; margin: 1.5rem auto 0; max-width: 24rem;
+             padding: 1.35rem 1.6rem; border-radius: 1.25rem;
+             background: #5865f2; color: #fff; text-decoration: none;
+             font-weight: 700; font-size: 1.35rem; letter-spacing: 0.02em;
+             box-shadow: 0 6px 20px rgba(88, 101, 242, 0.45); }
+  a.plain { display: block; margin-top: 1rem; color: #9aa0ff; font-size: 0.9rem; }
 </style>
 </head>
 <body>
-<p>Wake or Pay に戻っています…<br>戻らない場合はこちら</p>
+<h1>認証できました。あと 1 タップです。</h1>
+<p class="lead">この画面のままでは連携は終わりません。<br>下のボタンでアプリに戻ってください。</p>
 <a class="button" id="open" href="${intentHref}">Wake or Pay を開く</a>
-<a class="plain" href="${appHref}">開かないときはこちら</a>
-<script>
-  // Immediate, and once. A second navigation after the app is already in front
-  // would pull the browser back over it.
-  try { location.replace(${appJs}); } catch (e) {}
-</script>
+<p class="hint">ボタンで戻らない場合はこちら</p>
+<a class="plain" id="applink" href="${returnHref}">https のリンクで開く</a>
+<a class="plain" id="scheme" href="${appHref}">wakeorpay:// で開く</a>
+${script}
 </body>
 </html>
 `;
@@ -485,9 +574,17 @@ export default {
       return assetLinks(env);
     }
 
-    if (url.pathname === CALLBACK_PATH) {
+    if (url.pathname === CALLBACK_PATH || url.pathname === RETURN_PATH) {
       if (request.method !== 'GET') return error('method not allowed', 405);
-      return html(callbackPage(url.searchParams, url.origin));
+      return html(
+        callbackPage(
+          url.searchParams,
+          url.origin,
+          // The return path is only ever reached because an automatic attempt
+          // did not open the app. Attempting again from there is a loop.
+          url.pathname === CALLBACK_PATH,
+        ),
+      );
     }
 
     if (url.pathname === EXCHANGE_PATH) return handleExchange(request, env);

@@ -448,7 +448,7 @@ describe('GET /discord/callback', () => {
   const callback = (query: string) =>
     new Request(`https://worker.example.com/discord/callback${query}`);
 
-  it('bounces straight back into the app, code and state intact', async () => {
+  it('makes the tappable intent:// link the primary way back in', async () => {
     const response = await worker.fetch(callback('?code=THE_CODE&state=ST4TE'), ENV);
 
     expect(response.status).toBe(200);
@@ -457,19 +457,71 @@ describe('GET /discord/callback', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
 
     const page = await response.text();
-    // (a) the immediate navigation, and (b) the tappable link, both carrying
-    // the two parameters the app's parser reads.
+    // The button. A tap is a user gesture, which is the one thing Chromium
+    // reliably honours for a non-http scheme — hence "primary".
     expect(page).toContain(
-      'location.replace("wakeorpay://discord/callback?code=THE_CODE&state=ST4TE")',
-    );
-    expect(page).toContain(
-      'intent://discord/callback?code=THE_CODE&amp;state=ST4TE' +
+      '<a class="button" id="open" href="intent://discord/callback' +
+        '?code=THE_CODE&amp;state=ST4TE' +
         '#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;',
     );
+    expect(page).toContain('Wake or Pay を開く</a>');
     expect(page).toContain('S.browser_fallback_url=');
-    // (c) the sentence and the button, for when neither fired.
-    expect(page).toContain('Wake or Pay に戻っています…');
+    // The other verified App Link path, both as a link and as the second
+    // automatic attempt.
+    expect(page).toContain(
+      'href="https://worker.example.com/discord/callback/return' +
+        '?code=THE_CODE&amp;state=ST4TE"',
+    );
+    expect(page).toContain(
+      'var returnUrl = "https://worker.example.com/discord/callback/return' +
+        '?code=THE_CODE&state=ST4TE"',
+    );
+    // And the custom scheme, still, as the last manual resort.
+    expect(page).toContain(
+      'href="wakeorpay://discord/callback?code=THE_CODE&amp;state=ST4TE"',
+    );
+    // The sentence and the hint, for when nothing automatic fired.
+    // The page must not read as "done" — the user who saw the old one stopped
+    // here, in the browser, believing the 連携 had finished.
+    expect(page).toContain('認証できました。あと 1 タップです。');
+    expect(page).toContain('この画面のままでは連携は終わりません。');
     expect(page).toContain('戻らない場合はこちら');
+    // And the button comes first: everything else on the page is below it.
+    expect(page.indexOf('id="open"')).toBeLessThan(page.indexOf('class="hint"'));
+    expect(page.indexOf('id="open"')).toBeLessThan(page.indexOf('id="applink"'));
+  });
+
+  it('auto-attempts intent:// first, then the app-link path, once each', async () => {
+    const page = await (
+      await worker.fetch(callback('?code=C&state=ST4TE'), ENV)
+    ).text();
+
+    // Scheduled, not run from the load handler: Chromium drops a scripted
+    // navigation to an unknown scheme performed while the page is loading.
+    expect(page).toContain('setTimeout(function () {');
+    expect(page).toContain('window.location.href = intentUrl;');
+    expect(page).toContain('window.location.href = returnUrl;');
+    // Never twice for one flow — that is how a navigation loop starts — and
+    // never over an app that is already in front.
+    expect(page).toContain("var key = 'wop-return:' + \"ST4TE\"");
+    expect(page).toContain('sessionStorage.setItem(key');
+    expect(page).toContain("document.visibilityState !== 'visible'");
+    // The old, blocked attempt is gone.
+    expect(page).not.toContain('location.replace(');
+  });
+
+  it('falls back to the return path, never to itself, when the app is absent', async () => {
+    const page = await (
+      await worker.fetch(callback('?code=C&state=S'), ENV)
+    ).text();
+    // browser_fallback_url pointing back at this page would auto-attempt,
+    // fail again, and loop with a spent code in the address bar.
+    expect(page).toContain(
+      'S.browser_fallback_url=' +
+        encodeURIComponent(
+          'https://worker.example.com/discord/callback/return?code=C&state=S',
+        ),
+    );
   });
 
   it('carries a refusal across too', async () => {
@@ -517,6 +569,63 @@ describe('GET /discord/callback', () => {
       ENV,
     );
     expect(response.status).toBe(405);
+  });
+});
+
+describe('GET /discord/callback/return', () => {
+  const ret = (query: string) =>
+    new Request(`https://worker.example.com/discord/callback/return${query}`);
+
+  it('serves the same page with the button and the parameters intact', async () => {
+    const response = await worker.fetch(ret('?code=THE_CODE&state=ST4TE'), ENV);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+
+    const page = await response.text();
+    expect(page).toContain(
+      'intent://discord/callback?code=THE_CODE&amp;state=ST4TE' +
+        '#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;',
+    );
+    expect(page).toContain('Wake or Pay を開く</a>');
+    expect(page).toContain('戻らない場合はこちら');
+  });
+
+  it('never auto-attempts — reaching it *is* the automatic attempt failing', async () => {
+    const page = await (
+      await worker.fetch(ret('?code=C&state=S'), ENV)
+    ).text();
+    // A page reached because a navigation did not open the app, navigating
+    // again, is a loop. The only way on from here is the user's tap.
+    expect(page).not.toContain('<script>');
+    expect(page).not.toContain('setTimeout');
+  });
+
+  it('is GET only', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.example.com/discord/callback/return', {
+        method: 'POST',
+      }),
+      ENV,
+    );
+    expect(response.status).toBe(405);
+  });
+
+  it('escapes a hostile value in every place it lands', async () => {
+    const page = await (
+      await worker.fetch(
+        ret(`?code=${encodeURIComponent('"><img src=x onerror=alert(1)>')}&state=S`),
+        ENV,
+      )
+    ).text();
+    // URLSearchParams percent-encodes it before escapeHtml ever sees it, so
+    // neither the quote nor the tag survives into the attribute.
+    expect(page).not.toContain('<img');
+    // The word can survive as literal text inside a value; the *attribute*
+    // cannot, because the `=` that would make it one is percent-encoded.
+    expect(page).not.toContain('onerror=');
+    expect(page).toContain('%22%3E%3Cimg');
   });
 });
 
