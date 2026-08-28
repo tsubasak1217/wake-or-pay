@@ -82,7 +82,7 @@ late FakeVoiceRecorder recorder;
 late FakeVoicePlayer player;
 
 /// Three people in the book, one for each shape of address: both, mail only,
-/// number only. The last is what tells 電話/SMS apart from メール.
+/// number only. The last is what tells SMS apart from メール.
 Future<void> seedBook(ProviderContainer container) async {
   final book = container.read(contactBookRepositoryProvider);
   await book.save(
@@ -209,7 +209,7 @@ void main() {
         reason: 'the app bar and the island',
       );
       expect(find.text('なし'), findsOneWidget, reason: 'the 連絡先 row');
-      for (final label in const ['電話', 'メール', 'SMS']) {
+      for (final label in const ['メール', 'SMS']) {
         expect(
           routeRow(tester, label).onChanged,
           isNull,
@@ -242,7 +242,7 @@ void main() {
     });
   });
 
-  testWidgets('a number with no address leaves 電話 and SMS live, メール greyed', (
+  testWidgets('a number with no address leaves SMS live, メール greyed', (
     tester,
   ) async {
     await openNewAlarm(tester);
@@ -251,17 +251,15 @@ void main() {
     await inContactScreen(tester, () async {
       await pick(tester, '鈴木一郎');
 
-      expect(routeRow(tester, '電話').onChanged, isNotNull);
-      expect(routeRow(tester, '電話').value, isTrue, reason: 'the loudest route');
       expect(
         routeRow(tester, 'SMS').onChanged,
         isNotNull,
-        reason: 'the same number a call would ring',
+        reason: 'there is a number to text',
       );
       expect(
         routeRow(tester, 'SMS').value,
         isFalse,
-        reason: 'a text message is a separate decision, and silent at 4am',
+        reason: 'a text message is a decision the user makes, silent at 4am',
       );
 
       expect(routeRow(tester, 'メール').onChanged, isNull);
@@ -310,30 +308,6 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
     });
-  });
-
-  testWidgets('a refused CALL_PHONE leaves 電話 off, even on picking', (
-    tester,
-  ) async {
-    final container = await openNewAlarm(tester, routesPermitted: false);
-    await toggle(tester, '覚悟');
-
-    await inContactScreen(tester, () async {
-      await pick(tester, '田中太郎');
-      expect(
-        routeRow(tester, '電話').value,
-        isFalse,
-        reason: 'picking somebody normally switches 電話 on, but not without '
-            'the permission behind it',
-      );
-
-      await flip(tester, '電話');
-      expect(routeRow(tester, '電話').value, isFalse);
-      expect(find.textContaining('電話の発信が許可されていない'), findsOneWidget);
-    });
-
-    final saved = await save(tester, container);
-    expect(saved.contact!.phoneEnabled, isFalse);
   });
 
   testWidgets('SMS asks for SEND_SMS, and a refusal leaves it off', (
@@ -410,7 +384,6 @@ void main() {
     await inContactScreen(tester, () async {
       await pick(tester, '田中太郎');
       expect(find.text('田中太郎'), findsOneWidget, reason: 'the 連絡先 row');
-      expect(routeRow(tester, '電話').value, isTrue, reason: 'phone is reachable');
     });
 
     await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
@@ -421,12 +394,11 @@ void main() {
     expect(contact.name, '田中太郎');
     expect(contact.phone, '090-1234-5678');
     expect(contact.email, 'taro@example.com');
-    expect(contact.phoneEnabled, isTrue);
     expect(contact.smsEnabled, isFalse);
     expect(contact.messageMode, MessageMode.standard, reason: 'the default文面');
   });
 
-  testWidgets('a contact with no number cannot have 電話 or SMS switched on', (
+  testWidgets('a contact with no number cannot have SMS switched on', (
     tester,
   ) async {
     final container = await openNewAlarm(tester);
@@ -435,15 +407,12 @@ void main() {
     await inContactScreen(tester, () async {
       await pick(tester, '佐藤花子');
 
-      for (final label in const ['電話', 'SMS']) {
-        final row = routeRow(tester, label);
-        expect(row.onChanged, isNull, reason: '$label: greyed, not toggleable');
-        expect(row.value, isFalse);
-      }
-      expect(find.text('この連絡先には電話番号がありません'), findsNWidgets(2));
+      final row = routeRow(tester, 'SMS');
+      expect(row.onChanged, isNull, reason: 'SMS: greyed, not toggleable');
+      expect(row.value, isFalse);
+      expect(find.text('この連絡先には電話番号がありません'), findsOneWidget);
 
-      // Tapping either changes nothing at all.
-      await flip(tester, '電話');
+      // Tapping it changes nothing at all.
       await flip(tester, 'SMS');
       expect(
         find.byKey(const ValueKey('messageIsland')),
@@ -453,7 +422,6 @@ void main() {
     });
 
     final contact = (await save(tester, container)).contact!;
-    expect(contact.phoneEnabled, isFalse);
     expect(contact.smsEnabled, isFalse);
     expect(contact.phone, isNull);
   });

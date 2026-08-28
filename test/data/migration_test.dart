@@ -742,8 +742,7 @@ void main() {
     final contact = alarm!.contact!;
     expect(contact.name, '母');
     expect(contact.contactId, isNull, reason: 'the book did not exist yet');
-    expect(contact.phone, '090-0000-0000');
-    expect(contact.phoneEnabled, isTrue);
+    expect(contact.phone, '090-0000-0000', reason: 'the number is kept for SMS');
     expect(contact.emailEnabled, isFalse, reason: 'no address to mail');
     expect(contact.smsEnabled, isFalse, reason: 'nobody asked for a text');
     expect(contact.messageMode, MessageMode.custom);
@@ -789,7 +788,7 @@ void main() {
     expect(reread.contact!.contactId, 'c1');
     expect(reread.oversleepTriggerMinutes, 0);
 
-    // And deleting that entry leaves the alarm still knowing who to call.
+    // And deleting that entry leaves the alarm still knowing who to contact.
     await book.delete('c1');
     expect(await book.getAll(), isEmpty);
     final orphaned = (await container
@@ -815,13 +814,13 @@ void main() {
       );
 
       // The v6 contact reads back under the rule it was written under: the
-      // words the user typed survive, and the retired 電話設定 does not — a call
-      // plays nothing now, so a recording made for it has nothing to play on.
+      // words the user typed survive, and the retired 電話設定 does not — the
+      // phone-call route is gone, so an old blob's phone toggle and its
+      // recording are read and discarded; the number is kept for SMS.
       final alarm = await container.read(alarmRepositoryProvider).getById('a1');
       final contact = alarm!.contact!;
       expect(contact.name, '母');
-      expect(contact.phone, '090-0000-0000');
-      expect(contact.phoneEnabled, isTrue);
+      expect(contact.phone, '090-0000-0000', reason: 'kept for SMS');
       expect(contact.emailEnabled, isFalse);
       expect(contact.smsEnabled, isFalse, reason: 'nobody asked for a text');
       expect(contact.messageMode, MessageMode.custom);
@@ -830,6 +829,7 @@ void main() {
         'recordingPath',
         'recordingWaveform',
         'phoneMode',
+        'phoneEnabled',
       ]) {
         expect(contact.toJson().containsKey(gone), isFalse, reason: gone);
       }

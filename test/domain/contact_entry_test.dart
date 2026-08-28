@@ -93,7 +93,7 @@ void main() {
 
       expect(old.name, '母');
       expect(old.contactId, isNull);
-      expect(old.phoneEnabled, isTrue, reason: 'it had a number');
+      expect(old.phone, '090-0000-0000', reason: 'the number is kept for SMS');
       expect(old.emailEnabled, isFalse);
       expect(
         old.smsEnabled,
@@ -127,8 +127,30 @@ void main() {
       });
       expect(old.messageMode, MessageMode.custom);
       expect(old.message, '起きて');
-      expect(old.phoneEnabled, isTrue);
+      expect(old.phone, '090-0000-0000');
       expect(old.smsEnabled, isFalse);
+    });
+
+    test('an old blob with 電話 switched on still loads, and just no longer '
+        'calls', () {
+      // The phone-call route is gone. A saved contact that had it enabled must
+      // still read back cleanly: the key is ignored, the number is kept for
+      // SMS, nothing is thrown.
+      final old = OversleepContact.fromJson(const {
+        'name': '母',
+        'phone': '090-0000-0000',
+        'phoneEnabled': true,
+        'phoneMode': 'custom',
+        'recordingPath': '/tmp/a.m4a',
+      });
+      expect(old.name, '母');
+      expect(old.phone, '090-0000-0000');
+      expect(old.smsEnabled, isFalse);
+      expect(
+        old.toJson().containsKey('phoneEnabled'),
+        isFalse,
+        reason: 'the retired call toggle leaves nothing behind',
+      );
     });
 
     test(
@@ -142,7 +164,6 @@ void main() {
         expect(old.messageMode, MessageMode.standard);
         expect(old.message, isNull);
         expect(old.emailEnabled, isTrue);
-        expect(old.phoneEnabled, isFalse);
         expect(old.smsEnabled, isFalse);
       },
     );
@@ -153,7 +174,6 @@ void main() {
         name: '田中太郎',
         phone: '090-1234-5678',
         email: 'taro@example.com',
-        phoneEnabled: true,
         emailEnabled: false,
         smsEnabled: true,
         messageMode: MessageMode.custom,
@@ -162,27 +182,13 @@ void main() {
       expect(OversleepContact.fromJson(contact.toJson()), contact);
     });
 
-    test('a route is only live when it is switched on and reachable', () {
-      const noNumber = OversleepContact(name: 'x', phoneEnabled: true);
-      expect(noNumber.willPhone, isFalse);
-      const notOn = OversleepContact(name: 'x', phone: '090');
-      expect(notOn.willPhone, isFalse);
-      const live = OversleepContact(
-        name: 'x',
-        phone: '090',
-        phoneEnabled: true,
-      );
-      expect(live.willPhone, isTrue);
-    });
-
-    test('the SMS rides on the same number the call would ring', () {
+    test('the SMS rides on the stored number', () {
       const texting = OversleepContact(
         name: 'x',
         phone: '090',
         smsEnabled: true,
       );
       expect(texting.willSms, isTrue);
-      expect(texting.willPhone, isFalse, reason: 'a separate toggle');
       expect(
         const OversleepContact(name: 'x', smsEnabled: true).willSms,
         isFalse,

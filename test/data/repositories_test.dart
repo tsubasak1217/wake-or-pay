@@ -169,7 +169,6 @@ void main() {
         contact: OversleepContact(
           name: '母',
           phone: '090-0000-0000',
-          phoneEnabled: true,
           smsEnabled: true,
           messageMode: MessageMode.custom,
           message: '起きて',

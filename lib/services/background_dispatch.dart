@@ -10,7 +10,6 @@ import '../domain/models.dart';
 import '../domain/oversleep_contact_rules.dart';
 import 'app_notifier.dart';
 import 'oversleep_notifier.dart';
-import 'phone_caller.dart';
 import 'secret_store.dart';
 import 'sms_sender.dart';
 
@@ -198,9 +197,7 @@ Future<void> oversleepAlarmCallback(int id, Map<String, dynamic> params) async {
 /// The container the background isolate runs on.
 ///
 /// The senders are the real ones — an SMS and a mail are exactly what this
-/// exists to send — except the phone, which is [UnavailablePhoneCaller]:
-/// `ACTION_CALL` needs a foreground Activity and there is not one, so the log
-/// says the call was skipped rather than pretending it was placed.
+/// exists to send.
 @visibleForTesting
 Future<ProviderContainer> backgroundContainer() async => ProviderContainer(
   overrides: [
@@ -209,7 +206,6 @@ Future<ProviderContainer> backgroundContainer() async => ProviderContainer(
     ),
     flutterSecureStoreOverride(),
     platformSmsSenderOverride(),
-    phoneCallerProvider.overrideWithValue(const UnavailablePhoneCaller()),
     localAppNotifierOverride(),
   ],
 );

@@ -14,7 +14,7 @@ import '../helpers.dart';
 const contact = OversleepContact(
   name: '田中太郎',
   phone: '090-0000-0000',
-  phoneEnabled: true,
+  smsEnabled: true,
 );
 
 /// The delay lives on the alarm since 改訂4, because one number drives both the
@@ -182,19 +182,18 @@ void main() {
     final events = await r.container
         .read(contactEventRepositoryProvider)
         .getRecent();
-    // The summary row plus the 電話 route's own outcome — one round, not two.
+    // The summary row plus the SMS route's own outcome — one round, not two.
     expect(events, hasLength(2), reason: 'once per session');
     expect(
-      events.firstWhere((e) => !e.id.endsWith('-phone')).contactName,
+      events.firstWhere((e) => !e.id.endsWith('-sms')).contactName,
       target,
       reason: 'the log names the recipient with the same phrase the voice did',
     );
 
     final posted = notifierOf(r.container).posted;
-    // Every route really goes out since D3; this alarm's contact has 電話 on
+    // Every route really goes out since D3; this alarm's contact has SMS on
     // and nothing else.
-    expect(posted.map((p) => p.body), contains('電話をかけました'));
-    expect(find.byKey(const ValueKey('ringingCallLine')), findsOneWidget);
+    expect(posted.map((p) => p.body), contains('SMSを送信しました'));
 
     // Ticking on does not send a second one.
     await tick(tester, seconds: 3);

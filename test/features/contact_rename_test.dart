@@ -40,7 +40,7 @@ const seededAlarm = Alarm(
     name: '田中太郎',
     phone: '090-1234-5678',
     email: 'taro@example.com',
-    phoneEnabled: true,
+    smsEnabled: true,
     emailEnabled: true,
   ),
 );
@@ -160,10 +160,10 @@ void main() {
 
     expect(
       tester
-          .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, '電話'))
+          .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'SMS'))
           .onChanged,
       isNotNull,
-      reason: 'there is a number to call',
+      reason: 'there is a number to text',
     );
 
     // 連絡先 row → 連絡帳 → menu → 編集, and take the number away.
@@ -180,15 +180,13 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    // Both routes that ride on the number die with it.
-    for (final label in const ['電話', 'SMS']) {
-      final row = tester.widget<SwitchListTile>(
-        find.widgetWithText(SwitchListTile, label),
-      );
-      expect(row.onChanged, isNull, reason: '$label: the number is gone');
-      expect(row.value, isFalse);
-    }
-    expect(find.text('この連絡先には電話番号がありません'), findsNWidgets(2));
+    // The SMS route that rides on the number dies with it.
+    final smsRow = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, 'SMS'),
+    );
+    expect(smsRow.onChanged, isNull, reason: 'SMS: the number is gone');
+    expect(smsRow.value, isFalse);
+    expect(find.text('この連絡先には電話番号がありません'), findsOneWidget);
     // メール is untouched by the edit: it is greyed for the app-wide reason,
     // not because this contact lost anything.
     expect(
@@ -209,7 +207,7 @@ void main() {
         .single
         .contact!;
     expect(saved.phone, isNull);
-    expect(saved.phoneEnabled, isFalse);
+    expect(saved.smsEnabled, isFalse);
     expect(saved.emailEnabled, isTrue);
   });
 
@@ -243,7 +241,7 @@ void main() {
       oversleepTargetLabel(contactName: '田中太郎（部長）'),
       reason: 'the log names the recipient with the phrase everything uses',
     );
-    // Three rows: the summary, and one per route that ran (電話 and メール).
+    // Three rows: the summary, and one per route that ran (SMS and メール).
     // What matters here is that all of them name the *edited* person.
     final rows = await events.forSession('s1');
     expect(rows, hasLength(3));

@@ -391,16 +391,6 @@ void main() {
       expect(contactSentNotificationText(target).title, '田中太郎 さんへの連絡');
 
       expect(
-        contactSentNotificationText(target, failedRoutes: const ['電話']).body,
-        '電話をかけられませんでした',
-        reason: 'a call nobody placed must never read as one that was',
-      );
-      expect(
-        contactSentNotificationText(target, sentRoutes: const ['電話']).body,
-        '電話をかけました',
-        reason: '「電話を送信しました」 is not a sentence',
-      );
-      expect(
         contactSentNotificationText(target, discordSent: 2).body,
         'Discord 2件に投稿しました',
         reason: 'and a post that really went out must not deny itself',
@@ -419,47 +409,17 @@ void main() {
           target,
           discordSent: 1,
           discordFailed: 1,
-          sentRoutes: const ['電話', 'SMS'],
+          sentRoutes: const ['SMS'],
           failedRoutes: const ['メール'],
         ).body,
         'Discord 1件に投稿しました。Discord 1件は送信できませんでした。'
-        '電話をかけました。SMSを送信しました。メールは送信できませんでした',
+        'SMSを送信しました。メールは送信できませんでした',
       );
       expect(
         contactSentNotificationText(target).body,
         '田中太郎 さんへの連絡を記録しました',
         reason: 'no route left — every 共有先 on it had been deleted',
       );
-    });
-
-    group('oversleepCallLine', () {
-      ContactEvent row(String suffix, String? detail) => ContactEvent(
-        id: 'contact-1-s1$suffix',
-        sessionId: 's1',
-        firedAt: DateTime(2026, 8, 27, 7, 5),
-        contactName: '田中太郎',
-        channel: ContactChannel.phone,
-        detail: detail,
-      );
-
-      test('nothing at all until a call has been attempted', () {
-        expect(oversleepCallLine(const []), isNull);
-        expect(
-          oversleepCallLine([row('', '電話 / メール…')]),
-          isNull,
-          reason: 'the summary row is not the call',
-        );
-        expect(oversleepCallLine([row('-email', '成功')]), isNull);
-      });
-
-      test('a call that connected, and one that did not', () {
-        expect(oversleepCallLine([row('-phone', '成功')]), '田中太郎 に電話をかけました');
-        expect(
-          oversleepCallLine([row('-phone', '失敗（権限がありません）')]),
-          '田中太郎 に電話をかけられませんでした',
-          reason: 'a call that never went out must not read as one that did',
-        );
-      });
     });
   });
 
@@ -481,7 +441,7 @@ void main() {
       name: '田中太郎',
       phone: '090-0000-0000',
       email: 'taro@example.com',
-      phoneEnabled: true,
+      smsEnabled: true,
       emailEnabled: true,
     );
 
@@ -520,9 +480,9 @@ void main() {
     test('an address deleted in the book switches its route off', () {
       final live = resolveOversleepContact(snapshot, [entry(phone: null)]);
       expect(live.phone, isNull);
-      expect(live.phoneEnabled, isFalse, reason: 'nothing left to call');
+      expect(live.smsEnabled, isFalse, reason: 'nothing left to text');
       expect(live.emailEnabled, isTrue);
-      expect(live.willPhone, isFalse);
+      expect(live.willSms, isFalse);
     });
 
     test('a number deleted in the book takes the SMS with it', () {
@@ -546,8 +506,7 @@ void main() {
       );
       final live = resolveOversleepContact(mailOnly, [entry()]);
       expect(live.phone, '090-0000-0000', reason: 'now reachable');
-      expect(live.phoneEnabled, isFalse, reason: 'but the user never asked');
-      expect(live.smsEnabled, isFalse);
+      expect(live.smsEnabled, isFalse, reason: 'but the user never asked');
     });
 
     test('resolveAlarmContact leaves a contactless alarm alone', () {

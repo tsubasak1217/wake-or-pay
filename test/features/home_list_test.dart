@@ -20,7 +20,7 @@ const kakugoAlarm = Alarm(
     name: '田中太郎',
     phone: '090-1234-5678',
     email: 'taro@example.com',
-    phoneEnabled: true,
+    smsEnabled: true,
     emailEnabled: true,
   ),
 );
@@ -138,7 +138,7 @@ void main() {
 
     expect(find.text('06:30'), findsOneWidget);
     expect(find.text('平日'), findsOneWidget);
-    expect(find.text('覚悟あり ・ 500 コイン/分 ・ 📞 ✉ 田中太郎'), findsOneWidget);
+    expect(find.text('覚悟あり ・ 500 コイン/分 ・ 💬 ✉ 田中太郎'), findsOneWidget);
 
     expect(find.text('08:15'), findsOneWidget);
     expect(find.text('一回限り'), findsOneWidget);
@@ -167,8 +167,8 @@ void main() {
     expect(find.textContaining('コイン/分'), findsNothing);
     expect(
       textOf(tester, 'alarmSummary'),
-      '覚悟あり ・ 📞 ✉ 田中太郎',
-      reason: 'the pledge is the phone call',
+      '覚悟あり ・ 💬 ✉ 田中太郎',
+      reason: 'the pledge is the SMS and mail',
     );
   });
 
@@ -186,7 +186,7 @@ void main() {
       ],
     );
     // Renamed, and the address was dropped, so the mail route goes with it.
-    expect(textOf(tester, 'alarmSummary'), endsWith('・ 📞 田中太郎（部長）'));
+    expect(textOf(tester, 'alarmSummary'), endsWith('・ 💬 田中太郎（部長）'));
     expect(find.textContaining('✉'), findsNothing);
   });
 

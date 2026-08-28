@@ -32,14 +32,6 @@
          README の「既知の制約」に書いてある。 -->
     <uses-permission android:name="android.permission.SEND_SMS"/>
 
-    <!-- 寝坊時の電話発信（仕様 11.5）。ACTION_CALL で本人の番号から相手を
-         鳴らす。音声は流さない。READ_PHONE_STATE は通話が始まった／終わった
-         のを知るためだけに使う（通話中はアラーム音を止め、終わったら鳴らし
-         直す）。番号や通話履歴は読まないし、どこにも送らない。
-         どちらも「電話」トグルを ON にした瞬間に実行時要求する。 -->
-    <uses-permission android:name="android.permission.CALL_PHONE"/>
-    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
-
     <application
         android:label="覚悟の目覚まし"
         android:name="${applicationName}"

@@ -234,7 +234,7 @@ void main() {
     );
   });
 
-  testWidgets('寝坊ペナルティ can be 0: a pledge that is only the phone call', (
+  testWidgets('寝坊ペナルティ can be 0: a pledge that is only the contact', (
     tester,
   ) async {
     final container = await openNewAlarm(tester);

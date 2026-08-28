@@ -6,7 +6,6 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/oversleep_notifier.dart';
-import 'package:wake_or_pay/services/phone_caller.dart';
 import 'package:wake_or_pay/services/sms_sender.dart';
 
 import '../helpers.dart';
@@ -14,7 +13,7 @@ import '../helpers.dart';
 const contact = OversleepContact(
   name: '田中太郎',
   phone: '090-0000-0000',
-  phoneEnabled: true,
+  smsEnabled: true,
 );
 
 const share = OversleepShare(webhookIds: {'w1', 'w2'});
@@ -85,8 +84,6 @@ Future<({ProviderContainer container, AlarmSession session})> ringing(
   bool mailConfigured = false,
   SendResult mailResult = const SendResult.success(),
   SendResult smsResult = const SendResult.success(),
-  SendResult phoneResult = const SendResult.success(),
-  PhoneCaller? phone,
 }) async {
   sender = FakeDiscordWebhookSender(failFor: failFor);
   mails = FakeMailSender(result: mailResult);
@@ -101,9 +98,6 @@ Future<({ProviderContainer container, AlarmSession session})> ringing(
       fakeDiscordSenderOverride(sender),
       fakeMailSenderOverride(mails),
       recordingSmsSenderOverride(RecordingSmsSender(result: smsResult)),
-      phoneCallerProvider.overrideWithValue(
-        phone ?? RecordingPhoneCaller(result: phoneResult),
-      ),
       if (mailConfigured) seededSecretStoreOverride(),
     ],
   );
@@ -140,7 +134,7 @@ void main() {
     });
 
     test(
-      'at the trigger it logs the event and places the call',
+      'at the trigger it logs the event and sends the SMS',
       () async {
         final r = await ringing(pledged);
 
@@ -157,13 +151,8 @@ void main() {
         expect(event.firedAt, at(minutes: 11));
         expect(
           event.channel,
-          ContactChannel.phone,
-          reason: 'a call is the loudest thing available',
-        );
-        expect(
-          event.detail,
-          '電話',
-          reason: 'the call plays nothing, so there is no body to write down',
+          ContactChannel.sms,
+          reason: 'SMS is the loudest personal route available',
         );
 
         final stored = await r.container
@@ -172,17 +161,17 @@ void main() {
         expect(
           stored,
           hasLength(2),
-          reason: 'the summary row, and the 電話 route’s own outcome',
+          reason: 'the summary row, and the SMS route’s own outcome',
         );
         expect(stored, contains(event));
 
         expect(
-          phoneCallerOf(r.container).called,
-          ['09000000000'],
-          reason: 'dialled with the digits, not with the hyphens',
+          smsSenderOf(r.container).sent.single.to,
+          '09000000000',
+          reason: 'texted with the digits, not with the hyphens',
         );
         final posted = notifierOf(r.container).posted.single;
-        expect(posted.body, '電話をかけました');
+        expect(posted.body, 'SMSを送信しました');
         expect(sender.posts, isEmpty, reason: 'no share on this alarm');
       },
     );
@@ -213,9 +202,9 @@ void main() {
       expect(
         await r.container.read(contactEventRepositoryProvider).getRecent(),
         hasLength(2),
-        reason: 'one round: the summary row and the 電話 route’s own row',
+        reason: 'one round: the summary row and the SMS route’s own row',
       );
-      expect(phoneCallerOf(r.container).called, hasLength(1));
+      expect(smsSenderOf(r.container).sent, hasLength(1));
     });
 
     test('a share-only alarm is every bit as much a notification', () async {
@@ -317,7 +306,7 @@ void main() {
           contactId: 'c1',
           name: '古い名前',
           phone: '090-0000-0000',
-          phoneEnabled: true,
+          smsEnabled: true,
         ),
         oversleepTriggerMinutes: 10,
       );
@@ -460,7 +449,7 @@ void main() {
       );
     });
 
-    test('both halves: Discord and the call both went', () async {
+    test('both halves: Discord and the SMS both went', () async {
       const both = Alarm(
         id: 'a1',
         hour: 7,
@@ -479,68 +468,8 @@ void main() {
       expect(sender.posts, hasLength(1));
       expect(
         notifierOf(r.container).posted.single.body,
-        'Discord 1件に投稿しました。電話をかけました',
+        'Discord 1件に投稿しました。SMSを送信しました',
       );
-    });
-  });
-
-  group('電話の発信', () {
-    test('a refused call is a row and a sentence, never a throw', () async {
-      final r = await ringing(
-        pledged,
-        phoneResult: const SendResult.failure(SendFailure.permission),
-      );
-
-      final event = await r.container
-          .read(contactDispatcherProvider)
-          .fireIfDue(alarm: pledged, session: r.session, now: at(minutes: 11));
-
-      expect(event, isNotNull, reason: 'the session still fired');
-      expect(notifierOf(r.container).posted.single.body, '電話をかけられませんでした');
-      final row = (await r.container
-              .read(contactEventRepositoryProvider)
-              .getRecent())
-          .firstWhere((e) => e.id.endsWith('-phone'));
-      expect(row.detail, '失敗（権限がありません）');
-    });
-
-    test('from the background the call is skipped and said to be', () async {
-      final r = await ringing(pledged, phone: const UnavailablePhoneCaller());
-
-      await r.container
-          .read(contactDispatcherProvider)
-          .fireIfDue(alarm: pledged, session: r.session, now: at(minutes: 11));
-
-      final row = (await r.container
-              .read(contactEventRepositoryProvider)
-              .getRecent())
-          .firstWhere((e) => e.id.endsWith('-phone'));
-      expect(row.detail, contains(UnavailablePhoneCaller.backgroundReason));
-      expect(notifierOf(r.container).posted.single.body, '電話をかけられませんでした');
-    });
-
-    test('電話 off on the contact dials nobody', () async {
-      const noPhone = OversleepContact(
-        name: '田中太郎',
-        phone: '090-0000-0000',
-        smsEnabled: true,
-      );
-      const alarm = Alarm(
-        id: 'a1',
-        hour: 7,
-        minute: 0,
-        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
-        contact: noPhone,
-        oversleepTriggerMinutes: 10,
-      );
-      final r = await ringing(alarm);
-
-      await r.container
-          .read(contactDispatcherProvider)
-          .fireIfDue(alarm: alarm, session: r.session, now: at(minutes: 11));
-
-      expect(phoneCallerOf(r.container).called, isEmpty);
-      expect(notifierOf(r.container).posted.single.body, 'SMSを送信しました');
     });
   });
 
@@ -737,11 +666,27 @@ void main() {
     });
 
     test('SMS off on the contact texts nobody', () async {
-      final r = await ringing(pledged);
+      // A number is on the contact, but the SMS toggle is not: a number alone
+      // is not a route. メール keeps the alarm notifying.
+      const noSms = OversleepContact(
+        name: '田中太郎',
+        phone: '090-1234-5678',
+        email: 'taro@example.com',
+        emailEnabled: true,
+      );
+      const alarm = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        kakugo: Kakugo(ratePerMinute: 100, cap: 2000),
+        contact: noSms,
+        oversleepTriggerMinutes: 10,
+      );
+      final r = await ringing(alarm);
 
       await r.container
           .read(contactDispatcherProvider)
-          .fireIfDue(alarm: pledged, session: r.session, now: at(minutes: 11));
+          .fireIfDue(alarm: alarm, session: r.session, now: at(minutes: 11));
 
       expect(smsSenderOf(r.container).sent, isEmpty);
       expect(await smsRow(r.container), isNull);
@@ -749,22 +694,20 @@ void main() {
   });
 
   group('channelsFor', () {
-    test('電話 → SMS → メール → Discord, and only what is live', () {
-      expect(channelsFor(contact: contact), [ContactChannel.phone]);
+    test('SMS → メール → Discord, and only what is live', () {
+      expect(channelsFor(contact: contact), [ContactChannel.sms]);
       expect(
         channelsFor(
           contact: const OversleepContact(
             name: 'x',
             phone: '090-0000-0000',
             email: 'a@b.c',
-            phoneEnabled: true,
             smsEnabled: true,
             emailEnabled: true,
           ),
           share: share,
         ),
         [
-          ContactChannel.phone,
           ContactChannel.sms,
           ContactChannel.email,
           ContactChannel.discord,
@@ -775,7 +718,7 @@ void main() {
     });
 
     test('the row is filed under the loudest route it took', () {
-      expect(channelFor(contact, null), ContactChannel.phone);
+      expect(channelFor(contact, null), ContactChannel.sms);
       expect(
         channelFor(
           const OversleepContact(name: 'x', email: 'a@b.c', emailEnabled: true),
@@ -796,7 +739,7 @@ void main() {
           ContactChannel.log);
       expect(
         channelFor(
-          const OversleepContact(name: 'x', phone: '   ', phoneEnabled: true),
+          const OversleepContact(name: 'x', phone: '   ', smsEnabled: true),
           null,
         ),
         ContactChannel.log,
@@ -826,7 +769,6 @@ void main() {
         name: '母',
         phone: '090-0000-0000',
         email: 'haha@example.com',
-        phoneEnabled: true,
         smsEnabled: true,
         emailEnabled: true,
         messageMode: MessageMode.custom,
@@ -834,7 +776,7 @@ void main() {
       );
       expect(
         detailFor(at, contact: both, userName: userName),
-        '電話 / SMS（カスタムメッセージ）：おきて / メール（カスタムメッセージ）：おきて',
+        'SMS（カスタムメッセージ）：おきて / メール（カスタムメッセージ）：おきて',
         reason: 'one message the user wrote once, on both written routes',
       );
     });
@@ -867,15 +809,13 @@ void main() {
             name: '母',
             phone: '090-0000-0000',
             email: 'haha@example.com',
-            phoneEnabled: true,
             smsEnabled: true,
             emailEnabled: true,
           ),
           share: share,
           userName: userName,
         ),
-        '電話'
-        ' / SMS（デフォルト）：山田花子 さんは 06:05 のアラームを解除できていません。寝坊しています。'
+        'SMS（デフォルト）：山田花子 さんは 06:05 のアラームを解除できていません。寝坊しています。'
         ' / メール（デフォルト）：【Wake or Pay】山田花子 さんは 06:05 の'
         'アラームを解除できていません。寝坊しています。'
         ' / Discord 2件（デフォルト）：06:05 のアラームを解除できていません。',

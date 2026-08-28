@@ -10,7 +10,6 @@ import 'alarm_settings_builder.dart';
 import 'app_notifier.dart';
 import 'discord_sender.dart';
 import 'mail_sender.dart';
-import 'phone_caller.dart';
 import 'sms_sender.dart';
 
 /// How the app tells someone that an alarm was slept through.
@@ -33,21 +32,18 @@ abstract class OversleepNotifier {
 }
 
 /// The implementation this phase ships: **every route really goes out** —
-/// Discord, mail, SMS, and the phone call.
+/// Discord, mail, and SMS.
 ///
-/// The one route that can be unavailable rather than merely failing is the
-/// call: `ACTION_CALL` needs a foreground Activity, so spec 11.7's background
-/// isolate is handed an [UnavailablePhoneCaller] and the log says the call was
-/// skipped. What must never happen is the app implying a call was placed when
-/// none was — see [contactSentNotificationText].
+/// The phone-call route was removed: auto-dialling from the background / lock
+/// screen is unreliable across OEMs and Play-restricted. SMS, mail and Discord
+/// remain.
 class OversleepDispatchNotifier implements OversleepNotifier {
   OversleepDispatchNotifier(
     this._events,
     this._notifications,
     this._sender,
     this._mail,
-    this._sms,
-    this._phone, {
+    this._sms, {
     required this.userName,
     required this.discordUserId,
     required this.webhooks,
@@ -58,11 +54,6 @@ class OversleepDispatchNotifier implements OversleepNotifier {
   final DiscordWebhookSender _sender;
   final MailSender _mail;
   final SmsSender _sms;
-
-  /// From the ring screen this really dials; from spec 11.7's background
-  /// isolate it is an [UnavailablePhoneCaller], because `ACTION_CALL` needs an
-  /// Activity that is not there. Either way the log gets a row saying which.
-  final PhoneCaller _phone;
 
   /// Read at trigger time rather than held, so renaming yourself — or filling
   /// the Discord ID in last night — takes effect on alarms that were written
@@ -164,15 +155,8 @@ class OversleepDispatchNotifier implements OversleepNotifier {
     final runs = <({ContactChannel channel, SendResult result})>[];
 
     // Loudest first, which is the order every list of routes in this app is
-    // written in: a ringing phone, then a text message buzzing on a bedside
-    // table, then a mail somebody opens at nine.
-    if (contact.willPhone) {
-      runs.add((
-        channel: ContactChannel.phone,
-        result: await _phone.call(normalizePhoneNumber(contact.phone ?? '')),
-      ));
-    }
-
+    // written in: a text message buzzing on a bedside table, then a mail
+    // somebody opens at nine.
     if (contact.willSms) {
       final sms = buildOversleepSms(
         contact,
@@ -271,13 +255,12 @@ class OversleepDispatchNotifier implements OversleepNotifier {
 /// them. Pure.
 ///
 /// A route counts only when the user switched it on *and* there is somewhere
-/// for it to go. A phone call is the loudest thing available, so it comes
+/// for it to go. SMS is the loudest personal thing available, so it comes
 /// first; Discord is last because it reaches a room rather than a person.
 List<ContactChannel> channelsFor({
   OversleepContact? contact,
   OversleepShare? share,
 }) => [
-  if (contact?.willPhone ?? false) ContactChannel.phone,
   if (contact?.willSms ?? false) ContactChannel.sms,
   if (contact?.willEmail ?? false) ContactChannel.email,
   if (share?.isUsable ?? false) ContactChannel.discord,
@@ -315,9 +298,6 @@ String? detailFor(
       m == MessageMode.custom ? 'カスタムメッセージ' : 'デフォルト';
 
   final parts = [
-    // The call plays nothing since 改訂4 — it rings, and the contact's own
-    // voice is the message — so there is no body to write down for it.
-    if (contact?.willPhone ?? false) '電話',
     if (contact?.willSms ?? false)
       'SMS（${mode(contact!.messageMode)}）'
           '：${oversleepSmsBodyFor(contact, at, userName: userName)}',
@@ -388,7 +368,6 @@ final oversleepNotifierProvider = Provider<OversleepNotifier>(
     ref.watch(discordWebhookSenderProvider),
     ref.watch(mailSenderProvider),
     ref.watch(smsSenderProvider),
-    ref.watch(phoneCallerProvider),
     // read, not watch: the profile is wanted at the moment of firing, and a
     // rename should not tear this provider down mid-session.
     userName: () => ref.read(profileRepositoryProvider).read().userName,

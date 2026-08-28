@@ -14,7 +14,6 @@ import 'services/alarm_service.dart';
 import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
 import 'services/background_dispatch.dart';
-import 'services/phone_caller.dart';
 import 'services/route_permissions.dart';
 import 'services/secret_store.dart';
 import 'services/sms_sender.dart';
@@ -53,8 +52,6 @@ Future<void> main() async {
       // Only the real app is allowed to put a message on a radio; every test
       // keeps the recording sender.
       platformSmsSenderOverride(),
-      // …or dials a number.
-      platformPhoneCallerOverride(),
       // And only the real app puts a permission dialog on screen.
       pluginRoutePermissionsOverride(),
       // …or books a trigger with Android's own AlarmManager (spec 11.7).

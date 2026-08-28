@@ -11,13 +11,7 @@ library;
 /// [WopErrorCode].
 const wopSmsChannel = 'com.wakeorpay.platform/sms';
 
-/// Placing a call and turning the speaker on. `call` takes `{to}`; the
-/// EventChannel of the same name plus `/state` reports whether a call is up.
-const wopPhoneChannel = 'com.wakeorpay.platform/phone';
-
-const wopPhoneStateChannel = 'com.wakeorpay.platform/phone/state';
-
-/// The `code` on a `PlatformException` from either channel.
+/// The `code` on a `PlatformException` from the channel.
 ///
 /// Kept as strings the Dart side switches on, so a new failure mode on the
 /// Android side cannot silently become "unknown error" without anyone

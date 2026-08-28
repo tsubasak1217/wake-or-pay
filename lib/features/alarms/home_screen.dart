@@ -112,7 +112,7 @@ class _AlarmRow extends ConsumerWidget {
     // How many 共有先 this alarm still has. Counted against the live list, so a
     // 共有先 deleted from the app stops being counted here the moment it goes.
     // The row drops the honorific: it is a summary, not a sentence, and
-    // 「📞 田中太郎」 is what it has always read.
+    // 「💬 田中太郎」 is what the row reads.
     final shareCount = alarm.willShare
         ? liveShareTargetCount(
             alarm.share,
@@ -232,7 +232,7 @@ class _AlarmRow extends ConsumerWidget {
     return on ? null : theme.disabledColor;
   }
 
-  /// 「覚悟あり ・ 100 コイン/分 ・ 📞 田中太郎」 — the pledge, the price and who
+  /// 「覚悟あり ・ 100 コイン/分 ・ 💬 田中太郎」 — the pledge, the price and who
   /// hears about it, in that order and only when there is one.
   ///
   /// A share-only alarm reads 「覚悟あり ・ … ・ Discord 2件」, and an alarm doing
@@ -252,7 +252,6 @@ class _AlarmRow extends ConsumerWidget {
       kakugoRateLabel(kakugo.ratePerMinute),
     if (contact != null)
       [
-        if (contact.willPhone) '📞',
         if (contact.willSms) '💬',
         if (contact.willEmail) '✉',
         contact.name,

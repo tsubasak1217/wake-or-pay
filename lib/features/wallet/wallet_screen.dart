@@ -130,8 +130,7 @@ class _ContactEventSection extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: Text(
-            'Discord への共有は実際に投稿されます。'
-            '電話・SMS・メールはまだ実装されていないので、「送るはずだった」記録だけが残ります。',
+            'Discord への共有・SMS・メールは、発火したときに実際に送信されます。',
             style: theme.textTheme.bodySmall,
           ),
         ),

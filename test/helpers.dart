@@ -18,7 +18,6 @@ import 'package:wake_or_pay/services/discord_auth_launcher.dart';
 import 'package:wake_or_pay/services/discord_callback_router.dart';
 import 'package:wake_or_pay/services/discord_sender.dart';
 import 'package:wake_or_pay/services/mail_sender.dart';
-import 'package:wake_or_pay/services/phone_caller.dart';
 import 'package:wake_or_pay/services/route_permissions.dart';
 import 'package:wake_or_pay/services/secret_store.dart';
 import 'package:wake_or_pay/services/sms_sender.dart';
@@ -398,15 +397,6 @@ Override routePermissionsOverride({bool granted = true}) =>
     routePermissionsProvider.overrideWithValue(
       AlwaysGrantRoutePermissions(granted: granted),
     );
-
-/// A caller that dials nobody and remembers the numbers it was handed. The
-/// provider's default is already a [RecordingPhoneCaller]; this reads it back
-/// with a type so a test can also push call states in.
-RecordingPhoneCaller phoneCallerOf(ProviderContainer container) =>
-    container.read(phoneCallerProvider) as RecordingPhoneCaller;
-
-Override recordingPhoneCallerOverride(RecordingPhoneCaller caller) =>
-    phoneCallerProvider.overrideWithValue(caller);
 
 /// A launcher that opens nothing.
 ///

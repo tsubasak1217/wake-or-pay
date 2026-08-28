@@ -18,13 +18,13 @@ import 'widgets/settings_island.dart';
 ///
 /// Two islands, per spec 11.4:
 ///
-/// * 寝坊時の連絡設定 — the person and the four routes
+/// * 寝坊時の連絡設定 — the person and the routes (SMS / メール)
 /// * メール・SMS設定 — only while メール or SMS is on
 ///
-/// The 電話設定 island is gone. A call now rings and plays nothing: the point
-/// is that the contact's own voice comes out of the speaker, so there was
-/// never anything for an automated script to say. 送信タイミング moved up to
-/// 寝坊時連絡・共有, where the 共有 shares it.
+/// The phone-call route was removed: auto-dialling from the background / lock
+/// screen is unreliable across OEMs, Play-restricted, and cannot be verified.
+/// The stored number stays — SMS is sent to it — but there is no 電話 toggle.
+/// 送信タイミング moved up to 寝坊時連絡・共有, where the 共有 shares it.
 ///
 /// The person is picked from the 連絡帳 and **copied** into the alarm: name,
 /// number and address. Deleting them from the book afterwards leaves this
@@ -59,7 +59,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
   late String? _phone = widget.initial?.phone;
   late String? _email = widget.initial?.email;
 
-  late bool _phoneEnabled = widget.initial?.phoneEnabled ?? false;
   late bool _emailEnabled = widget.initial?.emailEnabled ?? false;
   late bool _smsEnabled = widget.initial?.smsEnabled ?? false;
 
@@ -94,7 +93,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
         name: _name.trim(),
         phone: _phone,
         email: _email,
-        phoneEnabled: _phoneEnabled,
         emailEnabled: _emailEnabled,
         smsEnabled: _smsEnabled,
         messageMode: _messageMode,
@@ -105,7 +103,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     // A route can never be on without an address behind it, whatever the
     // stored value said: the toggle for it is not even reachable.
     return live.copyWith(
-      phoneEnabled: live.phoneEnabled && live.hasPhone,
       emailEnabled: live.emailEnabled && live.hasEmail,
       smsEnabled: live.smsEnabled && live.hasPhone,
     );
@@ -121,27 +118,18 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
       ),
     );
     if (picked == null || !mounted) return;
-    // Asked before the route is switched on, exactly as the toggle does it:
-    // an alarm must never be stored with 電話 on and no permission behind it,
-    // because that is a route that fails silently at 7am.
-    final mayCall =
-        picked.hasPhone &&
-        await ref.read(routePermissionsProvider).requestPhone();
-    if (!mounted) return;
     setState(() {
       _contactId = picked.id;
       _name = picked.name;
       _phone = picked.phone;
       _email = picked.email;
-      // Picking somebody means wanting to reach them: the loudest route they
-      // have an address for starts on. SMS does not — a text message is a
-      // different decision from a phone call, and one that is silent at 4am.
-      _phoneEnabled = mayCall;
       // Gated on the same flag the toggle is: switching メール on for somebody
       // the app cannot mail would put a route in the stored contact — and in
       // the event log — that the user never enabled and cannot see, let alone
       // switch back off.
       _emailEnabled = picked.hasEmail && ref.read(mailSendingConfiguredProvider);
+      // SMS does not start on: a text message is a decision the user makes,
+      // not a default that goes out silent at 4am.
       _smsEnabled = false;
     });
   }
@@ -151,7 +139,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     _name = '';
     _phone = null;
     _email = null;
-    _phoneEnabled = false;
     _emailEnabled = false;
     _smsEnabled = false;
   });
@@ -168,16 +155,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     request: () => ref.read(routePermissionsProvider).requestSms(),
     apply: (value) => setState(() => _smsEnabled = value),
     refusal: 'SMS の送信が許可されていないので、SMS は使えません',
-  );
-
-  /// 電話 needs `CALL_PHONE`, and `READ_PHONE_STATE` beside it so the alarm
-  /// sound can get out of the way while the call is up. Same rule as SMS: no
-  /// permission, no route.
-  Future<void> _setPhone(bool on) => _setRoute(
-    on: on,
-    request: () => ref.read(routePermissionsProvider).requestPhone(),
-    apply: (value) => setState(() => _phoneEnabled = value),
-    refusal: '電話の発信が許可されていないので、電話は使えません',
   );
 
   Future<void> _setRoute({
@@ -230,7 +207,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
     final hasContact = live != null;
     final hasPhone = live?.hasPhone ?? false;
     final hasEmail = live?.hasEmail ?? false;
-    final phoneOn = live?.phoneEnabled ?? false;
     final emailOn = live?.emailEnabled ?? false;
     final smsOn = live?.smsEnabled ?? false;
 
@@ -263,15 +239,6 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
                   label: '連絡先',
                   value: live?.name ?? 'なし',
                   onTap: _pickContact,
-                ),
-                SettingSwitchRow(
-                  label: '電話',
-                  value: phoneOn,
-                  enabled: hasPhone,
-                  subtitle: hasPhone
-                      ? '相手の電話が鳴ります。スピーカーになり、音声は流れません'
-                      : 'この連絡先には電話番号がありません',
-                  onChanged: _setPhone,
                 ),
                 SettingSwitchRow(
                   label: 'メール',
@@ -348,10 +315,8 @@ class _ContactSubScreenState extends ConsumerState<ContactSubScreen> {
               ),
             const SizedBox(height: 16),
             Text(
-              'ここの経路（電話・SMS・メール）と寝坊の共有（Discord）は、'
-              '発火したときに実際に送信します。'
-              '電話はスピーカーで相手の声が聞こえるようにしますが、'
-              'こちらから音声を流すことはありません。',
+              'ここの経路（SMS・メール）と寝坊の共有（Discord）は、'
+              '発火したときに実際に送信します。',
               style: theme.textTheme.bodySmall,
             ),
           ],

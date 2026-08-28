@@ -7,14 +7,12 @@ import 'package:wake_or_pay/features/ringing/ringing_controller.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/background_dispatch.dart';
 import 'package:wake_or_pay/services/oversleep_notifier.dart';
-import 'package:wake_or_pay/services/phone_caller.dart';
 
 import '../helpers.dart';
 
 const contact = OversleepContact(
   name: '田中太郎',
   phone: '090-0000-0000',
-  phoneEnabled: true,
   smsEnabled: true,
 );
 
@@ -248,7 +246,6 @@ void main() {
       expect(first, isNotNull);
       expect(second, isNull, reason: 'the second one finds the session claimed');
       expect(smsSenderOf(r.container).sent, hasLength(1));
-      expect(phoneCallerOf(r.container).called, hasLength(1));
     });
 
     test('and the other way round', () async {
@@ -283,36 +280,4 @@ void main() {
     });
   });
 
-  group('the background isolate cannot place a call', () {
-    test('the call is skipped and the log says so', () async {
-      final container = await testContainer(
-        extra: [
-          fakeAlarmServiceOverride(),
-          phoneCallerProvider.overrideWithValue(const UnavailablePhoneCaller()),
-        ],
-      );
-      await container.read(alarmRepositoryProvider).save(pledged);
-      await container
-          .read(walletRepositoryProvider)
-          .write(const Wallet(coins: 500));
-      final session = await container
-          .read(sessionServiceProvider)
-          .start(alarm: pledged, firedAt: firedAt);
-
-      await runBackgroundDispatch(container, session.id, at(minutes: 4));
-
-      final row = (await container
-              .read(contactEventRepositoryProvider)
-              .forSession(session.id))
-          .firstWhere(
-            (e) => e.id.endsWith(contactRouteRowSuffix(ContactChannel.phone)),
-          );
-      expect(row.detail, contains(UnavailablePhoneCaller.backgroundReason));
-      expect(
-        smsSenderOf(container).sent,
-        hasLength(1),
-        reason: 'the SMS still goes out — only the call needs an Activity',
-      );
-    });
-  });
 }

@@ -1,6 +1,5 @@
 import 'loss_calculator.dart';
 import 'models.dart';
-import 'send_result.dart';
 
 /// The contact as it should be **shown and used right now**.
 ///
@@ -32,7 +31,6 @@ OversleepContact resolveOversleepContact(
       clearPhone: entry.phone == null,
       email: entry.email,
       clearEmail: entry.email == null,
-      phoneEnabled: contact.phoneEnabled && entry.hasPhone,
       emailEnabled: contact.emailEnabled && entry.hasEmail,
       smsEnabled: contact.smsEnabled && entry.hasPhone,
     );
@@ -218,18 +216,12 @@ String contactSpeechText(
 
 /// The notification posted when the contact fires, per spec 5. Pure.
 ///
-/// It says, route by route, what actually happened — because the routes no
-/// longer agree with each other. A single sentence covering the lot would have
-/// to be a lie about half of them: 「実際には送信していません」 is a lie about a mail
-/// that reached somebody's inbox, and dropping the caveat is a lie about a
-/// phone call nobody placed. Each group says its own piece.
+/// It says, route by route, what actually happened. Each group says its own
+/// piece.
 ///
 /// [discordSent] and [discordFailed] count 共有先 posted to and 共有先 that
 /// refused. [sentRoutes] and [failedRoutes] name the personal routes that were
-/// attempted — 「電話」, 「SMS」, 「メール」 — and which of them worked. A route
-/// the app could not take at all, such as a call from the background isolate,
-/// is a failure here: from the sleeper's side there is no difference between a
-/// call that could not be placed and one that would not connect.
+/// attempted — 「SMS」, 「メール」 — and which of them worked.
 ({String title, String body}) contactSentNotificationText(
   String target, {
   int discordSent = 0,
@@ -237,18 +229,11 @@ String contactSpeechText(
   List<String> sentRoutes = const [],
   List<String> failedRoutes = const [],
 }) {
-  // 「電話を送信しました」 is not a sentence. A call is placed, not sent, so it
-  // gets its own clause and the written routes share the other one.
-  const phone = '電話';
-  final sent = sentRoutes.where((r) => r != phone);
-  final failed = failedRoutes.where((r) => r != phone);
   final parts = [
     if (discordSent > 0) 'Discord $discordSent件に投稿しました',
     if (discordFailed > 0) 'Discord $discordFailed件は送信できませんでした',
-    if (sentRoutes.contains(phone)) '電話をかけました',
-    if (failedRoutes.contains(phone)) '電話をかけられませんでした',
-    if (sent.isNotEmpty) '${sent.join('・')}を送信しました',
-    if (failed.isNotEmpty) '${failed.join('・')}は送信できませんでした',
+    if (sentRoutes.isNotEmpty) '${sentRoutes.join('・')}を送信しました',
+    if (failedRoutes.isNotEmpty) '${failedRoutes.join('・')}は送信できませんでした',
   ];
   return (
     title: '$targetへの連絡',
@@ -268,26 +253,11 @@ String contactSummaryRowId(String sessionId) => 'contact-$sessionId';
 /// can be told apart from the route's own row.
 String contactRouteRowSuffix(ContactChannel channel) => '-${channel.name}';
 
-/// 「田中太郎 に電話をかけました」 for the ringing screen, or null when no call was
-/// attempted for this session. Pure, per spec 11.5.
-///
-/// It reads the rows the dispatcher wrote rather than being told by the
-/// dispatcher, so the line on screen is the log: if it says the call was
-/// placed, there is a row saying so, and if the call failed the screen says
-/// that instead of quietly showing nothing.
-String? oversleepCallLine(Iterable<ContactEvent> events) {
-  for (final event in events) {
-    if (!event.id.endsWith(contactRouteRowSuffix(ContactChannel.phone))) {
-      continue;
-    }
-    return event.detail == sendSuccessLabel
-        ? '${event.contactName} に電話をかけました'
-        : '${event.contactName} に電話をかけられませんでした';
-  }
-  return null;
-}
-
 /// What each route is called in a sentence and in a log row. Pure.
+///
+/// [ContactChannel.phone] is retained only so historical log rows written
+/// before the phone-call route was removed still read 「電話」; nothing emits it
+/// any more.
 String contactChannelLabel(ContactChannel channel) => switch (channel) {
   ContactChannel.phone => '電話',
   ContactChannel.sms => 'SMS',

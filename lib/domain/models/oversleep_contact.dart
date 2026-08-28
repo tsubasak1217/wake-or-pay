@@ -104,12 +104,14 @@ String defaultOversleepSmsMessage({
 ///
 /// The name and the two addresses are a **snapshot** of a 連絡帳 entry, kept
 /// here on purpose: deleting that entry from the book leaves this alarm still
-/// knowing who to call.
+/// knowing who to reach.
 ///
-/// Since 改訂4 the phone route places a call and plays nothing — the point is
-/// that the contact's own voice comes out of the speaker — so the automated
-/// voice and its recording are gone, and the delay moved up to the alarm,
-/// which shares it with the 寝坊の共有.
+/// The phone-call route was removed: auto-dialling from the background / lock
+/// screen is unreliable across OEMs, Play-restricted, and cannot be verified.
+/// SMS, mail and Discord remain. The stored `phone` number stays — SMS is sent
+/// to it — but there is no longer a call toggle. Old blobs that still carry
+/// `phoneEnabled` (and the retired `phoneMode`/`recordingPath` keys) load fine:
+/// [fromJson] simply ignores those keys. See [fromJson].
 @immutable
 class OversleepContact {
   const OversleepContact({
@@ -117,7 +119,6 @@ class OversleepContact {
     this.contactId,
     this.phone,
     this.email,
-    this.phoneEnabled = false,
     this.emailEnabled = false,
     this.smsEnabled = false,
     this.messageMode = MessageMode.standard,
@@ -132,12 +133,9 @@ class OversleepContact {
   final String? phone;
   final String? email;
 
-  /// Whether that route is used at all. A contact with no number can never
-  /// have [phoneEnabled] meaningfully on — the editor greys the toggle out.
-  final bool phoneEnabled;
   final bool emailEnabled;
 
-  /// SMS, to the same number [phoneEnabled] would ring.
+  /// SMS, sent to [phone].
   final bool smsEnabled;
 
   final MessageMode messageMode;
@@ -151,8 +149,6 @@ class OversleepContact {
   bool get hasEmail => (email ?? '').trim().isNotEmpty;
 
   /// The routes that would actually be used: enabled, and reachable.
-  bool get willPhone => phoneEnabled && hasPhone;
-
   bool get willEmail => emailEnabled && hasEmail;
 
   bool get willSms => smsEnabled && hasPhone;
@@ -169,7 +165,6 @@ class OversleepContact {
     bool clearPhone = false,
     String? email,
     bool clearEmail = false,
-    bool? phoneEnabled,
     bool? emailEnabled,
     bool? smsEnabled,
     MessageMode? messageMode,
@@ -180,7 +175,6 @@ class OversleepContact {
     name: name ?? this.name,
     phone: clearPhone ? null : (phone ?? this.phone),
     email: clearEmail ? null : (email ?? this.email),
-    phoneEnabled: phoneEnabled ?? this.phoneEnabled,
     emailEnabled: emailEnabled ?? this.emailEnabled,
     smsEnabled: smsEnabled ?? this.smsEnabled,
     messageMode: messageMode ?? this.messageMode,
@@ -192,7 +186,6 @@ class OversleepContact {
     'name': name,
     'phone': phone,
     'email': email,
-    'phoneEnabled': phoneEnabled,
     'emailEnabled': emailEnabled,
     'smsEnabled': smsEnabled,
     'messageMode': messageMode.name,
@@ -210,6 +203,12 @@ class OversleepContact {
   /// discarded**, per spec 11.4: the automated voice is gone, so a recording
   /// made for it has nothing left to play on. The files themselves are swept
   /// up at startup by `LegacyRecordingCleanup`.
+  ///
+  /// `phoneEnabled` is likewise **read and discarded** now that the phone-call
+  /// route is gone: an old blob that had a call switched on still loads (the
+  /// number is kept for SMS), it simply no longer calls. Unknown keys are
+  /// ignored, never thrown on — a row written by any earlier version must read
+  /// back cleanly.
   ///
   /// `triggerMinutesAfterGrace` is likewise not a field here any more — it
   /// belongs to the alarm, which shares it with the 共有. The mapper digs it
@@ -229,8 +228,6 @@ class OversleepContact {
       name: json['name'] as String? ?? '',
       phone: phone,
       email: email,
-      phoneEnabled:
-          json['phoneEnabled'] as bool? ?? (phone ?? '').trim().isNotEmpty,
       emailEnabled:
           json['emailEnabled'] as bool? ?? (email ?? '').trim().isNotEmpty,
       smsEnabled: json['smsEnabled'] as bool? ?? false,
@@ -250,7 +247,6 @@ class OversleepContact {
       other.name == name &&
       other.phone == phone &&
       other.email == email &&
-      other.phoneEnabled == phoneEnabled &&
       other.emailEnabled == emailEnabled &&
       other.smsEnabled == smsEnabled &&
       other.messageMode == messageMode &&
@@ -262,7 +258,6 @@ class OversleepContact {
     name,
     phone,
     email,
-    phoneEnabled,
     emailEnabled,
     smsEnabled,
     messageMode,
@@ -271,7 +266,7 @@ class OversleepContact {
 
   @override
   String toString() =>
-      'OversleepContact($name, phone $phoneEnabled, sms $smsEnabled, '
+      'OversleepContact($name, sms $smsEnabled, '
       'mail $emailEnabled, $messageMode)';
 }
 

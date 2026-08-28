@@ -265,17 +265,6 @@ class _RingingBody extends ConsumerWidget {
                     : const SizedBox.shrink(),
                 orElse: () => const SizedBox.shrink(),
               ),
-              // 「田中太郎 に電話をかけました」, once the call has really been placed.
-              // Read off the log rows rather than passed down, so the line and
-              // the record can never disagree.
-              _CallLine(
-                text: oversleepCallLine(
-                  ref
-                          .watch(sessionContactEventsProvider(session.id))
-                          .valueOrNull ??
-                      const <ContactEvent>[],
-                ),
-              ),
               const SizedBox(height: 32),
               // Never guess the wake check: showing long press while the alarm
               // loads would let the user clear a check they did not choose. An
@@ -349,7 +338,9 @@ class _ContactPanel extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            due ? Icons.phone_forwarded : Icons.phone_in_talk_outlined,
+            due
+                ? Icons.notifications_active
+                : Icons.notifications_active_outlined,
             size: 18,
             color: theme.colorScheme.error,
           ),
@@ -362,46 +353,6 @@ class _ContactPanel extends StatelessWidget {
               style: theme.textTheme.titleMedium?.copyWith(
                 color: theme.colorScheme.error,
                 fontWeight: due ? FontWeight.bold : null,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 「田中太郎 に電話をかけました」 — spec 11.5. Nothing at all until a call has
-/// actually been attempted.
-///
-/// Deliberately below the countdown and above the wake check: the ring screen
-/// stays exactly where it was while the call is up, and this is the only sign
-/// on it that anything happened.
-class _CallLine extends StatelessWidget {
-  const _CallLine({required this.text});
-
-  final String? text;
-
-  @override
-  Widget build(BuildContext context) {
-    final line = text;
-    if (line == null) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.call, size: 18, color: theme.colorScheme.error),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              line,
-              key: const ValueKey('ringingCallLine'),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.error,
-                fontWeight: FontWeight.bold,
               ),
             ),
           ),
