@@ -9,22 +9,30 @@ import 'package:wake_or_pay/services/discord_exchange.dart';
 
 import '../helpers.dart';
 
-const _endpoint = 'https://wake-or-pay-discord.example.workers.dev';
-const _exchangeUrl = '$_endpoint/discord/exchange';
+/// 「チャンネルを連携」 on the 共有先設定 screen — the widget's own wiring, not the
+/// [DiscordChannelLinker] logic behind it (that lives in
+/// test/services/discord_channel_linker_test.dart, which passes `endpoint:`
+/// explicitly and so does not depend on this build's own constant).
+///
+/// The widget always calls `.link()` with **no** `endpoint` argument, so it
+/// can only ever act on [kDiscordExchangeEndpoint] as this build set it —
+/// there is no prefs row to override it with any more (段階F removed
+/// 連携サーバーURL entirely). Everything below branches on whether that constant
+/// is empty (a legitimate fork with 「チャンネルを連携」 disabled) or a real
+/// deployed Worker, so this file passes either way a build is configured.
+const _exchangeUrl = '$kDiscordExchangeEndpoint/discord/exchange';
 
 const _grantBody =
     '{"webhook":{"id":"999","url":"https://discord.com/api/webhooks/999/TOK",'
     '"channel_id":"222","guild_id":"111","name":"Wake or Pay"},'
     '"guild_name":"みんなのサーバー","channel_name":null}';
 
-/// The 共有先 screen on its own, with whatever fakes the test needs.
 Future<ProviderContainer> pumpScreen(
   WidgetTester tester, {
-  Map<String, Object> prefs = const {},
   List<Override> extra = const [],
   Set<String> initial = const {},
 }) async {
-  final container = await testContainer(prefs: prefs, extra: extra);
+  final container = await testContainer(extra: extra);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -38,29 +46,64 @@ Future<ProviderContainer> pumpScreen(
 }
 
 void main() {
-  testWidgets('both ways in are named, and the ＋ is gone', (tester) async {
+  testWidgets('チャンネルを連携 is the only way in — the manual button is gone', (
+    tester,
+  ) async {
     await pumpScreen(tester);
 
     expect(find.text('チャンネルを連携（Discord で選ぶ）'), findsOneWidget);
-    expect(find.text('Webhook URL を手動で登録'), findsOneWidget);
-    // The old ＋ hid the only way in behind an icon, and behind five steps in
-    // another app.
+    expect(find.text('Webhook URL を手動で登録'), findsNothing);
+    expect(find.byKey(const ValueKey('webhookAdd')), findsNothing);
     expect(find.byIcon(Icons.add), findsNothing);
   });
 
+  if (kDiscordExchangeEndpoint.isEmpty) {
+    testWidgets(
+      'with no 連携サーバー built in, the button explains what is missing and '
+      'touches nothing',
+      (tester) async {
+        final http = FakeHttpClient();
+        final container = await pumpScreen(
+          tester,
+          extra: [fakeHttpClientOverride(http)],
+        );
+
+        await tester.tap(find.byKey(const ValueKey('webhookLinkChannel')));
+        await tester.pumpAndSettle();
+
+        // No browser or Discord app is opened at all: there is nowhere for a
+        // code to go, so nothing is worth asking Discord for.
+        expect(http.requested, isEmpty);
+        expect(http.posted, isEmpty);
+        expect(
+          await container.read(discordWebhookRepositoryProvider).getAll(),
+          isEmpty,
+        );
+        expect(find.textContaining('連携サーバーが設定されていないビルドです'), findsWidgets);
+      },
+    );
+    return;
+  }
+
+  // This build has a real kDiscordExchangeEndpoint baked in, so the button
+  // can actually complete a flow — exercised over the same fakes as the
+  // service-level tests, through the real widget this time.
   testWidgets('連携 registers the webhook and ticks it on for this alarm', (
     tester,
   ) async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(postStatus: 200, postBody: _grantBody);
-    final authorizer = FakeOAuthAuthorizer(
-      (url) => 'wakeorpay://discord/callback?code=THE_CODE&state=${stateOf(url)}',
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
+          '?code=THE_CODE&state=${stateOf(url)}',
     );
     final container = await pumpScreen(
       tester,
-      prefs: {kDiscordExchangeEndpointPrefsKey: _endpoint},
       extra: [
         fakeHttpClientOverride(http),
-        fakeOAuthAuthorizerOverride(authorizer),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
 
@@ -68,7 +111,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // The authorize URL asked for the channel picker, not a bare identity.
-    final opened = Uri.parse(authorizer.opened.single);
+    final opened = Uri.parse(launcher.opened.single);
     expect(opened.queryParameters['response_type'], 'code');
     expect(opened.queryParameters['scope'], 'webhook.incoming identify');
 
@@ -86,7 +129,6 @@ void main() {
     // name alone is the label.
     expect(saved.single.displayName, 'みんなのサーバー');
 
-    await tester.pumpAndSettle();
     // Somebody who just picked a channel meant to post there.
     final tile = tester.widget<SwitchListTile>(
       find.descendant(
@@ -95,49 +137,25 @@ void main() {
       ),
     );
     expect(tile.value, isTrue);
-    expect(find.text('共有先を追加しました'), findsWidgets);
-  });
-
-  testWidgets('with no 連携サーバー the button explains what is missing', (
-    tester,
-  ) async {
-    final http = FakeHttpClient(postStatus: 200, postBody: _grantBody);
-    final authorizer = FakeOAuthAuthorizer(
-      (url) => 'wakeorpay://discord/callback?code=C&state=${stateOf(url)}',
-    );
-    final container = await pumpScreen(
-      tester,
-      extra: [
-        fakeHttpClientOverride(http),
-        fakeOAuthAuthorizerOverride(authorizer),
-      ],
-    );
-
-    await tester.tap(find.byKey(const ValueKey('webhookLinkChannel')));
-    await tester.pumpAndSettle();
-
-    // No browser is opened at all: there is nowhere for the code to go.
-    expect(authorizer.opened, isEmpty);
-    expect(http.posted, isEmpty);
-    expect(
-      await container.read(discordWebhookRepositoryProvider).getAll(),
-      isEmpty,
-    );
-    expect(find.textContaining('連携サーバー'), findsWidgets);
+    // The status line names which 共有先 — 「共有先を追加しました：みんなのサーバー」 — not
+    // the bare label alone.
+    expect(find.textContaining('共有先を追加しました'), findsWidgets);
   });
 
   testWidgets('a wrong state never reaches the 連携サーバー', (tester) async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(postStatus: 200, postBody: _grantBody);
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (_) => 'wakeorpay://discord/callback'
+          '?code=C&state=not-the-one',
+    );
     final container = await pumpScreen(
       tester,
-      prefs: {kDiscordExchangeEndpointPrefsKey: _endpoint},
       extra: [
         fakeHttpClientOverride(http),
-        fakeOAuthAuthorizerOverride(
-          FakeOAuthAuthorizer(
-            (_) => 'wakeorpay://discord/callback?code=C&state=not-the-one',
-          ),
-        ),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
 
@@ -155,18 +173,19 @@ void main() {
   testWidgets('a 連携サーバー that refuses saves nothing and says so', (
     tester,
   ) async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(postStatus: 500);
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
+          '?code=C&state=${stateOf(url)}',
+    );
     final container = await pumpScreen(
       tester,
-      prefs: {kDiscordExchangeEndpointPrefsKey: _endpoint},
       extra: [
         fakeHttpClientOverride(http),
-        fakeOAuthAuthorizerOverride(
-          FakeOAuthAuthorizer(
-            (url) =>
-                'wakeorpay://discord/callback?code=C&state=${stateOf(url)}',
-          ),
-        ),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
 
@@ -178,16 +197,18 @@ void main() {
       await container.read(discordWebhookRepositoryProvider).getAll(),
       isEmpty,
     );
-    expect(find.text('チャンネルを連携できませんでした'), findsWidgets);
+    expect(find.text('チャンネルを連携できませんでした（連携サーバーの応答なし）'), findsWidgets);
   });
 
-  testWidgets('cancelling in the browser changes nothing', (tester) async {
+  testWidgets('no Discord app or browser says so', (tester) async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    final launcher = FakeDiscordAuthLauncher.noApp(links);
     final container = await pumpScreen(
       tester,
-      prefs: {kDiscordExchangeEndpointPrefsKey: _endpoint},
       extra: [
         fakeHttpClientOverride(FakeHttpClient()),
-        fakeOAuthAuthorizerOverride(FakeOAuthAuthorizer.cancelled()),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
 
@@ -198,71 +219,31 @@ void main() {
       await container.read(discordWebhookRepositoryProvider).getAll(),
       isEmpty,
     );
-    expect(find.text('連携をやめました'), findsWidgets);
+    expect(find.text('Discord アプリもブラウザも見つかりませんでした'), findsWidgets);
   });
 
-  testWidgets('the manual dialog is still there behind its own button', (
-    tester,
-  ) async {
+  testWidgets('やめる leaves nothing saved', (tester) async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    // No replyWith: the flow sits in 承認待ち until the test cancels it.
+    final launcher = FakeDiscordAuthLauncher(links);
     final container = await pumpScreen(
       tester,
-      extra: [fakeHttpClientOverride(FakeHttpClient())],
+      extra: [
+        fakeHttpClientOverride(FakeHttpClient()),
+        ...fakeDiscordFlowOverrides(links, launcher),
+      ],
     );
 
-    await tester.tap(find.byKey(const ValueKey('webhookAdd')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('webhookUrlField')),
-      'https://discord.com/api/webhooks/1/abc',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('webhookNameField')),
-      '手で入れた部屋',
-    );
-    await tester.tap(find.byKey(const ValueKey('webhookSave')));
+    await tester.tap(find.byKey(const ValueKey('webhookLinkChannel')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('discordFlowCancel')));
     await tester.pumpAndSettle();
 
-    final saved = await container.read(discordWebhookRepositoryProvider).getAll();
-    expect(saved.single.displayName, '手で入れた部屋');
-  });
-
-  group('the 連携サーバーURL setting', () {
-    test('an empty override falls back to the build-time constant', () async {
-      final container = await testContainer();
-      expect(
-        container.read(discordExchangeEndpointProvider),
-        kDiscordExchangeEndpoint,
-      );
-    });
-
-    test('what was pasted wins, and clearing it puts the default back',
-        () async {
-      final container = await testContainer();
-      final controller = container.read(
-        discordExchangeEndpointProvider.notifier,
-      );
-
-      await controller.set('  $_endpoint/  ');
-      expect(container.read(discordExchangeEndpointProvider), '$_endpoint/');
-
-      await controller.set('');
-      expect(
-        container.read(discordExchangeEndpointProvider),
-        kDiscordExchangeEndpoint,
-      );
-      expect(
-        container
-            .read(sharedPreferencesProvider)
-            .containsKey(kDiscordExchangeEndpointPrefsKey),
-        isFalse,
-      );
-    });
-
-    test('a pasted URL survives a restart', () async {
-      final container = await testContainer(
-        prefs: {kDiscordExchangeEndpointPrefsKey: _endpoint},
-      );
-      expect(container.read(discordExchangeEndpointProvider), _endpoint);
-    });
+    expect(
+      await container.read(discordWebhookRepositoryProvider).getAll(),
+      isEmpty,
+    );
+    expect(find.text('連携をやめました'), findsWidgets);
   });
 }

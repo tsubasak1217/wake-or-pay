@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
+import 'package:wake_or_pay/services/discord_link_log.dart';
 import 'package:wake_or_pay/services/discord_oauth.dart';
 
 import '../helpers.dart';
@@ -12,13 +13,19 @@ const _identityBody =
 void main() {
   test('a completed flow returns the identity, and the token is only spent '
       'on /users/@me', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
-    final authorizer = FakeOAuthAuthorizer(
-      (url) => 'wakeorpay://discord/callback'
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
           '#access_token=TOK&state=${stateOf(url)}',
     );
     final container = await testContainer(
-      extra: [fakeHttpClientOverride(http), fakeOAuthAuthorizerOverride(authorizer)],
+      extra: [
+        fakeHttpClientOverride(http),
+        ...fakeDiscordFlowOverrides(links, launcher),
+      ],
     );
 
     final result = await container.read(discordOAuthServiceProvider).link();
@@ -32,49 +39,66 @@ void main() {
   });
 
   test('the authorize URL asks for the implicit grant and identify', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
-    final authorizer = FakeOAuthAuthorizer(
-      (url) => 'wakeorpay://discord/callback'
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
           '#access_token=TOK&state=${stateOf(url)}',
     );
     final container = await testContainer(
-      extra: [fakeHttpClientOverride(http), fakeOAuthAuthorizerOverride(authorizer)],
+      extra: [
+        fakeHttpClientOverride(http),
+        ...fakeDiscordFlowOverrides(links, launcher),
+      ],
     );
     await container.read(discordOAuthServiceProvider).link();
 
-    final opened = Uri.parse(authorizer.opened.single);
+    final opened = Uri.parse(launcher.opened.single);
     expect(opened.queryParameters['response_type'], 'token');
     expect(opened.queryParameters['scope'], 'identify');
     expect(opened.queryParameters['prompt'], 'consent');
   });
 
   test('every flow gets its own state', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
-    final authorizer = FakeOAuthAuthorizer(
-      (url) => 'wakeorpay://discord/callback'
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
           '#access_token=TOK&state=${stateOf(url)}',
     );
     final container = await testContainer(
-      extra: [fakeHttpClientOverride(http), fakeOAuthAuthorizerOverride(authorizer)],
+      extra: [
+        fakeHttpClientOverride(http),
+        ...fakeDiscordFlowOverrides(links, launcher),
+      ],
     );
     final service = container.read(discordOAuthServiceProvider);
     await service.link();
     await service.link();
 
-    expect(stateOf(authorizer.opened[0]), isNot(stateOf(authorizer.opened[1])));
+    expect(
+      stateOf(launcher.opened[0]),
+      isNot(stateOf(launcher.opened[1])),
+    );
   });
 
   test('a callback with somebody else’s state never reaches Discord', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (_) => 'wakeorpay://discord/callback'
+          '#access_token=TOK&state=not-the-one',
+    );
     final container = await testContainer(
       extra: [
         fakeHttpClientOverride(http),
-        fakeOAuthAuthorizerOverride(
-          FakeOAuthAuthorizer(
-            (_) => 'wakeorpay://discord/callback'
-                '#access_token=TOK&state=not-the-one',
-          ),
-        ),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
 
@@ -87,28 +111,80 @@ void main() {
     expect(http.requested, isEmpty);
   });
 
-  test('closing the browser is a cancel, not an error', () async {
+  test('no Discord app or browser is noApp, and nothing is opened twice', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    final launcher = FakeDiscordAuthLauncher.noApp(links);
     final container = await testContainer(
       extra: [
         fakeHttpClientOverride(FakeHttpClient()),
-        fakeOAuthAuthorizerOverride(FakeOAuthAuthorizer.cancelled()),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
+
     final result = await container.read(discordOAuthServiceProvider).link();
+
+    expect(result.status, DiscordLinkStatus.noApp);
+    expect(launcher.opened, hasLength(1));
+  });
+
+  test('calling cancel() while waiting ends the flow as cancelled, not an '
+      'error', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    // No replyWith: nothing ever answers on its own, so the flow is still in
+    // the air when cancel() is called below.
+    final launcher = FakeDiscordAuthLauncher.silent(links);
+    final container = await testContainer(
+      extra: [
+        fakeHttpClientOverride(FakeHttpClient()),
+        ...fakeDiscordFlowOverrides(links, launcher),
+      ],
+    );
+    final service = container.read(discordOAuthServiceProvider);
+
+    final future = service.link();
+    // Give the fake launcher's open() a turn to resolve so the flow is
+    // sitting at 承認待ち, the state cancel() is meant to interrupt.
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    service.cancel();
+    final result = await future;
+
     expect(result.status, DiscordLinkStatus.cancelled);
     expect(result.label, '連携をやめました');
   });
 
-  test('Discord refusing is denied', () async {
+  test('five minutes of silence is a timeout, not a hang', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    final launcher = FakeDiscordAuthLauncher.silent(links);
     final container = await testContainer(
       extra: [
         fakeHttpClientOverride(FakeHttpClient()),
-        fakeOAuthAuthorizerOverride(
-          FakeOAuthAuthorizer(
-            (url) => 'wakeorpay://discord/callback'
-                '?error=access_denied&state=${stateOf(url)}',
-          ),
-        ),
+        ...fakeDiscordFlowOverrides(links, launcher),
+      ],
+    );
+
+    final result = await container
+        .read(discordOAuthServiceProvider)
+        .link(timeout: const Duration(milliseconds: 10));
+
+    expect(result.status, DiscordLinkStatus.timedOut);
+    expect(result.label, kDiscordTimedOutMessage);
+  });
+
+  test('Discord refusing is denied', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
+          '?error=access_denied&state=${stateOf(url)}',
+    );
+    final container = await testContainer(
+      extra: [
+        fakeHttpClientOverride(FakeHttpClient()),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
     expect(
@@ -118,16 +194,18 @@ void main() {
   });
 
   test('a 401 from /users/@me is a value, not a throw', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     // Nothing registered for the URL, so the fake answers 404.
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
+          '#access_token=TOK&state=${stateOf(url)}',
+    );
     final container = await testContainer(
       extra: [
         fakeHttpClientOverride(FakeHttpClient()),
-        fakeOAuthAuthorizerOverride(
-          FakeOAuthAuthorizer(
-            (url) => 'wakeorpay://discord/callback'
-                '#access_token=TOK&state=${stateOf(url)}',
-          ),
-        ),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
     expect(
@@ -137,15 +215,17 @@ void main() {
   });
 
   test('being offline is a value too', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
+          '#access_token=TOK&state=${stateOf(url)}',
+    );
     final container = await testContainer(
       extra: [
         fakeHttpClientOverride(FakeHttpClient(throws: true)),
-        fakeOAuthAuthorizerOverride(
-          FakeOAuthAuthorizer(
-            (url) => 'wakeorpay://discord/callback'
-                '#access_token=TOK&state=${stateOf(url)}',
-          ),
-        ),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
     expect(
@@ -154,17 +234,19 @@ void main() {
     );
   });
 
-  test('no access token is ever written to prefs', () async {
+  test('no access token is ever written to prefs or to 連携ログ', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
     final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
+    final launcher = FakeDiscordAuthLauncher(
+      links,
+      replyWith: (url) => 'wakeorpay://discord/callback'
+          '#access_token=SUPERSECRET&state=${stateOf(url)}',
+    );
     final container = await testContainer(
       extra: [
         fakeHttpClientOverride(http),
-        fakeOAuthAuthorizerOverride(
-          FakeOAuthAuthorizer(
-            (url) => 'wakeorpay://discord/callback'
-                '#access_token=SUPERSECRET&state=${stateOf(url)}',
-          ),
-        ),
+        ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
     final result = await container.read(discordOAuthServiceProvider).link();
@@ -183,5 +265,13 @@ void main() {
       expect(key, isNot(contains('token')));
     }
     expect(repository.read().discordUserId, '123456789012345678');
+
+    // The log is the diagnostic surface a user is told to screenshot and
+    // report — it must never be the place a token leaks out to.
+    final log = container.read(discordLinkLogProvider);
+    expect(log, isNotEmpty);
+    for (final entry in log) {
+      expect(entry.message, isNot(contains('SUPERSECRET')));
+    }
   });
 }

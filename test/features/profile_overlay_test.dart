@@ -129,22 +129,10 @@ void main() {
     expect(headerName(tester), 'Lv1 山田花子');
   });
 
-  testWidgets('the Discord ID keeps only digits and is stored', (tester) async {
-    final container = await openOverlay(tester);
-
-    await tester.tap(find.byKey(const ValueKey('profileDiscordIdRow')));
-    await tester.pumpAndSettle();
-    // The formatter drops everything but the digits as it is typed.
-    await tester.enterText(
-      find.byKey(const ValueKey('discordUserIdField')),
-      '<@123456789>',
-    );
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-
-    expect(container.read(profileProvider).discordUserId, '123456789');
-    expect(find.text('123456789'), findsOneWidget);
-  });
+  // 「the Discord ID keeps only digits and is stored」 used to live here. It
+  // exercised profileDiscordIdRow / discordUserIdField — the hand-typed
+  // 「Discord ユーザーID」 row — which is gone (段階F): the only way in now is
+  // 「Discord で連携」, covered in test/features/discord_link_test.dart.
 
   testWidgets('メール送信設定 says 未設定 and opens the SMTP editor', (tester) async {
     await openOverlay(tester);

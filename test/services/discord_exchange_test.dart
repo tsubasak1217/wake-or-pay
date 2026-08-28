@@ -47,12 +47,31 @@ void main() {
     test('empty is not an endpoint', () {
       expect(isDiscordExchangeEndpoint(''), isFalse);
       expect(isDiscordExchangeEndpoint('   '), isFalse);
-      expect(isDiscordExchangeEndpoint(kDiscordExchangeEndpoint), isFalse);
     });
 
     test('nonsense is not an endpoint', () {
       expect(isDiscordExchangeEndpoint('workers.dev'), isFalse);
       expect(isDiscordExchangeEndpoint('https://'), isFalse);
+    });
+
+    // Whatever this build's own kDiscordExchangeEndpoint is set to — empty
+    // (a legitimate build with 「チャンネルを連携」 disabled) or a real deployed
+    // Worker — it must be something [DiscordChannelLinker] can act on without
+    // crashing, and a real one must produce the URL the Worker actually
+    // serves. Asserted against the constant itself, never against a literal
+    // URL: a fork's own deployed Worker is exactly what is meant to differ
+    // here.
+    test('kDiscordExchangeEndpoint is either empty or a usable https '
+        'endpoint', () {
+      if (kDiscordExchangeEndpoint.isEmpty) {
+        expect(isDiscordExchangeEndpoint(kDiscordExchangeEndpoint), isFalse);
+      } else {
+        expect(isDiscordExchangeEndpoint(kDiscordExchangeEndpoint), isTrue);
+        expect(
+          buildDiscordExchangeUrl(kDiscordExchangeEndpoint),
+          endsWith(kDiscordExchangePath),
+        );
+      }
     });
   });
 

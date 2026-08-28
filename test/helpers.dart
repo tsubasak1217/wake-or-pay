@@ -14,7 +14,8 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
-import 'package:wake_or_pay/services/discord_oauth.dart';
+import 'package:wake_or_pay/services/discord_auth_launcher.dart';
+import 'package:wake_or_pay/services/discord_callback_router.dart';
 import 'package:wake_or_pay/services/discord_sender.dart';
 import 'package:wake_or_pay/services/mail_sender.dart';
 import 'package:wake_or_pay/services/phone_caller.dart';
@@ -387,34 +388,72 @@ RecordingPhoneCaller phoneCallerOf(ProviderContainer container) =>
 Override recordingPhoneCallerOverride(RecordingPhoneCaller caller) =>
     phoneCallerProvider.overrideWithValue(caller);
 
-/// An authorizer that opens no browser.
+/// A launcher that opens nothing.
 ///
-/// [callbackFor] is handed the authorize URL and answers with the callback URL
-/// the browser would have come back on — which lets a test echo the real
-/// `state` back, or deliberately not.
-class FakeOAuthAuthorizer implements OAuthAuthorizer {
-  FakeOAuthAuthorizer(this.callbackFor);
+/// [replyWith] is handed the authorize URL and answers with the callback URL
+/// the Discord app or the browser would have come back on — pushed into
+/// [FakeDeepLinks] so it travels the **real** route, through the router that
+/// production uses. A test can therefore echo the real `state` back, echo a
+/// wrong one, or answer with nothing at all and let the timeout fire.
+class FakeDiscordAuthLauncher implements DiscordAuthLauncher {
+  FakeDiscordAuthLauncher(this._links, {this.channel, this.replyWith});
 
-  /// Cancels the flow, as closing the browser does.
-  FakeOAuthAuthorizer.cancelled() : callbackFor = ((_) => null);
+  /// Nothing on the device could open the URL.
+  FakeDiscordAuthLauncher.noApp(this._links)
+    : channel = DiscordAuthChannel.none,
+      replyWith = null;
 
-  final String? Function(String authorizeUrl) callbackFor;
+  /// Opens, and then nothing ever comes back — the abandoned flow.
+  FakeDiscordAuthLauncher.silent(this._links)
+    : channel = DiscordAuthChannel.browser,
+      replyWith = null;
 
+  final FakeDeepLinks _links;
+
+  /// Where the URL was opened. Defaults to the Discord app, which is the path
+  /// the rework is about.
+  final DiscordAuthChannel? channel;
+
+  final String? Function(String authorizeUrl)? replyWith;
+
+  /// Every authorize URL this was asked to open, in order.
   final opened = <String>[];
 
   @override
-  Future<String?> authorize({
-    required String url,
-    required String callbackUrlScheme,
-  }) async {
+  Future<DiscordAuthChannel> open(String url) async {
     opened.add(url);
-    return callbackFor(url);
+    final reply = replyWith?.call(url);
+    if (reply != null) {
+      // After the await, as a real redirect is: the flow must already be
+      // registered, and a callback delivered synchronously here would hide a
+      // listener registered too late.
+      scheduleMicrotask(() => _links.emit(reply));
+    }
+    return channel ?? DiscordAuthChannel.discordApp;
   }
+}
+
+/// Stands in for `app_links` — the OS handing the app a `wakeorpay://` intent.
+class FakeDeepLinks {
+  final _controller = StreamController<Uri>.broadcast();
+
+  Stream<Uri> get stream => _controller.stream;
+
+  void emit(String uri) => _controller.add(Uri.parse(uri));
+
+  void dispose() => _controller.close();
 }
 
 /// The `state` the app put in an authorize URL, read back out of it.
 String stateOf(String authorizeUrl) =>
     Uri.parse(authorizeUrl).queryParameters['state']!;
 
-Override fakeOAuthAuthorizerOverride(FakeOAuthAuthorizer authorizer) =>
-    oauthAuthorizerProvider.overrideWithValue(authorizer);
+/// Wires both halves of the Discord flow to fakes: nothing opens, and the
+/// callback arrives over a stream a test controls.
+List<Override> fakeDiscordFlowOverrides(
+  FakeDeepLinks links,
+  FakeDiscordAuthLauncher launcher,
+) => [
+  discordDeepLinkStreamProvider.overrideWithValue(links.stream),
+  discordAuthLauncherProvider.overrideWithValue(launcher),
+];

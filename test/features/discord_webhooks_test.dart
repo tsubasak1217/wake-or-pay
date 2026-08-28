@@ -14,8 +14,6 @@ import '../helpers.dart';
 /// this alarm's [OversleepShare.webhookIds]. Nothing here is allowed to reach
 /// the network, because a webhook URL is somebody's live Discord channel.
 
-const goodUrl = 'https://discord.com/api/webhooks/123456789/token-abc';
-
 Finder get editorScrollable => find
     .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
     .first;
@@ -204,136 +202,14 @@ void main() {
     );
   });
 
-  testWidgets('a URL that is not a Discord webhook is refused in Japanese', (
-    tester,
-  ) async {
-    final container = await openNewAlarm(tester, withWebhooks: false);
-
-    await inWebhookList(tester, () async {
-      expect(find.textContaining('まだ共有先がありません'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('webhookAdd')));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(
-        find.byKey(const ValueKey('webhookUrlField')),
-        'https://example.com/hooks/1/abc',
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('webhookSave')));
-      await tester.pumpAndSettle();
-
-      final field = tester.widget<TextField>(
-        find.byKey(const ValueKey('webhookUrlField')),
-      );
-      expect(
-        field.decoration!.errorText,
-        contains('Discord の Webhook URL を入力してください'),
-        reason: 'a wrong URL could only ever fail silently at 6am',
-      );
-      expect(
-        find.byKey(const ValueKey('webhookSave')),
-        findsOneWidget,
-        reason: 'the form is still open: nothing was saved',
-      );
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-    });
-
-    expect(
-      await container.read(discordWebhookRepositoryProvider).getAll(),
-      isEmpty,
-    );
-  });
-
-  testWidgets('a good URL prefills 表示名 from the webhook itself', (
-    tester,
-  ) async {
-    // ASCII on purpose: the fake answers with no charset on the response, and
-    // `http` then decodes the body as latin1. Discord's own replies carry
-    // `charset=utf-8`, so this is a property of the fake and not of the app.
-    final http = FakeHttpClient(responses: {goodUrl: '{"name":"wake-up-bot"}'});
-    final container = await openNewAlarm(
-      tester,
-      http: http,
-      withWebhooks: false,
-    );
-
-    await inWebhookList(tester, () async {
-      await tester.tap(find.byKey(const ValueKey('webhookAdd')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('webhookUrlField')),
-        goodUrl,
-      );
-      await tester.pumpAndSettle();
-
-      expect(http.requested, [goodUrl]);
-      expect(
-        tester
-            .widget<TextField>(find.byKey(const ValueKey('webhookNameField')))
-            .controller!
-            .text,
-        'wake-up-bot',
-      );
-
-      await tester.tap(find.byKey(const ValueKey('webhookSave')));
-      await tester.pumpAndSettle();
-    });
-
-    final saved = (await container
-        .read(discordWebhookRepositoryProvider)
-        .getAll()).single;
-    expect(saved.displayName, 'wake-up-bot');
-    expect(saved.url, goodUrl);
-  });
-
-  testWidgets('a lookup that fails leaves 表示名 empty and still saves', (
-    tester,
-  ) async {
-    final http = FakeHttpClient(throws: true);
-    final container = await openNewAlarm(
-      tester,
-      http: http,
-      withWebhooks: false,
-    );
-
-    await inWebhookList(tester, () async {
-      await tester.tap(find.byKey(const ValueKey('webhookAdd')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('webhookUrlField')),
-        goodUrl,
-      );
-      await tester.pumpAndSettle();
-
-      expect(http.requested, [goodUrl], reason: 'it did try');
-      expect(
-        tester
-            .widget<TextField>(find.byKey(const ValueKey('webhookNameField')))
-            .controller!
-            .text,
-        isEmpty,
-        reason: 'offline is not a reason to type a name into somebody',
-      );
-
-      await tester.enterText(
-        find.byKey(const ValueKey('webhookNameField')),
-        '手で書いた名前',
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('webhookSave')));
-      await tester.pumpAndSettle();
-    });
-
-    final saved = (await container
-        .read(discordWebhookRepositoryProvider)
-        .getAll()).single;
-    expect(
-      saved.displayName,
-      '手で書いた名前',
-      reason: 'a registration typed by hand works perfectly well',
-    );
-  });
+  // The three tests that used to live here — a bad URL refused at
+  // webhookUrlField, a good URL prefilling 表示名 from a GET, and a failed
+  // lookup still saving with a hand-typed name — all exercised
+  // 「Webhook URL を手動で登録」 (webhookAdd / webhookUrlField / webhookNameField /
+  // webhookSave), which is gone with `DiscordWebhookForm` (段階F). There is
+  // now exactly one way to register a 共有先: 「チャンネルを連携」, covered end to
+  // end in test/services/discord_channel_linker_test.dart and, for the "no
+  // 連携サーバー built in" case, in test/features/discord_channel_link_test.dart.
 
   testWidgets('テスト送信 posts one line to that 共有先 and says so', (tester) async {
     final http = FakeHttpClient();
