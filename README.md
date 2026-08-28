@@ -643,17 +643,22 @@ Discord 側で Webhook を作る作業はまったく無い（Discord が代わ�
 
 ## Discord 連携（OAuth2）
 
-Discord には 2 か所つながる。**片方はサーバー不要で、もう片方だけが小さなサーバーを要る。**
+Discord には 2 か所つながる。**どちらも同じ認可コードフローで、どちらも連携サーバーを通る。**
 
-| 何をするか | 使う流れ | サーバー |
+| 何をするか | 使う流れ | 連携サーバーが返すもの |
 |---|---|---|
-| **Discord で連携**（プロフィール）＝ ユーザーID を自動で入れる | 暗黙フロー（`response_type=token`・`scope=identify`） | **要らない** |
-| **チャンネルを連携**（Discord 共有先設定）＝ 投稿先を Discord に選ばせる | 認可コードフロー（`response_type=code`・`scope=webhook.incoming identify`） | **要る**（`worker/`） |
+| **Discord で連携**（プロフィール）＝ ユーザーID を自動で入れる | 認可コードフロー（`response_type=code`・`scope=identify`） | `{"user":{"id","username","global_name","avatar"}}` |
+| **チャンネルを連携**（Discord 共有先設定）＝ 投稿先を Discord に選ばせる | 認可コードフロー（`response_type=code`・`scope=webhook.incoming identify`） | `{"webhook":{…},"guild_name":…}` |
 
-分かれ目は 1 つだけ。`webhook.incoming` は Webhook を**トークンと一緒に**渡してくるので、
-コードをトークンに交換する手順が要り、その交換には**クライアントシークレット**が要る。
+**段階Gで「Discord で連携」も暗黙フローをやめた。** 理由は下の「段階Gで直したこと」の 1 番——
+リダイレクト先が https になった以上、暗黙フローの `#access_token=…`（フラグメント）は
+**サーバーには届かない**。フラグメントがサーバーに送られないのは仕様であって、それが
+暗黙フローの存在理由でもある。結果として良くなった点が 1 つある：
+**アクセストークンが端末に一度も来なくなった。** Worker の中で 1 回だけ使われて捨てられ、
+アプリが受け取るのは ID・表示名・アバターハッシュだけになる。
+
+どちらの経路も**クライアントシークレット**が要るので、`worker/` が要る。
 APK に埋めたシークレットは誰でも取り出せるので、そこだけを外に出している。
-`identify` のほうは暗黙フローで完結するので、何も立てずに動く。
 
 ### 段階Fで作り直した理由（報告された不具合の正体）
 
@@ -679,39 +684,132 @@ APK に埋めたシークレットは誰でも取り出せるので、そこだ�
 この2つを踏まえて、コールバックの受け取り方そのものを作り直した（下）。SnackBar で結果を
 伝えるのもやめた——それが (1) で誰にも見られずに消えた張本人だから。
 
+### 段階Gで直したこと（実機で出た、段階Fでは見えなかった 2 つ）
+
+段階F はエミュレータでは通っていた。実機（Pixel・Discord アプリ導入済み・既定ブラウザ Brave）で
+「Discord で連携」を押すと、こうなった。
+
+1. **Discord がカスタムスキームのリダイレクトを受け付けない。** 承認まで進めても、
+   Discord は `discord.com/oauth2/error?error=invalid_request` に着地して
+   「**Redirect URI 'wakeorpay://discord/callback' is not supported by client**」と出す。
+   コールバックは**送られない**ので、アプリは「承認を待っています…」のまま 5 分待って
+   時間切れになる。段階F の作り直し（intent がどのタスクに届くか）は正しかったが、
+   **そもそも intent が投げられていなかった**。
+
+   → **リダイレクト先を Worker の https URL にした**（下の「App Links とリダイレクト URI」）。
+   これに伴い「Discord で連携」も認可コードフローに移った（フラグメントは https では
+   サーバーに届かないため）。
+
+2. **`externalNonBrowserApplication` が Discord アプリではなくブラウザに落ちる。**
+   これは url_launcher の不具合ではなく、Discord アプリが**登録していない**というだけ。
+   実機で `pm query-activities` を読んで確かめた：
+
+   | 投げた URI | 解決先 |
+   |---|---|
+   | `https://discord.com/channels/@me` | `com.discord/.main.MainActivity` **と** ブラウザ |
+   | `https://discord.com/oauth2/authorize` | **ブラウザのみ** |
+   | `https://discord.com/api/oauth2/authorize` | **ブラウザのみ** |
+   | `discord://-/oauth2/authorize`、`discord://discord.com/oauth2/authorize`、`discord://-/channels/@me`、`discord://app` | **No activities found** |
+
+   `com.discord` は入っていて `discord.com` の App Links も検証済みなのに、
+   intent-filter がパスを列挙していて `/oauth2/authorize` を意図的に外している。
+   `discord:` スキームに至っては 1 つも登録していない。
+   つまり **Android で認可画面を Discord アプリの中に出す方法は無い**。
+   `FLAG_ACTIVITY_REQUIRE_NON_BROWSER` は「ブラウザを候補から外す」だけで、
+   非ブラウザの受け手を生み出しはしない。
+
+   → **ブラウザ 1 回だけ開く**ようにした（余計な 1 回の失敗を挟まなくなった）。
+   代わりに**帰り道**に手をかけた（App Links、下）。連携ログには
+   「ブラウザで Discord を開きました（Discord アプリは承認画面に対応していません）」と残す。
+
+### App Links とリダイレクト URI（段階G の中心）
+
+リダイレクト先はこの 1 本になった。**Developer Portal に登録するのもこの文字列ちょうど。**
+
+```
+https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback
+```
+
+https にすると「ブラウザに着地したあと、どうやってアプリに戻すか」が新しい問題になる。
+3 段構えで解いてある。**上から順に静かに戻る。**
+
+1. **App Links（検証済みなら、ブラウザは 1 ミリ秒も映らない）。**
+   `MainActivity` に `android:autoVerify="true"` の intent-filter を足した——
+   scheme `https`・host `wake-or-pay-discord.wakeorpay.workers.dev`・path `/discord/callback`
+   ちょうど（ホスト全体を掴むと `assetlinks.json` 自身までアプリに来てしまう）。
+   Android はインストール時と更新時に
+   `https://wake-or-pay-discord.wakeorpay.workers.dev/.well-known/assetlinks.json`
+   を取りに行き、そこに載っている SHA-256 が**実際の署名証明書**と一致すれば、
+   この URL への遷移をブラウザではなくアプリに直接渡す。Brave も Chrome も Chromium 系は
+   OS の検証結果に従うので、承認した瞬間にアプリが前に出る。
+
+   `assetlinks.json` は Worker が配っている（`worker/src/index.ts`）。載せる指紋は
+   `wrangler.toml` の `ANDROID_CERT_SHA256`。**いまはデバッグ用キーストアの指紋**で、
+   `android/app/build.gradle.kts` がリリースビルドもデバッグ鍵で署名しているから。
+
+   ```
+   keytool -list -v -keystore %USERPROFILE%\.android\debug.keystore \
+           -alias androiddebugkey -storepass android
+   ```
+
+   **リリース用キーストアを用意したら、同じコミットでこの値も差し替えること。**
+   ずれると検証が落ちて、下の 2 と 3 に落ちる（動きはするが、ブラウザが一瞬見える）。
+
+   確認方法（端末）：
+
+   ```bash
+   adb shell pm verify-app-links --re-verify com.wakeorpay.wake_or_pay
+   adb shell pm get-app-links com.wakeorpay.wake_or_pay
+   ```
+
+2. **Worker のページからの `wakeorpay://` 跳ね返し。** 検証が効いていないときは
+   ブラウザが `GET /discord/callback?code=…&state=…` を開く。返るのは小さな HTML 1 枚で、
+   読み込んだ瞬間に `location.replace('wakeorpay://discord/callback?code=…&state=…')` を撃つ。
+   `assign` ではなく `replace` なのは、「戻る」でリダイレクトの中を歩き直さないため。
+   `wakeorpay` の intent-filter は段階F から**そのまま残してある**——これがその受け皿。
+3. **`intent://` のリンクと、押せるボタン。** スクリプトからの未知スキーム遷移を
+   拒むブラウザでも、ユーザーのタップは通す。
+   `intent://discord/callback?…#Intent;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;S.browser_fallback_url=…;end`。
+   画面には「**Wake or Pay に戻っています… 戻らない場合はこちら**」とボタンが出る。
+
+**認可コードはどこにも記録しない。** Worker はログを出さないし、このページは `no-store` で、
+コードは 2 本の URL の中にしか現れない。ページが持ち越すのは `code` `state` `error`
+`error_description` の 4 つだけで、それ以外のパラメータは落とす。
+
 ### 新しいフロー
 
-- 認可ページを開くのは **`url_launcher`**。まず `LaunchMode.externalNonBrowserApplication`
-  （Android の `FLAG_ACTIVITY_REQUIRE_NON_BROWSER`）で開く——ブラウザは候補から外れるので、
-  **Discord アプリが入っていればそこに解決する**。既にログイン済みなら「認証」を押すだけで済み、
-  自動でアプリに戻ってくる。`false` を返すか例外が出たら `LaunchMode.externalApplication` で
-  ブラウザに落ちる。どちらも無ければ「Discord アプリもブラウザも見つかりませんでした」と出る。
-- 戻り先は **`app_links`**。`wakeorpay` スキームの intent-filter は **MainActivity ただ 1 つ**
-  （`launchMode="singleTask"`。`autoVerify` は不要——カスタムスキームに App Links の検証は無い）。
-  intent がアプリのタスクそのものを前に出すので、承認した瞬間にアプリが前面に戻る。
+- 認可ページを開くのは **`url_launcher`**、`LaunchMode.externalApplication` **1 回だけ**。
+  Discord アプリを狙う試行は段階G で**やめた**（上の 2 番：Discord アプリは
+  `/oauth2/authorize` も `discord:` スキームも登録していないので、狙う先が存在しない）。
+  開けなければ「ブラウザが見つかりませんでした」と出る。
+- 戻り先は **`app_links`**。受けるのは **MainActivity ただ 1 つ**（`launchMode="singleTask"`）で、
+  intent-filter は 2 本：`https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback`
+  （`autoVerify="true"`。これが本命）と、`wakeorpay` スキーム（Worker のページからの跳ね返し用）。
+  **どちらが来ても同じ 1 本の解釈器**が読む（`isDiscordCallbackUri` / `parseDiscordCallback`）。
   `flutter_web_auth_2` は依存から**外した**。
 - 同時に走らせられるフローは **1 つだけ**。`state` で照合し、**5 分**で時間切れになる。
   「やめる」で自分から打ち切ることもできる。
-- 「チャンネルを連携」（サーバー／チャンネル選択）も**まったく同じ経路**を通るので、
-  Discord アプリの中でチャンネルを選べる。
-- コールバックは暗黙フローの `#access_token=…`（フラグメント）と認可コードフローの
-  `?code=…`（クエリ）の両方を読む。
+- 「チャンネルを連携」（サーバー／チャンネル選択）も**まったく同じ経路**を通る。
+- コールバックが読むのは**クエリだけ**（`?code=…&state=…` / `?error=…&error_description=…`）。
+  フラグメントはもう読まない——暗黙フローが無くなって、フラグメントに入るものが無くなった。
 - **状態表示**（プロフィールの Discord 行と、Discord 共有先設定の両方に出る。SnackBar は使わない）：
-  「Discord を開いています…」→「承認を待っています…（Discord アプリで「認証」を押してください）」
-  ／「…（ブラウザで許可してください）」→「連携済み：@なまえ」。失敗はそれぞれ固有の文言で出る：
+  「Discord を開いています…」→「承認を待っています…（ブラウザで許可してください）」→
+  「連携サーバーに問い合わせています…」→「連携済み：@なまえ」。失敗はそれぞれ固有の文言で出る：
   state 不一致は「確認に失敗しました。アプリからもう一度お試しください」、拒否は
   「Discord で許可されませんでした」、時間切れは「承認が返ってきませんでした。Discord の画面に
-  「無効な OAuth2 リダイレクト URI」と出ていた場合は、Developer Portal の OAuth2 → Redirects に
-  `wakeorpay://discord/callback` を1 文字違わず登録してください。」、通信失敗は
-  「ユーザー情報を取得できませんでした（通信エラー）」。
+  「Redirect URI … is not supported by client」と出ていた場合は、Developer Portal の
+  OAuth2 → Redirects に `https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback`
+  を 1 文字違わず登録してください。」、通信失敗は
+  「ユーザー情報を取得できませんでした（連携サーバーの応答なし）」。
 - **連携ログ**（プロフィール → Discord の島から開くサブ画面）に、直近 20 件を時刻つき・新しい順で
   残す。端末には**保存しない**（メモリのみ）し、**トークンは 1 行も記録しない**
   （トークンが来たことは記録するが、値は記録しない）。
 
 ### 端末に残るもの・残らないもの
 
-- **アクセストークンは保存しない。** `/users/@me` に 1 回使って捨てる。
-  `shared_preferences` にも `flutter_secure_storage` にも書かない
+- **アクセストークンは端末に来ない**（段階G で強くなった点）。両方のフローが認可コードに
+  なったので、トークンは Worker の中で 1 回使われて捨てられ、アプリには渡らない。
+  `shared_preferences` にも `flutter_secure_storage` にも当然書かない
   （prefs の全キー・全値をなめて、トークンの断片も無いことを見る単体テストで固定してある）。
 - 残るのは **ユーザーID・表示名・アバターハッシュ**の 3 つだけ。どれも公開の値で、
   それを持っていてもあなたの代わりに何かができるものではない。**手入力の経路はもう無い**ので、
@@ -724,7 +822,8 @@ APK に埋めたシークレットは誰でも取り出せるので、そこだ�
 
 ### Discord Developer Portal と連携サーバー（この機能を使う人がやること）
 
-「Discord で連携」だけなら **1 と 2 だけ**でよい。「チャンネルを連携」も使うなら 3 以降。
+**段階G から、どちらの機能にも 1〜4 の全部が要る**（「Discord で連携」も認可コードフローに
+なり、連携サーバーを通るようになったため）。
 
 **1. アプリを作る**
 
@@ -737,10 +836,17 @@ APK に埋めたシークレットは誰でも取り出せるので、そこだ�
 4. 次を**1 文字違わず**入れて **Save Changes**：
 
    ```
-   wakeorpay://discord/callback
+   https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback
    ```
 
-   ここが違うと、同意画面が出る前に「無効な OAuth2 リダイレクト URI」で止まる。
+   ここが違うと、同意画面が出る前に
+   `discord.com/oauth2/error?error=invalid_request` で止まり、アプリは永久に待つ。
+
+   **`wakeorpay://discord/callback` は登録しても意味が無い**（段階F まではこれだった）。
+   Discord はカスタムスキームのリダイレクトをこのアプリに許さず、
+   「Redirect URI 'wakeorpay://discord/callback' is not supported by client」で断る。
+   自分の Worker を建てたなら、ここもその URL に読み替えること
+   （`https://<ワーカー名>.<サブドメイン>.workers.dev/discord/callback`）。
 
 5. 同じページの「**Client ID**」を控える。既定では
    `lib/domain/discord_oauth.dart` の `kDiscordClientId` が
@@ -792,8 +898,9 @@ const kDiscordExchangeEndpoint =
 - **自分のフォークを配るなら、必ず自分の Worker の URL に書き換えてビルドし直すこと。**
   他人の Worker を指したままのビルドは、**その人のクライアントシークレット**を
   自分のユーザーの認可に使うことになる。
-- 空にしておくのも正しいビルドで、その場合「Discord で連携」は普通に動き、
-  「チャンネルを連携」だけが名指しで断る。
+- 空にしておくと、段階G からは**どちらの機能も**名指しで断る
+  （「連携サーバーが設定されていないビルドです」）。段階F までは「Discord で連携」だけは
+  サーバー無しで動いたが、暗黙フローをやめたのでその抜け道は無くなった。
 - URL は **https のみ**。本文が認可コードなので、暗号化されていない経路には出さない。
 - **変更したら再ビルドが要る。** もう端末に貼る場所は無い。
 
@@ -1021,7 +1128,7 @@ lib/
     level.dart           経験値 → レベル・次のLvまで・バーの進捗（25·n·(n−1)）
     profile_catalog.dart アイコン・名前の背景・フレームの静的カタログ
     discord_post.dart    投稿本文の組み立て・引用・2000字の切り詰め・multipart の記述
-    discord_oauth.dart   認可 URL の組み立て・コールバックの解釈・state・/users/@me の解釈
+    discord_oauth.dart   認可 URL の組み立て・コールバック（2 形式）の解釈・state・ユーザーの解釈
     schedule.dart        nextFireTime
     wake_check.dart      長押し進捗・計算問題生成・入力文・ランダム抽選
     shake_detector.dart  振る確認の純粋ロジック（サンプル列 → 進捗）
@@ -1036,8 +1143,8 @@ lib/
     sound_file_importer.dart     端末内ファイルの選択とアプリ領域へのコピー
     discord_sender.dart          Webhook への POST と Webhook 名の取得（インタフェース越し）
     discord_oauth.dart           OAuth2 フロー全体の組み立て（起動・state 照合・5分のタイムアウト・状態遷移）
-    discord_auth_launcher.dart   認可ページを開く（url_launcher。Discord アプリ優先→ブラウザに fallback）
-    discord_callback_router.dart app_links のコールバックを受けて進行中のフローに渡す
+    discord_auth_launcher.dart   認可ページを開く（url_launcher でブラウザを 1 回。理由は本文）
+    discord_callback_router.dart app_links のコールバック（https / wakeorpay の両方）を進行中のフローに渡す
     discord_link_log.dart        連携ログ（直近20件・メモリのみ・トークンは記録しない）
     discord_exchange.dart        連携サーバーへの交換要求（`kDiscordExchangeEndpoint` はビルド時定数）
     oversleep_notifier.dart      発火の判定と実行（電話・SMS・メール・Discord すべて実送信）
@@ -1072,8 +1179,10 @@ lib/
                          seed_shop_screen（種屋）, garden_board（容器と地面）,
                          terrarium_painter, garden_controller,
                          item_source.dart ← 入手ロジックの差し替え口
-worker/                  Discord の認可コード交換だけをする Cloudflare Worker
-  src/index.ts           POST /discord/exchange。シークレットはここにしか無い
+worker/                  Discord の認可コード交換と、リダイレクトの着地点になる Cloudflare Worker
+  src/index.ts           POST /discord/exchange（シークレットはここにしか無い）/
+                         GET /discord/callback（アプリへ跳ね返す HTML）/
+                         GET /.well-known/assetlinks.json（App Links の証明）
   test/exchange.test.ts  vitest（fetch をスタブするので Discord には出ない）
   README.md              デプロイ手順（wrangler login → secret put → deploy）
 packages/
@@ -1231,27 +1340,83 @@ R8 の難読化が `flutter_secure_storage` を壊していないことの確認
   差し替わった——は `flutter_deeplinking_enabled=false` で解決し、
   同じ手順を通して再確認した。
 
+### 段階G の確認（エミュレータ AVD `wop`・**リリース APK** をインストールして）
+
+デバッグビルドではなく **`flutter build apk --release` の成果物**で確認した。
+App Links の検証は**署名証明書**を見るので、そこはデバッグビルドで代用できない。
+
+- 署名の一致：`apksigner verify --print-certs` が
+  `113e062f1963a210e1ad53ce73e6ef02d6606fadb601ef7fc9798e1ad078bc61`、
+  Worker が配る `assetlinks.json` の指紋と**同じ**。
+- **App Links が verified になった。**
+
+  ```
+  $ adb shell pm verify-app-links --re-verify com.wakeorpay.wake_or_pay
+  $ adb shell pm get-app-links com.wakeorpay.wake_or_pay
+  com.wakeorpay.wake_or_pay:
+    Signatures: [11:3E:06:2F:…:BC:61]
+    Domain verification state:
+      wake-or-pay-discord.wakeorpay.workers.dev: verified
+  ```
+
+- `pm query-activities` で
+  `https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback?code=…&state=…`
+  を引くと、**`com.wakeorpay.wake_or_pay.MainActivity` が先頭**に出る。
+- 「Discord で連携」を押すと**ブラウザが開き**、URL が
+  `discord.com/login?redirect_to=%2Foauth2%2Fauthorize%3F…response_type%3Dcode…`
+  `redirect_uri%3Dhttps%253A%252F%252Fwake-or-pay-discord.wakeorpay.workers.dev%252Fdiscord%252Fcallback…`
+  になる。**`oauth2/error?error=invalid_request` にはもうならない**——
+  これが段階G の 1 番が直ったことの証拠。
+- その URL から本物の `state` を読み、`code=FAKE` を付けてコールバックを投げると、
+  `am start` が **`its current task has been brought to the front`** と答え、
+  `topResumedActivity` が `MainActivity` に変わり、**選択ダイアログもブラウザも挟まずに**
+  アプリが前に出る。`state` は一致しているので「確認に失敗しました」ではなく、
+  本物の Worker が `code=FAKE` を **400** で断った結果として
+  「**ユーザー情報を取得できませんでした（連携サーバーの応答なし）**」が出る。
+- 連携ログの並び（新しい順）：
+
+  ```
+  06:06:10 ユーザー情報を取得できませんでした（連携サーバーの応答なし）
+  06:06:08 連携サーバーに問い合わせています…
+  06:02:32 承認を待っています…（ブラウザで許可してください）
+  06:02:32 ブラウザで Discord を開きました（Discord アプリは承認画面に対応していません）
+  06:02:31 Discord を開いています…
+  ```
+
+  **認可コードもトークンも、どの行にも出ていない。**
+
 **まだ端末上で確認できていないこと：**
 
-- **Discord アプリ経由の経路。** この AVD に Discord アプリが無いため、
-  `LaunchMode.externalNonBrowserApplication` が実際に Discord アプリへ解決するところは
-  見ていない。ブラウザへのフォールバックが動くことは確認済み。
-- **「チャンネルを連携」の通し。** 本物の Discord アカウントでサーバーとチャンネルを
-  選ぶ必要があるため。連携サーバー自体は生きていて、でたらめな `code` を投げると
-  **HTTP 400** を返すところまでは確認した。交換の組み立てはフェイクの HTTP
-  クライアント越しのテストで押さえてある。
+- **本物の Discord アカウントでの承認そのもの。** ログインして「認証」を押す一歩だけは
+  自動で通せない。その前後——認可 URL が Discord に受理されるところと、
+  コールバックがアプリに戻って正しい文言を出すところ——は上のとおり通してある。
+  残るのは「Worker が本物の `code` を本物のユーザーに交換する」ところだけで、
+  そこはフェイクの HTTP クライアント越しのテストと、Worker 側の vitest で押さえてある。
+- **「チャンネルを連携」の通し。** 同じ理由（サーバーとチャンネルを人が選ぶ必要がある）。
+  連携サーバー自体は生きていて、でたらめな `code` には **HTTP 400** を返す。
+- **Chrome のアドレスバーに手で打った URL は App Links に渡らない。** これは
+  Chromium の仕様（タイプ入力のナビゲーションはアプリに渡さない）で、この実装の問題ではない。
+  実際の経路は Discord からのリダイレクトなので影響しない。上の確認は
+  OS のリゾルバ（`am start`）を直接叩いて行った。
 - **`shared_prefs` の実ファイル確認。** 「アクセストークンが prefs に一切入らない」は、
-  prefs の全キー・全値をなめる単体テストのほうで固定してある。
+  prefs の全キー・全値をなめる単体テストのほうで固定してある
+  （段階G ではそもそもトークンが端末に来ない）。
 
 ## 既知の制約
 
-- **「チャンネルを連携」には連携サーバーが要る。** `webhook.incoming` のコード交換には
+- **Discord 連携には連携サーバーが要る**（段階G から**両方の機能**が）。コード交換には
   クライアントシークレットが要り、APK に埋めたシークレットはシークレットではないため。
   このリポジトリのビルドはデプロイ済みの Worker（`kDiscordExchangeEndpoint`。上の
   「連携サーバー（重要な変更）」）を指しているので、そのまま動く。自分のフォークを配るなら
   自分の Worker の URL に書き換えてビルドし直す必要があり、`kDiscordExchangeEndpoint` を
-  空にしてビルドした場合は「チャンネルを連携」だけが名指しで断る（Webhook を手動で登録する
-  経路はもう無い）。
+  空にしてビルドした場合は両方が名指しで断る（Webhook を手動で登録する経路はもう無い）。
+- **Discord アプリの中では認可できない。** Discord の Android アプリは
+  `discord.com/oauth2/authorize` も `discord:` スキームも intent-filter に持っていない
+  （実機の `pm query-activities` で確認。上の「段階Gで直したこと」の 2 番）。
+  だから認可はブラウザで行う。**戻り**は App Links なので、承認した瞬間にアプリに戻る。
+- **App Links の検証は署名証明書に紐づく。** リリース用キーストアを作ったら、
+  `worker/wrangler.toml` の `ANDROID_CERT_SHA256` を同じコミットで差し替えること。
+  ずれても壊れはしないが、戻るときにブラウザのページが一瞬見える。
 - **チャンネル名は取れない。** Webhook の `channel_id` から人が読む名前に変えるには
   Bot をサーバーに入れるか `guilds.members.read` が要る。ラベルを綺麗にするために
   もっと怖い同意画面を出すのは割に合わないので、表示名は**サーバー名**で止めている。

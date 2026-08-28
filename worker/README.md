@@ -1,34 +1,43 @@
 # Discord 連携サーバー（Cloudflare Worker）
 
-「チャンネルを連携（Discord で選ぶ）」のためだけの、**とても小さな中継**です。
+Discord 連携のための、**とても小さな中継**です。**両方の連携がここを通ります**
+（段階G から。「Discord で連携」も暗黙フローをやめました）。
 
 ## なぜ必要なのか
 
-Discord に「このチャンネルに投稿していいよ」と言ってもらう（`webhook.incoming`）には、
-**認可コードをアクセストークンに交換する**手順が要ります。そしてその交換には
-**クライアントシークレット**が要る。シークレットを APK に埋めたら、それはもう
+**理由は 2 つあります。**
+
+**1. シークレット。** 認可コードをアクセストークンに交換する手順には
+**クライアントシークレット**が要ります。シークレットを APK に埋めたら、それはもう
 シークレットではありません（APK は誰でも解凍して中を読めます）。
 
-なので、シークレットを持つ役だけをここに切り出しています。
+**2. リダイレクト先。** Discord はこのアプリのカスタムスキーム
+（`wakeorpay://discord/callback`）をリダイレクト URI として**受け付けません**。
+認可画面の前に「Redirect URI … is not supported by client」で止まります。
+なのでリダイレクト先はこの Worker の https URL で、ここが着地点になります。
 
 - **ユーザーのデータは何も持ちません。** DB もセッションもログもありません。
-  1 リクエストにつき 1 回 Discord に聞いて、答えを返して、忘れます。
+  1 リクエストにつき 1〜2 回 Discord に聞いて、答えを返して、忘れます。
 - **アクセストークンもリフレッシュトークンもアプリに返しません。**
-  返すのは Webhook の URL とサーバー名だけ。ユーザーの代わりに何かができる値は
-  1 つもアプリに渡りません。
-- 「Discord で連携」（プロフィールのユーザーID のほう）は**このサーバーを使いません**。
-  あちらは暗黙フローで完結するので、サーバーを立てなくても動きます。
+  返すのは Webhook の URL とサーバー名、あるいはユーザーの公開 4 項目だけ。
+  ユーザーの代わりに何かができる値は 1 つもアプリに渡りません。
+- **認可コードをログに出しません。** コールバックのページは `no-store` で、
+  コードはページ内の 2 本の URL にしか現れません。
 
 ## エンドポイント
 
+### `POST /discord/exchange`
+
 ```
-POST /discord/exchange
 Content-Type: application/json
 
-{ "code": "…", "redirect_uri": "wakeorpay://discord/callback", "code_verifier": "…（任意）" }
+{ "code": "…",
+  "redirect_uri": "https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback",
+  "mode": "identify" | "webhook",     // 省略時は "webhook"
+  "code_verifier": "…（任意）" }
 ```
 
-成功すると：
+`mode: "webhook"`（「チャンネルを連携」）の成功：
 
 ```json
 {
@@ -42,6 +51,37 @@ Content-Type: application/json
   "guild_name": "みんなのサーバー",
   "channel_name": null
 }
+```
+
+`mode: "identify"`（「Discord で連携」）の成功。Worker の中で `/users/@me` を
+**1 回だけ**引いて、公開されている 4 項目だけを返します：
+
+```json
+{ "user": { "id": "1234…", "username": "hanako",
+            "global_name": "花子", "avatar": "abcdef" } }
+```
+
+### `GET /discord/callback?code=…&state=…`（`?error=…` も）
+
+Discord がブラウザを返してくる先。小さな HTML を 1 枚返し、
+`location.replace('wakeorpay://discord/callback?code=…&state=…')` でアプリに跳ね返します。
+`intent://…;scheme=wakeorpay;package=com.wakeorpay.wake_or_pay;…;end` のリンクと、
+「Wake or Pay に戻っています… 戻らない場合はこちら」のボタンも置いてあります。
+持ち越すのは `code` `state` `error` `error_description` の 4 つだけです。
+
+**App Links の検証が効いていれば、このページはそもそも表示されません**——
+Android が https の遷移を直接アプリに渡すためです。これは保険です。
+
+### `GET /.well-known/assetlinks.json`
+
+その App Links の証明。`wrangler.toml` の `ANDROID_CERT_SHA256` を載せて返します。
+Content-Type は `application/json`、リダイレクトなし（Android がどちらも要求します）。
+
+**署名に使うキーストアを変えたら、この値も同じコミットで差し替えること。**
+
+```bash
+keytool -list -v -keystore %USERPROFILE%\.android\debug.keystore \
+        -alias androiddebugkey -storepass android
 ```
 
 - `guild_name` は `identify` の権限で `/users/@me/guilds` を引いて解決します。
@@ -105,11 +145,17 @@ Cloudflare 側に暗号化されて置かれ、`wrangler deploy` してもファ
 Discord Developer Portal →「OAuth2」→「Redirects」に
 
 ```
-wakeorpay://discord/callback
+https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback
 ```
 
-を**1 文字違わず**登録してください。ここが違うと、同意画面が出る前に
-「無効な OAuth2 リダイレクト URI」で止まります。
+を**1 文字違わず**登録してください（自分の Worker を建てたなら、そのホスト名に
+読み替えて `/discord/callback` を付けたもの）。ここが違うと、同意画面が出る前に
+`discord.com/oauth2/error?error=invalid_request` で止まります。
+
+**`wakeorpay://discord/callback` は登録しても通りません。** Discord は
+カスタムスキームのリダイレクトをこのアプリに許さず、
+「Redirect URI 'wakeorpay://discord/callback' is not supported by client」で断ります。
+これが段階G でこのエンドポイントを増やした理由そのものです。
 
 ## 開発
 
