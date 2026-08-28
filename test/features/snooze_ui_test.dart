@@ -66,7 +66,8 @@ void main() {
     await openRinging(tester, plain);
 
     expect(find.text('スヌーズ'), findsOneWidget);
-    // Secondary to 解除: a text button, not the filled one the wake check uses.
+    // Spec 12.2: a visible bordered control now, but still secondary to 解除 —
+    // an OutlinedButton, not the FilledButton the wake check uses.
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('snoozeButton')),
@@ -75,8 +76,16 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester.widget<TextButton>(find.byKey(const ValueKey('snoozeButton'))),
+      tester.widget<OutlinedButton>(find.byKey(const ValueKey('snoozeButton'))),
       isNotNull,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('snoozeButton')),
+        matching: find.byType(FilledButton),
+      ),
+      findsNothing,
+      reason: 'not the primary control',
     );
   });
 
