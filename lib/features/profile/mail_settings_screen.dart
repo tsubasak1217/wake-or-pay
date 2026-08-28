@@ -215,7 +215,7 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
                 keyName: 'mailFromField',
                 controller: _from,
                 label: 'メールアドレス',
-                hint: '例：you@gmail.com',
+                hint: '例：you@gmail.com、you@yahoo.co.jp',
                 keyboardType: TextInputType.emailAddress,
               ),
               // What the domain was recognised as, or a nudge to 詳細設定.
@@ -281,13 +281,12 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
                     ),
                   ),
                 ),
-              if (provider?.label == 'Gmail')
+              if (provider?.note != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: Text(
-                    'Googleアカウントで2段階認証を有効にしてから'
-                    '「アプリパスワード」を作成し、ここに貼り付けてください。',
-                    key: const ValueKey('mailGmailHint'),
+                    provider!.note!,
+                    key: const ValueKey('mailProviderNote'),
                     style: theme.textTheme.bodySmall,
                   ),
                 ),

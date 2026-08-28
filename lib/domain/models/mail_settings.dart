@@ -237,6 +237,7 @@ class SmtpProvider {
     this.port = defaultSmtpPort,
     this.useSsl = false,
     this.appPasswordUrl,
+    this.note,
   });
 
   /// The name shown to the user (「Gmail」「Outlook」…). Also stored as the
@@ -247,7 +248,8 @@ class SmtpProvider {
   final int port;
   final bool useSsl;
 
-  /// The SMTP login — the full address for every provider here.
+  /// The SMTP login. The full address for most providers, but not all — Yahoo!
+  /// JP logs in as the local part alone (the Yahoo! JAPAN ID).
   final String username;
 
   /// Where the mail is sent from — the full address, the same string the user
@@ -257,6 +259,11 @@ class SmtpProvider {
   /// The page where this provider hands out app passwords, when it has one.
   /// Null for providers that bury it somewhere unlinkable.
   final String? appPasswordUrl;
+
+  /// One line shown under the password field: what kind of password this
+  /// provider wants, or the setting that has to be turned on first. Null when
+  /// there is nothing worth saying.
+  final String? note;
 
   /// The [MailSettings] this provider and the typed [password] state describe.
   MailSettings toSettings() => MailSettings(
@@ -269,13 +276,144 @@ class SmtpProvider {
   );
 }
 
+/// One row of the domain table [smtpForEmail] reads: the domains it covers and
+/// the settings they fix. Everything but [domains], [label] and [host] has a
+/// default, so a new provider is one line.
+///
+/// [localPartLogin] is the exception Yahoo! JP forces: it authenticates as the
+/// Yahoo! JAPAN ID, which is the part of the address before the '@'.
+@immutable
+class _SmtpRow {
+  const _SmtpRow(
+    this.domains,
+    this.label,
+    this.host, {
+    this.port = defaultSmtpPort,
+    this.useSsl = false,
+    this.localPartLogin = false,
+    this.appPasswordUrl,
+    this.note,
+  });
+
+  final List<String> domains;
+  final String label;
+  final String host;
+  final int port;
+  final bool useSsl;
+  final bool localPartLogin;
+  final String? appPasswordUrl;
+  final String? note;
+}
+
+/// Every domain the app configures itself for. Ordered by how likely a user is
+/// to have one, which matters to nobody but a reader.
+const _smtpRows = <_SmtpRow>[
+  _SmtpRow(
+    ['gmail.com', 'googlemail.com'],
+    'Gmail',
+    'smtp.gmail.com',
+    appPasswordUrl: 'https://myaccount.google.com/apppasswords',
+    note: 'Googleアカウントで2段階認証を有効にしてから「アプリパスワード」を作成し、ここに貼り付けてください。',
+  ),
+  _SmtpRow(
+    [
+      'outlook.com',
+      'outlook.jp',
+      'hotmail.com',
+      'hotmail.co.jp',
+      'live.com',
+      'live.jp',
+      'msn.com',
+    ],
+    'Outlook',
+    'smtp-mail.outlook.com',
+    appPasswordUrl: 'https://account.live.com/proofs/AppPassword',
+    note: 'Microsoft アカウントで2段階認証を有効にし、「アプリパスワード」を作成してください。',
+  ),
+  _SmtpRow(
+    ['icloud.com', 'me.com', 'mac.com'],
+    'iCloud',
+    'smtp.mail.me.com',
+    appPasswordUrl: 'https://account.apple.com',
+    note: 'Apple アカウントの「App用パスワード」を作成して貼り付けてください。',
+  ),
+  _SmtpRow(
+    ['yahoo.com', 'ymail.com', 'rocketmail.com'],
+    'Yahoo',
+    'smtp.mail.yahoo.com',
+    appPasswordUrl: 'https://login.yahoo.com/myaccount/security/app-password',
+    note: 'Yahoo アカウントの「アプリパスワード」を作成して貼り付けてください。',
+  ),
+  _SmtpRow(
+    ['yahoo.co.jp'],
+    'Yahoo! JP',
+    'smtp.mail.yahoo.co.jp',
+    port: sslSmtpPort,
+    useSsl: true,
+    localPartLogin: true,
+    appPasswordUrl: 'https://mail.yahoo.co.jp',
+    note: 'Yahoo!メールの設定で「IMAP/POP/SMTPアクセス」を許可してください。'
+        'パスワードは Yahoo! JAPAN ID のものです。',
+  ),
+  _SmtpRow(
+    ['aol.com'],
+    'AOL',
+    'smtp.aol.com',
+    port: sslSmtpPort,
+    useSsl: true,
+    appPasswordUrl: 'https://login.aol.com/myaccount/security/app-password',
+    note: 'AOL アカウントの「アプリパスワード」を作成して貼り付けてください。',
+  ),
+  _SmtpRow(
+    ['zoho.com', 'zohomail.com', 'zoho.jp'],
+    'Zoho',
+    'smtp.zoho.com',
+    note: '2段階認証を使っている場合は Zoho の「アプリパスワード」が必要です。',
+  ),
+  _SmtpRow(['gmx.com'], 'GMX', 'smtp.gmx.com'),
+  _SmtpRow(['gmx.net', 'gmx.de'], 'GMX', 'mail.gmx.net'),
+  _SmtpRow(['mail.com'], 'mail.com', 'smtp.mail.com'),
+  _SmtpRow(
+    ['ocn.ne.jp'],
+    'OCN',
+    'smtp.ocn.ne.jp',
+    port: sslSmtpPort,
+    useSsl: true,
+    note: 'OCN のメールパスワードを入力してください。',
+  ),
+  _SmtpRow(
+    ['nifty.com'],
+    '@nifty',
+    'smtp.nifty.com',
+    note: '@nifty のメールパスワードを入力してください。',
+  ),
+  _SmtpRow(
+    ['biglobe.ne.jp'],
+    'BIGLOBE',
+    'mail.biglobe.ne.jp',
+    note: 'BIGLOBE のメールパスワードを入力してください。',
+  ),
+  _SmtpRow(
+    ['so-net.ne.jp'],
+    'So-net',
+    'mail.so-net.ne.jp',
+    note: 'So-net のメールパスワードを入力してください。',
+  ),
+  _SmtpRow(
+    ['plala.or.jp'],
+    'plala',
+    'secure.plala.or.jp',
+    note: 'ぷらら のメールパスワードを入力してください。',
+  ),
+];
+
 /// The SMTP configuration for [email]'s domain, or null when the domain is one
 /// the app does not know. Pure.
 ///
 /// Case-insensitive on the domain and tolerant of surrounding whitespace; a
-/// string with no single '@' is not an address and returns null. [username]
-/// and [fromAddress] are the whole (trimmed) address, because every provider
-/// here logs in as the address it sends from.
+/// string with no single '@' is not an address and returns null. [fromAddress]
+/// is always the whole (trimmed) address; [username] is too for every provider
+/// but Yahoo! JP, which logs in as the local part alone.
 SmtpProvider? smtpForEmail(String email) {
   final trimmed = email.trim();
   final at = trimmed.indexOf('@');
@@ -286,45 +424,35 @@ SmtpProvider? smtpForEmail(String email) {
   SmtpProvider make(
     String label,
     String host, {
+    int port = defaultSmtpPort,
+    bool useSsl = false,
+    String? username,
     String? appPasswordUrl,
+    String? note,
   }) => SmtpProvider(
     label: label,
     host: host,
-    username: address,
+    port: port,
+    useSsl: useSsl,
+    username: username ?? address,
     fromAddress: address,
     appPasswordUrl: appPasswordUrl,
+    note: note,
   );
 
-  switch (domain) {
-    case 'gmail.com':
-    case 'googlemail.com':
-      return make(
-        'Gmail',
-        'smtp.gmail.com',
-        appPasswordUrl: 'https://myaccount.google.com/apppasswords',
-      );
-    case 'outlook.com':
-    case 'hotmail.com':
-    case 'live.com':
-    case 'live.jp':
-    case 'msn.com':
-      return make('Outlook', 'smtp-mail.outlook.com');
-    case 'icloud.com':
-    case 'me.com':
-    case 'mac.com':
-      return make(
-        'iCloud',
-        'smtp.mail.me.com',
-        appPasswordUrl: 'https://account.apple.com',
-      );
-    case 'yahoo.com':
-    case 'ymail.com':
-      return make('Yahoo', 'smtp.mail.yahoo.com');
-    case 'yahoo.co.jp':
-      return make('Yahoo! JP', 'smtp.mail.yahoo.co.jp');
-    default:
-      return null;
+  for (final row in _smtpRows) {
+    if (!row.domains.contains(domain)) continue;
+    return make(
+      row.label,
+      row.host,
+      port: row.port,
+      useSsl: row.useSsl,
+      username: row.localPartLogin ? address.substring(0, at) : null,
+      appPasswordUrl: row.appPasswordUrl,
+      note: row.note,
+    );
   }
+  return null;
 }
 
 /// The subject line of every oversleep mail, per spec 11.5.

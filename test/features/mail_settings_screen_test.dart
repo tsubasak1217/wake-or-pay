@@ -290,12 +290,40 @@ void main() {
     );
   });
 
-  testWidgets('the Gmail app-password hint is on the screen', (tester) async {
+  testWidgets('the provider note is on the screen', (tester) async {
     await openScreen(tester);
     await enter(tester, 'mailFromField', 'me@gmail.com');
-    await show(tester, 'mailGmailHint');
+    await show(tester, 'mailProviderNote');
 
     expect(find.textContaining('2段階認証'), findsOneWidget);
     expect(find.textContaining('アプリパスワード'), findsWidgets);
+  });
+
+  testWidgets('a Japanese ISP domain configures itself, SSL and all', (
+    tester,
+  ) async {
+    final r = await openScreen(tester);
+
+    await enter(tester, 'mailFromField', 'me@ocn.ne.jp');
+
+    expect(
+      tester.widget<Text>(await show(tester, 'mailProviderHint')).data,
+      'OCN として送信します',
+    );
+    // A known provider needs no hand-entered server.
+    expect(find.byKey(const ValueKey('mailHostField')), findsNothing);
+    expect(find.byKey(const ValueKey('mailPortField')), findsNothing);
+    await show(tester, 'mailProviderNote');
+    expect(find.byKey(const ValueKey('mailProviderNote')), findsOneWidget);
+
+    await enter(tester, 'mailPasswordField', 'ocnpassword');
+    await tap(tester, 'mailSaveButton');
+
+    final stored = r.container.read(mailSettingsProvider);
+    expect(stored.host, 'smtp.ocn.ne.jp');
+    expect(stored.port, 465);
+    expect(stored.useSsl, isTrue);
+    expect(stored.username, 'me@ocn.ne.jp');
+    expect(stored.isConfigured, isTrue);
   });
 }
