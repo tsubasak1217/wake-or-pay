@@ -13,7 +13,8 @@ import '../domain/discord_oauth.dart';
 /// refused because of one abandoned an hour ago.
 const discordFlowTimeout = Duration(minutes: 5);
 
-/// Delivers `wakeorpay://` callbacks to whichever flow asked for them.
+/// Delivers Discord callbacks — https App Link or `wakeorpay://` bounce — to
+/// whichever flow asked for them.
 ///
 /// **One flow at a time.** Two flows in the air would share one callback URI
 /// and the second would be answered by the first one's redirect — and neither
@@ -28,8 +29,8 @@ const discordFlowTimeout = Duration(minutes: 5);
 class DiscordCallbackRouter {
   DiscordCallbackRouter(this._links);
 
-  /// Every `wakeorpay://` URI the OS hands the app, from a cold start as well
-  /// as while it is running.
+  /// Every deep-link URI the OS hands the app, from a cold start as well as
+  /// while it is running.
   final Stream<Uri> _links;
 
   StreamSubscription<Uri>? _subscription;
@@ -92,7 +93,12 @@ class DiscordCallbackRouter {
   }
 
   void _onUri(Uri uri) {
-    if (uri.scheme != kDiscordCallbackScheme) return;
+    // Both forms count, because both can be the same answer: the verified
+    // https App Link that Android hands straight to this app, and the
+    // `wakeorpay://` bounce the Worker's landing page performs when the link
+    // was not verified. Whichever arrives first wins and the other is dropped
+    // as "no pending flow" — the page only fires one of them anyway.
+    if (!isDiscordCallbackUri(uri)) return;
     final flow = _pending;
     if (flow == null) return;
     _pending = null;

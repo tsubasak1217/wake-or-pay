@@ -16,12 +16,14 @@ import 'discord_log_screen.dart';
 /// that nothing could verify — and an ID typed that way could never carry the
 /// name beside it, because nothing knew whose it was.
 ///
-/// Authorisation happens **in the Discord app** when it is installed, which is
-/// where the user is already signed in, so approving is one tap and the app
-/// comes straight back. A browser is the fallback, not the plan.
+/// Authorisation happens **in a browser**, because there is nowhere else for
+/// it to happen: the Discord Android app registers no handler for
+/// `/oauth2/authorize` at all. What was fixed instead is the way back — the
+/// redirect is an https App Link this app has verified, so pressing 「認証」
+/// brings this screen straight back with no browser page in between.
 ///
-/// The access token that makes this work is spent once, on `/users/@me`, and
-/// is never written down. See [DiscordOAuthService].
+/// The access token that makes this work never reaches the device: it is spent
+/// inside the 連携サーバー. See [DiscordOAuthService].
 class DiscordLinkRow extends ConsumerStatefulWidget {
   const DiscordLinkRow({super.key});
 
@@ -102,8 +104,8 @@ class _DiscordLinkRowState extends ConsumerState<DiscordLinkRow> {
             leading: const Icon(Icons.link),
             title: const Text('Discord で連携'),
             subtitle: Text(
-              'Discord アプリが入っていればそちらが開き、「認証」を押すだけで戻ってきます。'
-              '入っていなければブラウザで開きます。ユーザーIDと表示名は自動で入ります。',
+              'ブラウザが開くので、Discord にログインして「認証」を押してください。'
+              '押した瞬間にこの画面へ戻ってきます。ユーザーIDと表示名は自動で入ります。',
               style: theme.textTheme.bodySmall,
             ),
             trailing: const Icon(Icons.open_in_new),

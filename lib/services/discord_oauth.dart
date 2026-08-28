@@ -1,48 +1,51 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 import '../domain/discord_oauth.dart';
 import 'discord_auth_launcher.dart';
 import 'discord_callback_router.dart';
 import 'discord_exchange.dart';
 import 'discord_link_log.dart';
-import 'discord_sender.dart';
-
-/// How long `/users/@me` is allowed to take. The user is watching a spinner
-/// on a button they just pressed.
-const discordIdentityTimeout = Duration(seconds: 10);
 
 /// The sentence shown while the app is asking something to open Discord.
 const kDiscordOpeningMessage = 'Discord を開いています…';
 
-/// 承認待ち, in the Discord app.
-const kDiscordWaitingInAppMessage = '承認を待っています…（Discord アプリで「認証」を押してください）';
+/// The 連携ログ line naming where the authorize page went.
+///
+/// It is worth a line of its own because it is the answer to a question that
+/// cost this app a release: 「なぜ Discord アプリが開かないのか」. It is not a
+/// misconfiguration — the Discord Android app does not register
+/// `/oauth2/authorize` at all (see [UrlLauncherDiscordAuthLauncher]), so the
+/// browser is the only route there has ever been.
+const kDiscordOpenedInBrowserMessage =
+    'ブラウザで Discord を開きました（Discord アプリは承認画面に対応していません）';
 
-/// 承認待ち, in a browser.
+/// 承認待ち. One message, because there is one channel.
 const kDiscordWaitingInBrowserMessage = '承認を待っています…（ブラウザで許可してください）';
 
 /// What a five-minute silence means, said as the thing to go and check.
 ///
 /// The redirect URI is the one setting that fails **before the consent screen**
 /// and therefore produces exactly this symptom: Discord shows
-/// 「無効な OAuth2 リダイレクト URI」 in the browser, never redirects, and the app
-/// waits forever. Naming it here is the difference between a user who can fix
-/// their own Portal and one who files 「連携できない」.
+/// 「Redirect URI … is not supported by client」, never redirects, and the app
+/// waits forever. Naming the exact string here is the difference between a
+/// user who can fix their own Portal and one who files 「連携できない」.
 const kDiscordTimedOutMessage =
-    '承認が返ってきませんでした。Discord の画面に「無効な OAuth2 リダイレクト URI」と出ていた場合は、'
-    'Developer Portal の OAuth2 → Redirects に wakeorpay://discord/callback を'
-    '1 文字違わず登録してください。';
+    '承認が返ってきませんでした。Discord の画面に「Redirect URI … is not supported by client」'
+    'と出ていた場合は、Developer Portal の OAuth2 → Redirects に '
+    '$kDiscordRedirectUri を 1 文字違わず登録してください。';
 
 /// Why 「Discord で連携」 ended the way it did.
 enum DiscordLinkStatus {
   ok,
 
-  /// Neither the Discord app nor a browser could open the authorize URL.
-  /// Distinct from a cancel: there is nothing to retry until something is
-  /// installed.
+  /// This build has no 連携サーバー baked in. 「Discord で連携」 needs one now:
+  /// the implicit grant is gone, so the code has to be exchanged somewhere
+  /// that holds the client secret.
+  noEndpoint,
+
+  /// No browser could open the authorize URL. Distinct from a cancel: there is
+  /// nothing to retry until something is installed.
   noApp,
 
   /// The user pressed 「やめる」 on the waiting row.
@@ -59,7 +62,8 @@ enum DiscordLinkStatus {
   /// consent screen, most often.
   denied,
 
-  /// A token came back but `/users/@me` did not answer with a user.
+  /// A code came back but the 連携サーバー did not answer with a user — it is
+  /// down, the code was already spent, or the secret was never put on it.
   identityFailed,
 }
 
@@ -76,23 +80,29 @@ class DiscordLinkResult {
   /// What the status area says. Japanese, and specific enough to act on.
   String get label => switch (status) {
     DiscordLinkStatus.ok => '連携しました',
-    DiscordLinkStatus.noApp => 'Discord アプリもブラウザも見つかりませんでした',
+    DiscordLinkStatus.noEndpoint =>
+      '連携サーバーが設定されていないビルドです（worker/README.md の手順でデプロイし、'
+          'kDiscordExchangeEndpoint に URL を入れてビルドし直してください）',
+    DiscordLinkStatus.noApp => 'ブラウザが見つかりませんでした',
     DiscordLinkStatus.cancelled => '連携をやめました',
     DiscordLinkStatus.timedOut => kDiscordTimedOutMessage,
     DiscordLinkStatus.stateMismatch => '確認に失敗しました。アプリからもう一度お試しください',
     DiscordLinkStatus.denied => 'Discord で許可されませんでした',
-    DiscordLinkStatus.identityFailed => 'ユーザー情報を取得できませんでした（通信エラー）',
+    DiscordLinkStatus.identityFailed => 'ユーザー情報を取得できませんでした（連携サーバーの応答なし）',
   };
 }
 
 /// 「Discord で連携」, end to end.
 ///
-/// The implicit grant (`response_type=token`) is used here and **only** here,
-/// because `identify` is all it asks for and no server is involved: the token
-/// arrives in the fragment, is spent once on `/users/@me`, and is dropped on
-/// the floor. It is **never persisted** — not in prefs, not in the secure
-/// store, not in the 連携ログ, not in a field on this object. What the app
-/// keeps is the id and the name.
+/// The **authorization-code** grant, like 「チャンネルを連携」 — the implicit
+/// grant this used to use is gone. Two reasons, and the first is fatal on its
+/// own: Discord refuses the `wakeorpay://` redirect the implicit flow relied
+/// on, and the https redirect that replaces it lands on the Worker, where a
+/// fragment would never arrive (a fragment is not sent to a server, which was
+/// the whole point of it). The second is that it is simply better: the access
+/// token is now spent **inside the Worker** and never touches the device at
+/// all. What comes back over the wire is the id, the two names and the avatar
+/// hash. Nothing token-shaped is ever persisted, logged, or held in a field.
 ///
 /// The two halves of the flow are separate collaborators on purpose. The
 /// [DiscordAuthLauncher] only opens a URL — it never learns the answer — and
@@ -104,13 +114,13 @@ class DiscordOAuthService {
   DiscordOAuthService(
     this._launcher,
     this._router,
-    this._client, {
+    this._exchange, {
     this.reporter = DiscordFlowReporter.silent,
   });
 
   final DiscordAuthLauncher _launcher;
   final DiscordCallbackRouter _router;
-  final http.Client _client;
+  final DiscordExchangeClient _exchange;
   final DiscordFlowReporter reporter;
 
   /// The state of the flow currently in the air, for the emulator check —
@@ -128,11 +138,18 @@ class DiscordOAuthService {
     _router.cancelPending();
   }
 
-  Future<DiscordLinkResult> link({Duration timeout = discordFlowTimeout}) async {
+  Future<DiscordLinkResult> link({
+    String endpoint = kDiscordExchangeEndpoint,
+    Duration timeout = discordFlowTimeout,
+  }) async {
     _cancelRequested = false;
+    if (!isDiscordExchangeEndpoint(endpoint)) {
+      return _fail(DiscordLinkStatus.noEndpoint);
+    }
+
     final state = randomOAuthState();
     final url = buildDiscordAuthorizeUrl(
-      responseType: 'token',
+      responseType: 'code',
       scopes: kDiscordIdentifyScopes,
       state: state,
       // Always show the consent screen: without it a user who already
@@ -151,12 +168,8 @@ class DiscordOAuthService {
       _router.cancelPending();
       return _fail(DiscordLinkStatus.noApp);
     }
-    reporter.phase(
-      DiscordFlowPhase.waiting,
-      channel == DiscordAuthChannel.discordApp
-          ? kDiscordWaitingInAppMessage
-          : kDiscordWaitingInBrowserMessage,
-    );
+    reporter.log(kDiscordOpenedInBrowserMessage);
+    reporter.phase(DiscordFlowPhase.waiting, kDiscordWaitingInBrowserMessage);
 
     final callback = await pending;
     if (callback == null) {
@@ -171,7 +184,7 @@ class DiscordOAuthService {
       );
     }
 
-    reporter.phase(DiscordFlowPhase.working, 'Discord に問い合わせています…');
+    reporter.phase(DiscordFlowPhase.working, '連携サーバーに問い合わせています…');
     final parsed = parseDiscordCallback(callback, expectedState: state);
     if (!parsed.ok) {
       return _fail(switch (parsed.error) {
@@ -180,12 +193,19 @@ class DiscordOAuthService {
         _ => DiscordLinkStatus.identityFailed,
       });
     }
-    final token = parsed.accessToken;
-    if (token == null || token.isEmpty) {
+    final code = parsed.code;
+    if (code == null || code.isEmpty) {
       return _fail(DiscordLinkStatus.identityFailed);
     }
 
-    final identity = await fetchIdentity(token);
+    final identity = await _exchange.exchangeIdentity(
+      endpoint: endpoint,
+      code: code,
+      // The same redirect that went out with the authorize request. Discord
+      // checks the two match, and a mismatch here is a 400 on a code that is
+      // then spent and unusable.
+      redirectUri: kDiscordRedirectUri,
+    );
     if (identity == null) return _fail(DiscordLinkStatus.identityFailed);
 
     final result = DiscordLinkResult(DiscordLinkStatus.ok, identity);
@@ -202,31 +222,13 @@ class DiscordOAuthService {
     return result;
   }
 
-  /// `GET /users/@me` with the bearer token. Null for every failure.
-  @visibleForTesting
-  Future<DiscordIdentity?> fetchIdentity(String accessToken) async {
-    try {
-      final response = await _client
-          .get(
-            Uri.https('discord.com', '/api/users/@me'),
-            headers: {'Authorization': 'Bearer $accessToken'},
-          )
-          .timeout(discordIdentityTimeout);
-      if (response.statusCode != 200) return null;
-      // bodyBytes, not body: `http` falls back to latin-1 when Discord omits
-      // the charset, and a global_name in kana would come back as mojibake.
-      return parseDiscordIdentity(utf8.decode(response.bodyBytes));
-    } on Object {
-      return null;
-    }
-  }
 }
 
 final discordOAuthServiceProvider = Provider(
   (ref) => DiscordOAuthService(
     ref.watch(discordAuthLauncherProvider),
     ref.watch(discordCallbackRouterProvider),
-    ref.watch(httpClientProvider),
+    ref.watch(discordExchangeClientProvider),
     reporter: ref.watch(discordFlowReporterProvider),
   ),
 );
@@ -265,7 +267,7 @@ class DiscordChannelLinkResult {
     DiscordChannelLinkStatus.noEndpoint =>
       '連携サーバーが設定されていないビルドです（worker/README.md の手順でデプロイし、'
           'kDiscordExchangeEndpoint に URL を入れてビルドし直してください）',
-    DiscordChannelLinkStatus.noApp => 'Discord アプリもブラウザも見つかりませんでした',
+    DiscordChannelLinkStatus.noApp => 'ブラウザが見つかりませんでした',
     DiscordChannelLinkStatus.cancelled => '連携をやめました',
     DiscordChannelLinkStatus.timedOut => kDiscordTimedOutMessage,
     DiscordChannelLinkStatus.stateMismatch =>
@@ -337,11 +339,10 @@ class DiscordChannelLinker {
       _router.cancelPending();
       return _fail(DiscordChannelLinkStatus.noApp);
     }
+    reporter.log(kDiscordOpenedInBrowserMessage);
     reporter.phase(
       DiscordFlowPhase.waiting,
-      channel == DiscordAuthChannel.discordApp
-          ? '承認を待っています…（Discord アプリでサーバーとチャンネルを選んでください）'
-          : '承認を待っています…（ブラウザでサーバーとチャンネルを選んでください）',
+      '承認を待っています…（ブラウザでサーバーとチャンネルを選んでください）',
     );
 
     final callback = await pending;

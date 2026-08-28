@@ -156,7 +156,7 @@ class DiscordFlowReporter {
       onPhase?.call(phase, message);
 
   /// A line that is worth recording but is not a status the user is waiting
-  /// on — 「Discord アプリで開きました」 while the phase stays 承認待ち.
+  /// on — 「ブラウザで Discord を開きました」 while the phase stays 承認待ち.
   void log(String message) => onLog?.call(message);
 }
 

@@ -101,6 +101,34 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="wakeorpay" />
             </intent-filter>
+
+            <!-- Discord OAuth2 の**本来の**戻り先（段階G）。
+                 Discord はこのアプリの `wakeorpay://discord/callback` を
+                 リダイレクト URI として受け付けない：認可画面の前に
+                 「Redirect URI 'wakeorpay://discord/callback' is not supported
+                 by client」で止まり、コールバックは永久に来ない。実機で確認済み。
+                 そこでリダイレクト先は Worker の https URL にした。
+
+                 autoVerify="true" が肝。Android が起動時／更新時に
+                 https://wake-or-pay-discord.wakeorpay.workers.dev/
+                 .well-known/assetlinks.json を取りに行き、そこに載っている
+                 SHA-256 が実際の署名証明書と一致すれば、この URL は
+                 **ブラウザを一切見せずに**このアプリに直接届く。
+                 一致しなければブラウザが開き、Worker のページが
+                 `wakeorpay://` に跳ね返す（上の intent-filter が受ける）。
+                 つまり検証の成否は速さの差であって、成否の差ではない。
+
+                 パスは /discord/callback ちょうどに限る。ホスト全体を
+                 掴むと Worker の他のパス（assetlinks.json 自身も含む）まで
+                 アプリに来てしまう。 -->
+            <intent-filter android:autoVerify="true" android:label="Discord 連携">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="wake-or-pay-discord.wakeorpay.workers.dev"
+                      android:path="/discord/callback" />
+            </intent-filter>
         </activity>
 
         <!-- Warns the user when the app is killed while alarms are scheduled. -->
@@ -152,23 +180,16 @@
              開く先が見えるようにしておく。ここが 0 件だと url_launcher は
              「開ける先が無い」と答え、連携はボタンを押した瞬間に終わる。
 
-             1 つめ：**Discord アプリ**。`discord.com` の https リンクを
-             掴むアプリが見える。`LaunchMode.externalNonBrowserApplication`
-             （FLAG_ACTIVITY_REQUIRE_NON_BROWSER）はブラウザを除いて解決するので、
-             これが見えていれば認可は Discord アプリの中で終わる——
-             既にログイン済みなので「認証」を押すだけになる。 -->
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="https" android:host="discord.com"/>
-        </intent>
-        <!-- 2 つめ：Discord の独自スキーム。アプリが入っているかを
-             もう一方から見る保険で、片方だけでは隠れる端末があるため。 -->
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="discord"/>
-        </intent>
-        <!-- 3 つめ：フォールバックのブラウザ。Discord アプリが無いときは
-             こちらに落ちる。 -->
+             **Discord アプリ狙いの宣言は消した（段階G）。** 実機で測った結果：
+             `pm query-activities -d https://discord.com/oauth2/authorize` は
+             ブラウザしか返さない（`https://discord.com/channels/@me` は
+             com.discord も返すので、Discord のフィルタはパスを列挙していて
+             /oauth2/authorize を意図的に外している）。`discord://…` は
+             どの形でも "No activities found"——Discord アプリは discord:
+             スキームを一切登録していない。つまり認可画面をアプリ内で出す
+             経路は存在せず、ブラウザが唯一の道。
+
+             残すのはブラウザだけ。 -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <category android:name="android.intent.category.BROWSABLE"/>

@@ -410,8 +410,10 @@ class FakeDiscordAuthLauncher implements DiscordAuthLauncher {
 
   final FakeDeepLinks _links;
 
-  /// Where the URL was opened. Defaults to the Discord app, which is the path
-  /// the rework is about.
+  /// Where the URL was opened. Defaults to the browser, which — measured on a
+  /// real device — is the only place an authorize URL has ever gone: the
+  /// Discord Android app registers neither `discord.com/oauth2/authorize` nor
+  /// the `discord:` scheme.
   final DiscordAuthChannel? channel;
 
   final String? Function(String authorizeUrl)? replyWith;
@@ -429,7 +431,7 @@ class FakeDiscordAuthLauncher implements DiscordAuthLauncher {
       // listener registered too late.
       scheduleMicrotask(() => _links.emit(reply));
     }
-    return channel ?? DiscordAuthChannel.discordApp;
+    return channel ?? DiscordAuthChannel.browser;
   }
 }
 

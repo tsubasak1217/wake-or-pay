@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/services/discord_exchange.dart';
+
+import '../helpers.dart';
 
 void main() {
   group('buildDiscordExchangeUrl', () {
@@ -134,6 +138,80 @@ void main() {
       expect(grant!.guildName, isEmpty);
       expect(grant.channelId, isEmpty);
       expect(grant.displayName, 'Discord 共有先');
+    });
+  });
+
+  group('parseDiscordExchangeIdentity', () {
+    test('reads the four fields out of {"user":{…}}', () {
+      final identity = parseDiscordExchangeIdentity(
+        '{"user":{"id":"123456789012345678","username":"hanako",'
+        '"global_name":"花子","avatar":"abc"}}',
+      );
+      expect(identity!.id, '123456789012345678');
+      expect(identity.username, 'hanako');
+      expect(identity.displayName, '花子');
+      expect(identity.avatar, 'abc');
+    });
+
+    test('a body with no user is not an identity', () {
+      expect(parseDiscordExchangeIdentity('{"error":"nope"}'), isNull);
+      expect(parseDiscordExchangeIdentity('{"user":"nope"}'), isNull);
+    });
+
+    test('an empty id is not an identity', () {
+      expect(parseDiscordExchangeIdentity('{"user":{"id":""}}'), isNull);
+      expect(
+        parseDiscordExchangeIdentity('{"user":{"username":"hanako"}}'),
+        isNull,
+      );
+    });
+
+    test('HTML from a proxy is null, not a throw', () {
+      expect(parseDiscordExchangeIdentity('<html>'), isNull);
+      expect(parseDiscordExchangeIdentity(''), isNull);
+      expect(parseDiscordExchangeIdentity('[]'), isNull);
+    });
+  });
+
+  group('DiscordExchangeClient mode', () {
+    // The Worker cannot tell 「Discord で連携」 and 「チャンネルを連携」 apart from the
+    // authorization code alone — both are just a code and a redirect URI — so
+    // the client has to say which answer it wants.
+    const endpoint = 'https://w.example.workers.dev';
+
+    test('exchangeIdentity sends mode: identify', () async {
+      final http = FakeHttpClient(
+        postStatus: 200,
+        postBody: '{"user":{"id":"1","username":"a"}}',
+      );
+      final client = DiscordExchangeClient(http);
+
+      await client.exchangeIdentity(
+        endpoint: endpoint,
+        code: 'C',
+        redirectUri: 'https://example.com/callback',
+      );
+
+      final sent = jsonDecode(http.posted.single.body) as Map;
+      expect(sent['mode'], 'identify');
+    });
+
+    test('exchange sends mode: webhook', () async {
+      final http = FakeHttpClient(
+        postStatus: 200,
+        postBody:
+            '{"webhook":{"id":"1","url":"https://discord.com/api/webhooks/1/T"}}',
+      );
+      final client = DiscordExchangeClient(http);
+
+      await client.exchange(
+        endpoint: endpoint,
+        code: 'C',
+        redirectUri: 'https://example.com/callback',
+      );
+
+      final sent = jsonDecode(http.posted.single.body) as Map;
+      expect(sent['mode'], 'webhook');
     });
   });
 }

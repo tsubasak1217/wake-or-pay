@@ -15,14 +15,45 @@ const kDiscordClientId = '1542696296337506415';
 /// Where Discord sends the browser back to. Registered in the Developer
 /// Portal, matched **exactly** by Discord — one character of difference and
 /// the authorize page refuses before the user ever sees a consent screen.
-const kDiscordRedirectUri = 'wakeorpay://discord/callback';
-
-/// The scheme half of [kDiscordRedirectUri].
 ///
-/// `MainActivity` claims it in the Android manifest — **and nothing else in
-/// the app does**, which is the whole point: one component, in the app's own
-/// task, so the callback intent brings the app itself to the front.
+/// **https, not `wakeorpay://`.** The custom scheme was what this used to be,
+/// and Discord refuses it for this application outright: the authorize page
+/// ends at `discord.com/oauth2/error?error=invalid_request` saying
+/// 「Redirect URI 'wakeorpay://discord/callback' is not supported by client」
+/// before any consent screen — so the app waited forever for a callback that
+/// was never going to be sent. Discord accepts an https redirect, so the
+/// Worker owns the landing page and hands the parameters back to the app: by
+/// **App Links** when Android has verified the Worker's `assetlinks.json`
+/// (the app opens directly, no browser is ever seen), and by a
+/// `wakeorpay://` bounce from that page when it has not.
+const kDiscordRedirectUri =
+    'https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback';
+
+/// The custom scheme `MainActivity` claims, for the Worker page's bounce.
+///
+/// Still here, and still claimed by exactly one component in the app: it is
+/// the fallback the landing page uses when the https link was not verified.
 const kDiscordCallbackScheme = 'wakeorpay';
+
+/// The host half of [kDiscordRedirectUri]. `MainActivity` claims it with
+/// `autoVerify="true"`, which is what makes the https redirect skip the
+/// browser entirely.
+const kDiscordCallbackHost = 'wake-or-pay-discord.wakeorpay.workers.dev';
+
+/// The path both forms of the callback share.
+const kDiscordCallbackPath = '/discord/callback';
+
+/// Whether [uri] is a Discord callback this app should route — either form.
+///
+/// The https one only counts on the exact host and path: `MainActivity` has an
+/// `autoVerify` filter for them and nothing else, and a stray https intent
+/// that happened to reach the app is not an answer to anything.
+bool isDiscordCallbackUri(Uri uri) {
+  if (uri.scheme == kDiscordCallbackScheme) return true;
+  return uri.scheme == 'https' &&
+      uri.host == kDiscordCallbackHost &&
+      uri.path == kDiscordCallbackPath;
+}
 
 /// `identify` is the whole of what 「Discord で連携」 asks for: it is exactly
 /// `GET /users/@me` without the email, which is the user's id, username,
@@ -89,57 +120,57 @@ enum DiscordCallbackError {
   /// Discord said `error=…` — the user pressed キャンセル, most often.
   denied,
 
-  /// A callback with neither a token nor a code nor an error in it.
+  /// A callback with neither a code nor an error in it.
   malformed,
 }
 
-/// What came back on `wakeorpay://discord/callback`.
+/// What came back on the callback — either form of it.
 ///
-/// One type for both grants: the implicit one fills [accessToken], the code
-/// one fills [code], and every failure fills [error] instead of throwing —
-/// this runs from a button press and the screen has to say what happened.
+/// One shape now, because there is one grant: the **authorization code**.
+/// Every failure fills [error] instead of throwing — this runs from a button
+/// press and the screen has to say what happened.
 @immutable
 class DiscordCallbackResult {
-  const DiscordCallbackResult._({this.accessToken, this.code, this.error});
+  const DiscordCallbackResult._({this.code, this.error});
 
-  const DiscordCallbackResult.token(String token)
-    : this._(accessToken: token);
   const DiscordCallbackResult.authorizationCode(String code)
     : this._(code: code);
   const DiscordCallbackResult.failed(DiscordCallbackError error)
     : this._(error: error);
 
-  final String? accessToken;
   final String? code;
   final DiscordCallbackError? error;
 
-  bool get ok => error == null && (accessToken != null || code != null);
+  bool get ok => error == null && code != null;
 
   @override
   bool operator ==(Object other) =>
       other is DiscordCallbackResult &&
-      other.accessToken == accessToken &&
       other.code == code &&
       other.error == error;
 
   @override
-  int get hashCode => Object.hash(accessToken, code, error);
+  int get hashCode => Object.hash(code, error);
 
   @override
-  String toString() => ok
-      ? 'DiscordCallbackResult(${accessToken != null ? 'token' : 'code'})'
-      : 'DiscordCallbackResult($error)';
+  String toString() =>
+      ok ? 'DiscordCallbackResult(code)' : 'DiscordCallbackResult($error)';
 }
 
 /// Reads a callback URL. Pure.
 ///
-/// Both halves of the URL are searched, because the two grants put their
-/// answer in different places: the implicit grant returns
-/// `#access_token=…&state=…` in the **fragment** (never sent to a server, which
-/// is the point of it), and the code grant returns `?code=…&state=…` in the
-/// **query**. Discord's own error replies can arrive in either.
+/// Handles both forms the app can be handed, because they carry the same
+/// query: the verified https link
+/// `https://wake-or-pay-discord…/discord/callback?code=…&state=…` that Android
+/// routes straight to the app, and the `wakeorpay://discord/callback?…` bounce
+/// the Worker's landing page performs when it did not. Discord's refusals
+/// arrive the same way, as `?error=…&error_description=…`.
 ///
-/// The state is checked first and checked always — before the token is even
+/// The **fragment is no longer read**. It only ever held the implicit grant's
+/// `#access_token=…`, and that grant is gone: `identify` now goes through the
+/// same code exchange as `webhook.incoming`, so no token ever reaches the app.
+///
+/// The state is checked first and checked always — before the code is even
 /// looked at — so a callback that was not this app's cannot be half-processed.
 DiscordCallbackResult parseDiscordCallback(
   String url, {
@@ -150,12 +181,7 @@ DiscordCallbackResult parseDiscordCallback(
     return const DiscordCallbackResult.failed(DiscordCallbackError.malformed);
   }
 
-  final params = <String, String>{
-    ...uri.queryParameters,
-    // The fragment wins on a collision: only the implicit grant uses it, and
-    // when it is there it is the actual answer.
-    ...Uri.splitQueryString(uri.fragment),
-  };
+  final params = uri.queryParameters;
 
   if (params['state'] != expectedState) {
     return const DiscordCallbackResult.failed(
@@ -166,8 +192,6 @@ DiscordCallbackResult parseDiscordCallback(
     return const DiscordCallbackResult.failed(DiscordCallbackError.denied);
   }
 
-  final token = params['access_token'] ?? '';
-  if (token.isNotEmpty) return DiscordCallbackResult.token(token);
   final code = params['code'] ?? '';
   if (code.isNotEmpty) return DiscordCallbackResult.authorizationCode(code);
   return const DiscordCallbackResult.failed(DiscordCallbackError.malformed);

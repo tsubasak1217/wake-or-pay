@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../domain/discord_oauth.dart';
 import 'discord_sender.dart';
 
 /// The deployed 連携サーバー — **the single place this app learns about it.**
@@ -161,10 +162,48 @@ DiscordWebhookGrant? parseDiscordExchangeResponse(String body) {
   );
 }
 
+/// Reads the Worker's `identify` answer — `{"user":{…}}`. Pure, and null for
+/// anything that is not one.
+///
+/// A separate shape from `/users/@me` on purpose: the app no longer calls
+/// Discord directly for this. `identify` moved onto the authorization-code
+/// grant along with `webhook.incoming` (the implicit grant is gone), so the
+/// access token is spent inside the Worker and only these four public fields
+/// come back out.
+DiscordIdentity? parseDiscordExchangeIdentity(String body) {
+  final Object? decoded;
+  try {
+    decoded = jsonDecode(body);
+  } on FormatException {
+    return null;
+  }
+  if (decoded is! Map) return null;
+  final user = decoded['user'];
+  if (user is! Map) return null;
+  final id = (user['id'] as String?)?.trim() ?? '';
+  if (id.isEmpty) return null;
+  return DiscordIdentity(
+    id: id,
+    username: (user['username'] as String?)?.trim() ?? '',
+    globalName: (user['global_name'] as String?)?.trim() ?? '',
+    avatar: (user['avatar'] as String?)?.trim() ?? '',
+  );
+}
+
 /// How long the Worker is given. Longer than a plain lookup — it makes two
 /// calls to Discord of its own — and still bounded, because a user is staring
 /// at a spinner.
 const discordExchangeTimeout = Duration(seconds: 20);
+
+/// Which answer the Worker is being asked for. Sent as `mode`, because the
+/// Worker cannot tell the two authorizations apart from the code alone and
+/// guessing would turn a failed webhook exchange into a silent success.
+enum DiscordExchangeMode {
+  identify,
+  webhook;
+
+  String get wireValue => name;
+}
 
 /// The one call to the 連携サーバー.
 class DiscordExchangeClient {
@@ -172,13 +211,14 @@ class DiscordExchangeClient {
 
   final http.Client _client;
 
-  /// Null for every failure: a Worker that is down, a 400 from a code that was
-  /// already spent, an answer that is not JSON. The screen says
-  /// 「チャンネルを連携できませんでした」 in all of them.
-  Future<DiscordWebhookGrant?> exchange({
+  /// The raw POST. Null body for every failure, so both callers below collapse
+  /// a Worker that is down, a 400 from a code that was already spent and an
+  /// answer that is not JSON into the same 「できませんでした」.
+  Future<String?> _post({
     required String endpoint,
     required String code,
     required String redirectUri,
+    required DiscordExchangeMode mode,
   }) async {
     if (!isDiscordExchangeEndpoint(endpoint)) return null;
     try {
@@ -186,14 +226,50 @@ class DiscordExchangeClient {
           .post(
             Uri.parse(buildDiscordExchangeUrl(endpoint)),
             headers: const {'content-type': 'application/json'},
-            body: jsonEncode({'code': code, 'redirect_uri': redirectUri}),
+            body: jsonEncode({
+              'code': code,
+              'redirect_uri': redirectUri,
+              'mode': mode.wireValue,
+            }),
           )
           .timeout(discordExchangeTimeout);
       if (response.statusCode != 200) return null;
-      return parseDiscordExchangeResponse(utf8.decode(response.bodyBytes));
+      // bodyBytes, not body: `http` falls back to latin-1 when the charset is
+      // absent, and a global_name in kana would come back as mojibake.
+      return utf8.decode(response.bodyBytes);
     } on Object {
       return null;
     }
+  }
+
+  /// 「チャンネルを連携」. Null for every failure.
+  Future<DiscordWebhookGrant?> exchange({
+    required String endpoint,
+    required String code,
+    required String redirectUri,
+  }) async {
+    final body = await _post(
+      endpoint: endpoint,
+      code: code,
+      redirectUri: redirectUri,
+      mode: DiscordExchangeMode.webhook,
+    );
+    return body == null ? null : parseDiscordExchangeResponse(body);
+  }
+
+  /// 「Discord で連携」. Null for every failure.
+  Future<DiscordIdentity?> exchangeIdentity({
+    required String endpoint,
+    required String code,
+    required String redirectUri,
+  }) async {
+    final body = await _post(
+      endpoint: endpoint,
+      code: code,
+      redirectUri: redirectUri,
+      mode: DiscordExchangeMode.identify,
+    );
+    return body == null ? null : parseDiscordExchangeIdentity(body);
   }
 }
 

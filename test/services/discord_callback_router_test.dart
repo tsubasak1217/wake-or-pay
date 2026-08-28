@@ -31,6 +31,25 @@ void main() {
     );
   });
 
+  test('delivers a callback that arrives as the https App Link form',
+      () async {
+    // The verified form Android routes straight to the app when
+    // MainActivity's autoVerify has succeeded — no browser, no wakeorpay://
+    // bounce at all.
+    final future = router.awaitCallback('abc');
+    links.add(
+      Uri.parse(
+        'https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback'
+        '?code=CODE&state=abc',
+      ),
+    );
+    expect(
+      await future,
+      'https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback'
+      '?code=CODE&state=abc',
+    );
+  });
+
   test('ignores a URI whose scheme is not wakeorpay, leaving the flow '
       'pending', () async {
     final future = router.awaitCallback(

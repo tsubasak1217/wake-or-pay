@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wake_or_pay/domain/discord_oauth.dart';
 import 'package:wake_or_pay/services/discord_exchange.dart';
 import 'package:wake_or_pay/services/discord_oauth.dart';
 
@@ -10,13 +11,13 @@ import '../helpers.dart';
 /// discord_oauth_service_test.dart, for 「チャンネルを連携」 rather than
 /// 「Discord で連携」.
 ///
-/// Every one of these passes `endpoint:` explicitly. [kDiscordExchangeEndpoint]
-/// is `''` in this build (see discord_exchange.dart), so the widget itself —
-/// which calls `.link()` with no argument — can only ever reach
-/// [DiscordChannelLinkStatus.noEndpoint] in a test run; that path is covered
-/// in discord_channel_link_test.dart. A working exchange needs a real
-/// deployed Worker URL, which only a build config can supply, so here it is
-/// supplied by hand.
+/// Every one of these passes `endpoint:` explicitly rather than relying on
+/// this build's own [kDiscordExchangeEndpoint] (see discord_exchange.dart),
+/// which may be empty on a fork with 「チャンネルを連携」 disabled — the widget
+/// itself, which calls `.link()` with no argument, is what exercises that
+/// constant, covered in discord_channel_link_test.dart. Here the exchange is
+/// supplied by hand so the test passes regardless of which build it runs
+/// against.
 const _endpoint = 'https://example.com';
 const _exchangeUrl = '$_endpoint/discord/exchange';
 
@@ -55,7 +56,10 @@ void main() {
     expect(post.url, _exchangeUrl);
     final sent = jsonDecode(post.body) as Map;
     expect(sent['code'], 'THE_CODE');
-    expect(sent['redirect_uri'], 'wakeorpay://discord/callback');
+    // The same https redirect that went out with the authorize request —
+    // Discord checks the two match, and the code-carrying wakeorpay:// bounce
+    // it actually arrived on is never what gets sent back.
+    expect(sent['redirect_uri'], kDiscordRedirectUri);
   });
 
   test('the authorize URL asks for the code grant and webhook.incoming, with '

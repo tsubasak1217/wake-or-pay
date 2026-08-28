@@ -1,25 +1,29 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
+import 'package:wake_or_pay/domain/discord_oauth.dart';
+import 'package:wake_or_pay/services/discord_exchange.dart';
 import 'package:wake_or_pay/services/discord_link_log.dart';
 import 'package:wake_or_pay/services/discord_oauth.dart';
 
 import '../helpers.dart';
 
-const _identityUrl = 'https://discord.com/api/users/@me';
+const _exchangeUrl = '$kDiscordExchangeEndpoint/discord/exchange';
 const _identityBody =
-    '{"id":"123456789012345678","username":"hanako",'
-    '"global_name":"花子","avatar":"abc"}';
+    '{"user":{"id":"123456789012345678","username":"hanako",'
+    '"global_name":"花子","avatar":"abc"}}';
 
 void main() {
-  test('a completed flow returns the identity, and the token is only spent '
-      'on /users/@me', () async {
+  test('a completed flow returns the identity, exchanged through the '
+      '連携サーバー — and the browser-only route is logged', () async {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
-    final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
+    final http = FakeHttpClient(postStatus: 200, postBody: _identityBody);
     final launcher = FakeDiscordAuthLauncher(
       links,
       replyWith: (url) => 'wakeorpay://discord/callback'
-          '#access_token=TOK&state=${stateOf(url)}',
+          '?code=CODE&state=${stateOf(url)}',
     );
     final container = await testContainer(
       extra: [
@@ -33,19 +37,35 @@ void main() {
     expect(result.ok, isTrue);
     expect(result.identity!.id, '123456789012345678');
     expect(result.identity!.displayName, '花子');
-    // One call, to Discord, with the bearer token on it — and nowhere else.
-    expect(http.requested, [_identityUrl]);
-    expect(http.headers.single['Authorization'], 'Bearer TOK');
+    // One call, to the 連携サーバー, with the code and mode: identify on it —
+    // Discord itself is never contacted directly by the app any more.
+    expect(http.requested, [_exchangeUrl]);
+    expect(http.posted, hasLength(1));
+    expect(http.posted.single.url, _exchangeUrl);
+    final sent = jsonDecode(http.posted.single.body) as Map;
+    expect(sent['code'], 'CODE');
+    expect(sent['mode'], 'identify');
+    expect(sent['redirect_uri'], kDiscordRedirectUri);
+
+    // The Discord app registers no authorize handler at all (see
+    // UrlLauncherDiscordAuthLauncher), so every flow lands in a browser —
+    // and that fact is worth a 連携ログ line even though the status line
+    // never mentions it.
+    final log = container.read(discordLinkLogProvider);
+    expect(
+      log.map((e) => e.message),
+      contains(kDiscordOpenedInBrowserMessage),
+    );
   });
 
-  test('the authorize URL asks for the implicit grant and identify', () async {
+  test('the authorize URL asks for the code grant and identify', () async {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
-    final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
+    final http = FakeHttpClient(postStatus: 200, postBody: _identityBody);
     final launcher = FakeDiscordAuthLauncher(
       links,
       replyWith: (url) => 'wakeorpay://discord/callback'
-          '#access_token=TOK&state=${stateOf(url)}',
+          '?code=CODE&state=${stateOf(url)}',
     );
     final container = await testContainer(
       extra: [
@@ -56,19 +76,20 @@ void main() {
     await container.read(discordOAuthServiceProvider).link();
 
     final opened = Uri.parse(launcher.opened.single);
-    expect(opened.queryParameters['response_type'], 'token');
+    expect(opened.queryParameters['response_type'], 'code');
     expect(opened.queryParameters['scope'], 'identify');
     expect(opened.queryParameters['prompt'], 'consent');
+    expect(opened.queryParameters['redirect_uri'], kDiscordRedirectUri);
   });
 
   test('every flow gets its own state', () async {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
-    final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
+    final http = FakeHttpClient(postStatus: 200, postBody: _identityBody);
     final launcher = FakeDiscordAuthLauncher(
       links,
       replyWith: (url) => 'wakeorpay://discord/callback'
-          '#access_token=TOK&state=${stateOf(url)}',
+          '?code=CODE&state=${stateOf(url)}',
     );
     final container = await testContainer(
       extra: [
@@ -86,14 +107,14 @@ void main() {
     );
   });
 
-  test('a callback with somebody else’s state never reaches Discord', () async {
+  test('a callback with somebody else’s state never reaches the 連携サーバー', () async {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
-    final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
+    final http = FakeHttpClient(postStatus: 200, postBody: _identityBody);
     final launcher = FakeDiscordAuthLauncher(
       links,
       replyWith: (_) => 'wakeorpay://discord/callback'
-          '#access_token=TOK&state=not-the-one',
+          '?code=CODE&state=not-the-one',
     );
     final container = await testContainer(
       extra: [
@@ -106,12 +127,12 @@ void main() {
 
     expect(result.status, DiscordLinkStatus.stateMismatch);
     expect(result.identity, isNull);
-    // The whole point: a token from a callback this app did not start is not
-    // used for anything at all.
-    expect(http.requested, isEmpty);
+    // The whole point: a code from a callback this app did not start is not
+    // spent on anything at all.
+    expect(http.posted, isEmpty);
   });
 
-  test('no Discord app or browser is noApp, and nothing is opened twice', () async {
+  test('no browser is noApp, and nothing is opened twice', () async {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
     final launcher = FakeDiscordAuthLauncher.noApp(links);
@@ -125,7 +146,29 @@ void main() {
     final result = await container.read(discordOAuthServiceProvider).link();
 
     expect(result.status, DiscordLinkStatus.noApp);
+    expect(result.label, 'ブラウザが見つかりませんでした');
     expect(launcher.opened, hasLength(1));
+  });
+
+  test('link(endpoint: \'\') yields noEndpoint before opening anything', () async {
+    final links = FakeDeepLinks();
+    addTearDown(links.dispose);
+    final launcher = FakeDiscordAuthLauncher(links);
+    final container = await testContainer(
+      extra: [
+        fakeHttpClientOverride(FakeHttpClient()),
+        ...fakeDiscordFlowOverrides(links, launcher),
+      ],
+    );
+
+    final result = await container
+        .read(discordOAuthServiceProvider)
+        .link(endpoint: '');
+
+    expect(result.status, DiscordLinkStatus.noEndpoint);
+    // No browser was opened, and nothing was posted: the implicit grant is
+    // gone, so with no endpoint there is nowhere for a code to be spent.
+    expect(launcher.opened, isEmpty);
   });
 
   test('calling cancel() while waiting ends the flow as cancelled, not an '
@@ -193,18 +236,18 @@ void main() {
     );
   });
 
-  test('a 401 from /users/@me is a value, not a throw', () async {
+  test('a 連携サーバー that refuses the exchange is identityFailed', () async {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
-    // Nothing registered for the URL, so the fake answers 404.
+    final http = FakeHttpClient(postStatus: 500);
     final launcher = FakeDiscordAuthLauncher(
       links,
       replyWith: (url) => 'wakeorpay://discord/callback'
-          '#access_token=TOK&state=${stateOf(url)}',
+          '?code=CODE&state=${stateOf(url)}',
     );
     final container = await testContainer(
       extra: [
-        fakeHttpClientOverride(FakeHttpClient()),
+        fakeHttpClientOverride(http),
         ...fakeDiscordFlowOverrides(links, launcher),
       ],
     );
@@ -220,7 +263,7 @@ void main() {
     final launcher = FakeDiscordAuthLauncher(
       links,
       replyWith: (url) => 'wakeorpay://discord/callback'
-          '#access_token=TOK&state=${stateOf(url)}',
+          '?code=CODE&state=${stateOf(url)}',
     );
     final container = await testContainer(
       extra: [
@@ -234,14 +277,14 @@ void main() {
     );
   });
 
-  test('no access token is ever written to prefs or to 連携ログ', () async {
+  test('no authorization code is ever written to prefs or to 連携ログ', () async {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
-    final http = FakeHttpClient(responses: {_identityUrl: _identityBody});
+    final http = FakeHttpClient(postStatus: 200, postBody: _identityBody);
     final launcher = FakeDiscordAuthLauncher(
       links,
       replyWith: (url) => 'wakeorpay://discord/callback'
-          '#access_token=SUPERSECRET&state=${stateOf(url)}',
+          '?code=SUPERSECRETCODE&state=${stateOf(url)}',
     );
     final container = await testContainer(
       extra: [
@@ -261,17 +304,18 @@ void main() {
 
     final prefs = container.read(sharedPreferencesProvider);
     for (final key in prefs.getKeys()) {
-      expect('${prefs.get(key)}', isNot(contains('SUPERSECRET')));
+      expect('${prefs.get(key)}', isNot(contains('SUPERSECRETCODE')));
       expect(key, isNot(contains('token')));
     }
     expect(repository.read().discordUserId, '123456789012345678');
 
     // The log is the diagnostic surface a user is told to screenshot and
-    // report — it must never be the place a token leaks out to.
+    // report — it must never be the place a code (or anything else that can
+    // be spent) leaks out to.
     final log = container.read(discordLinkLogProvider);
     expect(log, isNotEmpty);
     for (final entry in log) {
-      expect(entry.message, isNot(contains('SUPERSECRET')));
+      expect(entry.message, isNot(contains('SUPERSECRETCODE')));
     }
   });
 }

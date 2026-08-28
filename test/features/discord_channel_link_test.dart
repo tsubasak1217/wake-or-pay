@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
+import 'package:wake_or_pay/domain/discord_oauth.dart';
 import 'package:wake_or_pay/features/alarms/discord_webhooks_screen.dart';
 import 'package:wake_or_pay/services/discord_exchange.dart';
 
@@ -120,7 +121,7 @@ void main() {
     expect(post.url, _exchangeUrl);
     final sent = jsonDecode(post.body) as Map;
     expect(sent['code'], 'THE_CODE');
-    expect(sent['redirect_uri'], 'wakeorpay://discord/callback');
+    expect(sent['redirect_uri'], kDiscordRedirectUri);
 
     final saved = await container.read(discordWebhookRepositoryProvider).getAll();
     expect(saved.single.id, '999');
@@ -219,7 +220,7 @@ void main() {
       await container.read(discordWebhookRepositoryProvider).getAll(),
       isEmpty,
     );
-    expect(find.text('Discord アプリもブラウザも見つかりませんでした'), findsWidgets);
+    expect(find.text('ブラウザが見つかりませんでした'), findsWidgets);
   });
 
   testWidgets('やめる leaves nothing saved', (tester) async {

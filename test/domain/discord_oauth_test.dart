@@ -5,9 +5,12 @@ import 'package:wake_or_pay/domain/discord_oauth.dart';
 
 void main() {
   group('buildDiscordAuthorizeUrl', () {
-    test('the implicit grant asks for a token and identify only', () {
+    test('the code grant asks for identify only', () {
+      // The implicit grant (response_type=token) is gone: both flows in this
+      // app now ask for `code`, because `identify` moved onto the same
+      // authorization-code exchange as `webhook.incoming`.
       final url = buildDiscordAuthorizeUrl(
-        responseType: 'token',
+        responseType: 'code',
         scopes: kDiscordIdentifyScopes,
         state: 'abc123',
         prompt: 'consent',
@@ -18,7 +21,7 @@ void main() {
       expect(uri.host, 'discord.com');
       expect(uri.path, '/oauth2/authorize');
       expect(uri.queryParameters['client_id'], kDiscordClientId);
-      expect(uri.queryParameters['response_type'], 'token');
+      expect(uri.queryParameters['response_type'], 'code');
       expect(uri.queryParameters['scope'], 'identify');
       expect(uri.queryParameters['redirect_uri'], kDiscordRedirectUri);
       expect(uri.queryParameters['state'], 'abc123');
@@ -27,14 +30,20 @@ void main() {
 
     test('the redirect URI is percent-encoded in the raw string', () {
       final url = buildDiscordAuthorizeUrl(
-        responseType: 'token',
+        responseType: 'code',
         scopes: kDiscordIdentifyScopes,
         state: 's',
       );
-      // A raw `wakeorpay://…` in the query is the single most common reason
-      // Discord refuses the authorize request outright.
-      expect(url, contains('redirect_uri=wakeorpay%3A%2F%2Fdiscord%2Fcallback'));
-      expect(url, isNot(contains('redirect_uri=wakeorpay://')));
+      // A raw `https://…` in the query is still a query-inside-a-query, and
+      // an unencoded one is a URL Discord's own parser has misread before.
+      expect(
+        url,
+        contains(
+          'redirect_uri=https%3A%2F%2Fwake-or-pay-discord.wakeorpay.'
+          'workers.dev%2Fdiscord%2Fcallback',
+        ),
+      );
+      expect(url, isNot(contains('redirect_uri=https://')));
     });
 
     test('prompt is left out entirely when not asked for', () {
@@ -78,18 +87,8 @@ void main() {
 
   group('parseDiscordCallback', () {
     const state = 'st4te';
-
-    test('reads the token out of the fragment', () {
-      final result = parseDiscordCallback(
-        'wakeorpay://discord/callback'
-        '#access_token=TOK&token_type=Bearer&expires_in=604800'
-        '&scope=identify&state=$state',
-        expectedState: state,
-      );
-      expect(result.ok, isTrue);
-      expect(result.accessToken, 'TOK');
-      expect(result.code, isNull);
-    });
+    const httpsBase =
+        'https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback';
 
     test('reads the code out of the query', () {
       final result = parseDiscordCallback(
@@ -98,22 +97,54 @@ void main() {
       );
       expect(result.ok, isTrue);
       expect(result.code, 'CODE');
-      expect(result.accessToken, isNull);
     });
 
-    test('a wrong state is refused even when a token came with it', () {
+    test('the https App Link form parses identically to the wakeorpay '
+        'form', () {
+      // Both are the same answer — the verified https link Android routes
+      // straight to the app, and the wakeorpay:// bounce the Worker's landing
+      // page performs when it was not verified.
       final result = parseDiscordCallback(
-        'wakeorpay://discord/callback#access_token=TOK&state=somebody-elses',
+        '$httpsBase?code=CODE&state=$state',
+        expectedState: state,
+      );
+      expect(result.ok, isTrue);
+      expect(result.code, 'CODE');
+      expect(
+        result,
+        parseDiscordCallback(
+          'wakeorpay://discord/callback?code=CODE&state=$state',
+          expectedState: state,
+        ),
+      );
+    });
+
+    test('a fragment is no longer read', () {
+      // This used to be the implicit grant's #access_token=…. The grant is
+      // gone and so is any reason to look at the fragment — a server (the
+      // Worker) never even receives one, so honouring it here would be a
+      // check that cannot fire on the https redirect but silently would on
+      // the wakeorpay:// bounce.
+      final result = parseDiscordCallback(
+        'wakeorpay://discord/callback?state=$state'
+        '#access_token=TOK&state=$state',
+        expectedState: state,
+      );
+      expect(result.error, DiscordCallbackError.malformed);
+    });
+
+    test('a wrong state is refused even when a code came with it', () {
+      final result = parseDiscordCallback(
+        'wakeorpay://discord/callback?code=CODE&state=somebody-elses',
         expectedState: state,
       );
       expect(result.ok, isFalse);
       expect(result.error, DiscordCallbackError.stateMismatch);
-      expect(result.accessToken, isNull);
     });
 
     test('a missing state is a mismatch, not a pass', () {
       final result = parseDiscordCallback(
-        'wakeorpay://discord/callback#access_token=TOK',
+        'wakeorpay://discord/callback?code=CODE',
         expectedState: state,
       );
       expect(result.error, DiscordCallbackError.stateMismatch);
@@ -128,36 +159,28 @@ void main() {
       expect(result.error, DiscordCallbackError.denied);
     });
 
-    test('an error in the fragment is read too', () {
-      final result = parseDiscordCallback(
-        'wakeorpay://discord/callback#error=access_denied&state=$state',
-        expectedState: state,
-      );
-      expect(result.error, DiscordCallbackError.denied);
-    });
-
     test('a callback with the right state but nothing in it is malformed', () {
       final result = parseDiscordCallback(
-        'wakeorpay://discord/callback#state=$state',
+        'wakeorpay://discord/callback?state=$state',
         expectedState: state,
       );
       expect(result.error, DiscordCallbackError.malformed);
     });
 
-    test('an empty token is not a token', () {
+    test('an empty code is not a code', () {
       final result = parseDiscordCallback(
-        'wakeorpay://discord/callback#access_token=&state=$state',
+        'wakeorpay://discord/callback?code=&state=$state',
         expectedState: state,
       );
       expect(result.error, DiscordCallbackError.malformed);
     });
 
-    test('a percent-encoded token comes back decoded', () {
+    test('a percent-encoded code comes back decoded', () {
       final result = parseDiscordCallback(
-        'wakeorpay://discord/callback#access_token=a%2Bb&state=$state',
+        'wakeorpay://discord/callback?code=a%2Bb&state=$state',
         expectedState: state,
       );
-      expect(result.accessToken, 'a+b');
+      expect(result.code, 'a+b');
     });
 
     test('nonsense is malformed rather than a crash', () {
@@ -166,6 +189,45 @@ void main() {
         isFalse,
       );
       expect(parseDiscordCallback('', expectedState: state).ok, isFalse);
+    });
+  });
+
+  group('isDiscordCallbackUri', () {
+    test('accepts the wakeorpay bounce', () {
+      expect(
+        isDiscordCallbackUri(Uri.parse('wakeorpay://discord/callback?code=C')),
+        isTrue,
+      );
+    });
+
+    test('accepts the https App Link form', () {
+      expect(
+        isDiscordCallbackUri(
+          Uri.parse(
+            'https://wake-or-pay-discord.wakeorpay.workers.dev'
+            '/discord/callback?code=C',
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects an unrelated https host or path', () {
+      // Only the exact host and path count: MainActivity's autoVerify filter
+      // has no others, and a stray https intent that happened to reach the
+      // app is not an answer to anything this app asked for.
+      expect(
+        isDiscordCallbackUri(Uri.parse('https://discord.com/discord/callback')),
+        isFalse,
+      );
+      expect(
+        isDiscordCallbackUri(
+          Uri.parse(
+            'https://wake-or-pay-discord.wakeorpay.workers.dev/other/path',
+          ),
+        ),
+        isFalse,
+      );
     });
   });
 
