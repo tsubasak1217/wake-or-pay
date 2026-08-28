@@ -1639,3 +1639,14 @@ App Links の検証は**署名証明書**を見るので、そこはデバッグ
 
 カード人質（Stripe 等の Web 決済）、アプリ内課金、緊急連絡先への寝坊通知、SNS 共有、
 キャラクター選択、顔認証・歩数による起床確認、iOS 対応。企画書 6 章を参照。
+
+## 配布（固定URL＋Discord通知）
+
+リリース版APKを固定URLで配布し、ビルド完了をDiscordに通知する。
+
+- 固定インストールURL（常に最新）:
+  `https://github.com/tsubasak1217/wake-or-pay/releases/latest/download/WakeOrPay.apk`
+- ビルド→GitHub Releases公開→Discord通知は `tools/release.ps1` が一括で行う（versionCodeはコミット数から自動採番）。
+- 通知先の Discord Webhook は `tools/notify_webhook.txt`（gitignore済み・非公開）に置く。リポジトリには絶対に含めない。
+
+スマホ側は上記URLをタップ→ダウンロード→インストールで更新できる（「提供元不明のアプリ」の許可が必要）。
