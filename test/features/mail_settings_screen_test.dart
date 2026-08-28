@@ -10,6 +10,19 @@ import 'package:wake_or_pay/services/secret_store.dart';
 
 import '../helpers.dart';
 
+/// Records the URLs the 「アプリパスワードを取得」 button asked to open, so no test
+/// reaches a browser.
+class _RecordingOpener {
+  final opened = <Uri>[];
+  bool result = true;
+
+  Override get override =>
+      mailUrlOpenerProvider.overrideWithValue((uri) async {
+        opened.add(uri);
+        return result;
+      });
+}
+
 Future<({ProviderContainer container, FakeMailSender mail})> openScreen(
   WidgetTester tester, {
   Map<String, Object> prefs = const {},
@@ -63,39 +76,48 @@ Future<void> enter(WidgetTester tester, String key, String text) async {
 Future<TextField> field(WidgetTester tester, String key) async =>
     tester.widget<TextField>(await show(tester, key));
 
-/// Fills a complete Gmail account, password included, without saving.
+/// Fills a complete Gmail account — just the two fields now, the server is
+/// derived from the address.
 Future<void> fillGmail(WidgetTester tester) async {
-  await tap(tester, 'mailPreset-gmail');
   await enter(tester, 'mailFromField', 'me@gmail.com');
-  await enter(tester, 'mailUsernameField', 'me@gmail.com');
   await enter(tester, 'mailPasswordField', 'abcd efgh ijkl mnop');
 }
 
 void main() {
-  testWidgets('a preset fills the server fields and locks them', (
+  testWidgets('a known address shows its provider and needs only two fields', (
     tester,
   ) async {
     await openScreen(tester);
 
-    await tap(tester, 'mailPreset-gmail');
+    await enter(tester, 'mailFromField', 'me@gmail.com');
 
-    final host = await field(tester, 'mailHostField');
-    expect(host.controller!.text, 'smtp.gmail.com');
-    expect(host.enabled, isFalse, reason: 'the preset owns this field');
     expect(
-      (await field(tester, 'mailPortField')).controller!.text,
-      '$defaultSmtpPort',
+      tester.widget<Text>(await show(tester, 'mailProviderHint')).data,
+      'Gmail として送信します',
     );
+    // The server fields are not on the screen for a known provider.
+    expect(find.byKey(const ValueKey('mailHostField')), findsNothing);
+    expect(find.byKey(const ValueKey('mailPortField')), findsNothing);
+    // And the app-password button is offered.
+    await show(tester, 'mailAppPasswordButton');
+    expect(find.byKey(const ValueKey('mailAppPasswordButton')), findsOneWidget);
+  });
 
-    await tap(tester, 'mailPreset-custom');
-    expect(
-      (await field(tester, 'mailHostField')).enabled,
-      isTrue,
-      reason: 'カスタム unlocks the fields rather than blanking them',
-    );
+  testWidgets('an unknown domain reveals 詳細設定', (tester) async {
+    await openScreen(tester);
+
+    // A plausible address on a domain no preset covers.
+    await enter(tester, 'mailFromField', 'me@mycompany.co.jp');
+
+    expect(find.byKey(const ValueKey('mailProviderHint')), findsNothing);
+    await show(tester, 'mailUnknownDomainHint');
+    // The server fields appear for manual entry.
+    await show(tester, 'mailHostField');
+    expect(find.byKey(const ValueKey('mailHostField')), findsOneWidget);
     expect(
       (await field(tester, 'mailHostField')).controller!.text,
-      'smtp.gmail.com',
+      isEmpty,
+      reason: '詳細設定 starts blank for manual entry',
     );
   });
 
@@ -115,7 +137,7 @@ void main() {
     expect(await testButton(), isNotNull);
   });
 
-  testWidgets('保存 stores the account and puts the password out of prefs', (
+  testWidgets('保存 derives the server and puts the password out of prefs', (
     tester,
   ) async {
     final r = await openScreen(tester);
@@ -125,8 +147,16 @@ void main() {
 
     final stored = r.container.read(mailSettingsProvider);
     expect(stored.isConfigured, isTrue);
-    expect(stored.host, 'smtp.gmail.com');
+    expect(
+      stored.host,
+      'smtp.gmail.com',
+      reason: 'the server is derived from the gmail.com domain, not typed',
+    );
+    expect(stored.port, defaultSmtpPort);
+    expect(stored.useSsl, isFalse);
     expect(stored.fromAddress, 'me@gmail.com');
+    expect(stored.username, 'me@gmail.com');
+    expect(stored.presetId, 'Gmail');
     expect(
       r.container.read(mailSendingConfiguredProvider),
       isTrue,
@@ -152,6 +182,27 @@ void main() {
     expect(find.byKey(const ValueKey('mailPasswordSavedNote')), findsOneWidget);
   });
 
+  testWidgets('an unknown domain saves the hand-entered server', (tester) async {
+    final r = await openScreen(tester);
+
+    await enter(tester, 'mailFromField', 'me@mycompany.co.jp');
+    await enter(tester, 'mailHostField', 'smtp.mycompany.co.jp');
+    await enter(tester, 'mailPortField', '465');
+    await tap(tester, 'mailSslRow');
+    await enter(tester, 'mailPasswordField', 'secretsecret');
+
+    await tap(tester, 'mailSaveButton');
+
+    final stored = r.container.read(mailSettingsProvider);
+    expect(stored.host, 'smtp.mycompany.co.jp');
+    expect(stored.port, 465);
+    expect(stored.useSsl, isTrue);
+    expect(stored.fromAddress, 'me@mycompany.co.jp');
+    expect(stored.username, 'me@mycompany.co.jp');
+    expect(stored.presetId, MailPreset.customId);
+    expect(stored.isConfigured, isTrue);
+  });
+
   testWidgets('the password field is masked until the eye is pressed', (
     tester,
   ) async {
@@ -160,6 +211,22 @@ void main() {
     expect((await field(tester, 'mailPasswordField')).obscureText, isTrue);
     await tap(tester, 'mailPasswordReveal');
     expect((await field(tester, 'mailPasswordField')).obscureText, isFalse);
+  });
+
+  testWidgets('the 「アプリパスワードを取得」 button opens the provider page', (
+    tester,
+  ) async {
+    final opener = _RecordingOpener();
+    await openScreen(tester, extra: [opener.override]);
+    await enter(tester, 'mailFromField', 'me@gmail.com');
+
+    await tap(tester, 'mailAppPasswordButton');
+
+    expect(opener.opened, hasLength(1));
+    expect(
+      opener.opened.single.toString(),
+      'https://myaccount.google.com/apppasswords',
+    );
   });
 
   testWidgets('テスト送信 goes to the user themselves and reports the outcome', (
@@ -223,9 +290,10 @@ void main() {
     );
   });
 
-  testWidgets('the Gmail app password steps are on the screen', (tester) async {
+  testWidgets('the Gmail app-password hint is on the screen', (tester) async {
     await openScreen(tester);
-    await show(tester, 'mailGmailHelp');
+    await enter(tester, 'mailFromField', 'me@gmail.com');
+    await show(tester, 'mailGmailHint');
 
     expect(find.textContaining('2段階認証'), findsOneWidget);
     expect(find.textContaining('アプリパスワード'), findsWidgets);

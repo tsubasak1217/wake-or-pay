@@ -220,6 +220,113 @@ bool isEmailAddress(String value) {
       !trimmed.contains(' ');
 }
 
+/// The SMTP account a known provider fixes, derived from an address's domain.
+///
+/// The common case of メール送信設定: the user types their address and their
+/// app password, and everything else — the server, the port, the encryption,
+/// the login — is known from the domain. [smtpForEmail] returns one of these,
+/// or null for a domain the app does not recognise, which is where 詳細設定
+/// takes over.
+@immutable
+class SmtpProvider {
+  const SmtpProvider({
+    required this.label,
+    required this.host,
+    required this.username,
+    required this.fromAddress,
+    this.port = defaultSmtpPort,
+    this.useSsl = false,
+    this.appPasswordUrl,
+  });
+
+  /// The name shown to the user (「Gmail」「Outlook」…). Also stored as the
+  /// [MailSettings.presetId] so a reopened screen has a label to show.
+  final String label;
+
+  final String host;
+  final int port;
+  final bool useSsl;
+
+  /// The SMTP login — the full address for every provider here.
+  final String username;
+
+  /// Where the mail is sent from — the full address, the same string the user
+  /// typed.
+  final String fromAddress;
+
+  /// The page where this provider hands out app passwords, when it has one.
+  /// Null for providers that bury it somewhere unlinkable.
+  final String? appPasswordUrl;
+
+  /// The [MailSettings] this provider and the typed [password] state describe.
+  MailSettings toSettings() => MailSettings(
+    presetId: label,
+    host: host,
+    port: port,
+    useSsl: useSsl,
+    fromAddress: fromAddress,
+    username: username,
+  );
+}
+
+/// The SMTP configuration for [email]'s domain, or null when the domain is one
+/// the app does not know. Pure.
+///
+/// Case-insensitive on the domain and tolerant of surrounding whitespace; a
+/// string with no single '@' is not an address and returns null. [username]
+/// and [fromAddress] are the whole (trimmed) address, because every provider
+/// here logs in as the address it sends from.
+SmtpProvider? smtpForEmail(String email) {
+  final trimmed = email.trim();
+  final at = trimmed.indexOf('@');
+  if (at <= 0 || at != trimmed.lastIndexOf('@')) return null;
+  final address = trimmed;
+  final domain = trimmed.substring(at + 1).toLowerCase();
+
+  SmtpProvider make(
+    String label,
+    String host, {
+    String? appPasswordUrl,
+  }) => SmtpProvider(
+    label: label,
+    host: host,
+    username: address,
+    fromAddress: address,
+    appPasswordUrl: appPasswordUrl,
+  );
+
+  switch (domain) {
+    case 'gmail.com':
+    case 'googlemail.com':
+      return make(
+        'Gmail',
+        'smtp.gmail.com',
+        appPasswordUrl: 'https://myaccount.google.com/apppasswords',
+      );
+    case 'outlook.com':
+    case 'hotmail.com':
+    case 'live.com':
+    case 'live.jp':
+    case 'msn.com':
+      return make('Outlook', 'smtp-mail.outlook.com');
+    case 'icloud.com':
+    case 'me.com':
+    case 'mac.com':
+      return make(
+        'iCloud',
+        'smtp.mail.me.com',
+        appPasswordUrl: 'https://account.apple.com',
+      );
+    case 'yahoo.com':
+    case 'ymail.com':
+      return make('Yahoo', 'smtp.mail.yahoo.com');
+    case 'yahoo.co.jp':
+      return make('Yahoo! JP', 'smtp.mail.yahoo.co.jp');
+    default:
+      return null;
+  }
+}
+
 /// The subject line of every oversleep mail, per spec 11.5.
 const oversleepMailSubject = '【Wake or Pay】寝坊のお知らせ';
 

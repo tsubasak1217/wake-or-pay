@@ -145,8 +145,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('profileMailRow')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('mailPreset-gmail')), findsOneWidget);
-    expect(find.byKey(const ValueKey('mailHostField')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mailFromField')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mailPasswordField')), findsOneWidget);
   });
 
   testWidgets('picking an icon persists and repaints the header', (

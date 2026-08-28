@@ -1,14 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/models.dart';
 import '../../domain/send_result.dart';
 import '../../services/mail_settings.dart';
 import '../alarms/widgets/settings_island.dart';
 
+/// Opens a URL in whatever the OS uses for it. Injected so no test opens a
+/// browser: overridden in widget tests to record the URL instead.
+typedef MailUrlOpener = Future<bool> Function(Uri url);
+
+Future<bool> _launchExternal(Uri url) =>
+    launchUrl(url, mode: LaunchMode.externalApplication);
+
+final mailUrlOpenerProvider = Provider<MailUrlOpener>(
+  (ref) => _launchExternal,
+);
+
 /// メール送信設定 — the SMTP account the oversleep mail goes out from, per
 /// spec 11.5.
+///
+/// Simplified to the common case: メールアドレス and アプリパスワード. The server is
+/// derived from the address's domain via [smtpForEmail]; only a domain the app
+/// does not know reveals 詳細設定 for a hand-entered server.
 ///
 /// Not a PopScope-commit screen like the rest of the editor. Two things make
 /// it different: there is a password, which must be written deliberately and
@@ -25,10 +41,18 @@ class MailSettingsScreen extends ConsumerStatefulWidget {
 class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
   late MailSettings _settings = ref.read(mailSettingsProvider);
 
-  late final _host = TextEditingController(text: _settings.host);
-  late final _port = TextEditingController(text: '${_settings.port}');
   late final _from = TextEditingController(text: _settings.fromAddress);
-  late final _username = TextEditingController(text: _settings.username);
+
+  /// The 詳細設定 fields — used only when the address's domain is unknown.
+  /// Prefilled from the stored account when one was hand-entered (so a custom
+  /// config round-trips), and empty otherwise.
+  late final _host = TextEditingController(
+    text: _hasCustomServer ? _settings.host : '',
+  );
+  late final _port = TextEditingController(
+    text: _hasCustomServer ? '${_settings.port}' : '',
+  );
+  late bool _useSsl = _hasCustomServer ? _settings.useSsl : false;
 
   /// Always starts empty, even when a password is stored: it cannot be read
   /// back out of the secure store into a text field without putting it back in
@@ -42,48 +66,61 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
   /// that vanishes while the user is still reading it.
   SendResult? _testResult;
 
+  /// Whether the stored account is a hand-entered server (a real host on a
+  /// domain no preset covers) rather than a derived one.
+  bool get _hasCustomServer =>
+      _settings.host.trim().isNotEmpty &&
+      smtpForEmail(_settings.fromAddress) == null;
+
   @override
   void dispose() {
+    _from.dispose();
     _host.dispose();
     _port.dispose();
-    _from.dispose();
-    _username.dispose();
     _password.dispose();
     super.dispose();
   }
 
-  MailPreset get _preset => MailPreset.byId(_settings.presetId);
+  /// The provider derived from the address, or null when the domain is unknown.
+  SmtpProvider? get _provider => smtpForEmail(_from.text);
 
-  bool get _isCustom => _preset.id == MailPreset.customId;
-
-  void _selectPreset(MailPreset preset) {
-    setState(() {
-      _settings = applyMailPreset(_settings, preset);
-      _host.text = _settings.host;
-      _port.text = '${_settings.port}';
-      // The login is the address for every preset here, and typing the same
-      // string twice is the commonest way to get one of them wrong.
-      if (_username.text.trim().isEmpty) _username.text = _from.text.trim();
-    });
-  }
+  /// Whether the 詳細設定 block is showing: a plausible address whose domain is
+  /// not one of the presets.
+  bool get _showAdvanced =>
+      isEmailAddress(_from.text) && _provider == null;
 
   /// The form as it stands. The password is handled separately — it is never a
   /// field of [MailSettings].
-  MailSettings get _formValue => _settings.copyWith(
-    host: _host.text.trim(),
-    port: int.tryParse(_port.text.trim()) ?? _settings.port,
-    fromAddress: _from.text.trim(),
-    username: _username.text.trim(),
-  );
+  MailSettings get _formValue {
+    final provider = _provider;
+    if (provider != null) {
+      return provider.toSettings().copyWith(
+        passwordSaved: _settings.passwordSaved,
+      );
+    }
+    // Unknown domain: the 詳細設定 fields carry the server, and the address is
+    // both the login and the from.
+    final address = _from.text.trim();
+    return _settings.copyWith(
+      presetId: MailPreset.customId,
+      host: _host.text.trim(),
+      port: int.tryParse(_port.text.trim()) ?? defaultSmtpPort,
+      useSsl: _useSsl,
+      fromAddress: address,
+      username: address,
+    );
+  }
 
   /// What is missing, or null when nothing is. Drives the hint under 保存 and
   /// whether テスト送信 can be pressed.
   String? get _missing {
-    final value = _formValue;
-    if (value.host.isEmpty) return 'SMTP ホストを入力してください';
-    if (value.port <= 0) return 'ポート番号が正しくありません';
-    if (!isEmailAddress(value.fromAddress)) return '送信元アドレスを入力してください';
-    if (value.username.isEmpty) return 'ユーザー名を入力してください';
+    if (!isEmailAddress(_from.text)) return 'メールアドレスを入力してください';
+    if (_provider == null) {
+      if (_host.text.trim().isEmpty) return 'SMTP サーバーを入力してください（詳細設定）';
+      if ((int.tryParse(_port.text.trim()) ?? 0) <= 0) {
+        return 'ポート番号を入力してください（詳細設定）';
+      }
+    }
     if (_password.text.isEmpty && !_settings.passwordSaved) {
       return 'アプリパスワードを入力してください';
     }
@@ -145,10 +182,20 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
     });
   }
 
+  Future<void> _openAppPasswordPage(String url) async {
+    final opened = await ref.read(mailUrlOpenerProvider)(Uri.parse(url));
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ブラウザを開けませんでした')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final missing = _missing;
+    final provider = _provider;
 
     return Scaffold(
       appBar: AppBar(title: const Text('メール送信設定')),
@@ -162,90 +209,34 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
           ),
           const SizedBox(height: 16),
           SettingsIsland(
-            title: 'サーバー',
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('プリセット', style: theme.textTheme.bodyMedium),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        for (final preset in MailPreset.all)
-                          ChoiceChip(
-                            key: ValueKey('mailPreset-${preset.id}'),
-                            label: Text(preset.label),
-                            selected: preset.id == _settings.presetId,
-                            onSelected: (_) => _selectPreset(preset),
-                          ),
-                      ],
-                    ),
-                    if (_preset.note != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _preset.note!,
-                        key: const ValueKey('mailPresetNote'),
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              _field(
-                keyName: 'mailHostField',
-                controller: _host,
-                label: 'SMTP ホスト',
-                hint: '例：smtp.gmail.com',
-                enabled: _isCustom,
-                keyboardType: TextInputType.url,
-              ),
-              _field(
-                keyName: 'mailPortField',
-                controller: _port,
-                label: 'ポート',
-                hint: '$defaultSmtpPort',
-                enabled: _isCustom,
-                keyboardType: TextInputType.number,
-                formatters: [FilteringTextInputFormatter.digitsOnly],
-              ),
-              SettingSwitchRow(
-                key: const ValueKey('mailSslRow'),
-                label: 'SSL で接続する',
-                value: _settings.useSsl,
-                enabled: _isCustom,
-                subtitle: _settings.useSsl
-                    ? '最初から TLS で接続します（ポート $sslSmtpPort など）'
-                    : 'STARTTLS で暗号化します（ポート $defaultSmtpPort など）。'
-                          '暗号化できないサーバーには送りません',
-                onChanged: (v) =>
-                    setState(() => _settings = _settings.copyWith(useSsl: v)),
-              ),
-            ],
-          ),
-          SettingsIsland(
             title: 'アカウント',
             children: [
               _field(
                 keyName: 'mailFromField',
                 controller: _from,
-                label: '送信元アドレス',
+                label: 'メールアドレス',
                 hint: '例：you@gmail.com',
                 keyboardType: TextInputType.emailAddress,
-                onChanged: (value) {
-                  // The two are the same string for every preset here, so the
-                  // login follows the address until the user says otherwise.
-                  if (_username.text.trim().isEmpty) setState(() {});
-                },
               ),
-              _field(
-                keyName: 'mailUsernameField',
-                controller: _username,
-                label: 'ユーザー名',
-                hint: 'ふつうは送信元アドレスと同じです',
-                keyboardType: TextInputType.emailAddress,
+              // What the domain was recognised as, or a nudge to 詳細設定.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: provider != null
+                    ? Text(
+                        '${provider.label} として送信します',
+                        key: const ValueKey('mailProviderHint'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      )
+                    : isEmailAddress(_from.text)
+                    ? Text(
+                        'このドメインは自動設定に対応していません。'
+                        '下の「詳細設定」でサーバーを入力してください。',
+                        key: const ValueKey('mailUnknownDomainHint'),
+                        style: theme.textTheme.bodySmall,
+                      )
+                    : const SizedBox.shrink(),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -276,6 +267,30 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
                   ),
                 ),
               ),
+              if (provider?.appPasswordUrl != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('mailAppPasswordButton'),
+                      onPressed: () =>
+                          _openAppPasswordPage(provider!.appPasswordUrl!),
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('アプリパスワードを取得'),
+                    ),
+                  ),
+                ),
+              if (provider?.label == 'Gmail')
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'Googleアカウントで2段階認証を有効にしてから'
+                    '「アプリパスワード」を作成し、ここに貼り付けてください。',
+                    key: const ValueKey('mailGmailHint'),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
               if (_settings.passwordSaved)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -299,9 +314,48 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
                 ),
             ],
           ),
+          if (_showAdvanced)
+            SettingsIsland(
+              title: '詳細設定',
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Text(
+                    'このドメインのSMTPサーバーを手動で入力します。'
+                    'メール提供者の案内にある送信（SMTP）サーバー名とポートを入れてください。',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                _field(
+                  keyName: 'mailHostField',
+                  controller: _host,
+                  label: 'SMTP サーバー',
+                  hint: '例：smtp.example.com',
+                  keyboardType: TextInputType.url,
+                ),
+                _field(
+                  keyName: 'mailPortField',
+                  controller: _port,
+                  label: 'ポート',
+                  hint: '$defaultSmtpPort',
+                  keyboardType: TextInputType.number,
+                  formatters: [FilteringTextInputFormatter.digitsOnly],
+                ),
+                SettingSwitchRow(
+                  key: const ValueKey('mailSslRow'),
+                  label: 'SSL で接続する',
+                  value: _useSsl,
+                  subtitle: _useSsl
+                      ? '最初から TLS で接続します（ポート $sslSmtpPort など）'
+                      : 'STARTTLS で暗号化します（ポート $defaultSmtpPort など）。'
+                            '暗号化できないサーバーには送りません',
+                  onChanged: (v) => setState(() => _useSsl = v),
+                ),
+              ],
+            ),
           if (missing != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
               child: Text(
                 missing,
                 key: const ValueKey('mailMissingNote'),
@@ -309,7 +363,9 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
                   color: theme.colorScheme.error,
                 ),
               ),
-            ),
+            )
+          else
+            const SizedBox(height: 8),
           FilledButton(
             key: const ValueKey('mailSaveButton'),
             onPressed: _busy ? null : _save,
@@ -339,7 +395,7 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
               ),
             ),
           const SizedBox(height: 24),
-          const _GmailHelp(),
+          const _StorageNote(),
         ],
       ),
     );
@@ -350,74 +406,49 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
     required TextEditingController controller,
     required String label,
     String? hint,
-    bool enabled = true,
     TextInputType? keyboardType,
     List<TextInputFormatter>? formatters,
-    ValueChanged<String>? onChanged,
   }) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
     child: TextField(
       key: ValueKey(keyName),
       controller: controller,
-      enabled: enabled,
       keyboardType: keyboardType,
       inputFormatters: formatters,
       autocorrect: false,
-      onChanged: (value) {
-        onChanged?.call(value);
-        // The 保存 hint and the テスト送信 button both read the form, so every
-        // keystroke has to redraw them.
-        setState(() {});
-      },
+      // The provider hint, the 詳細設定 block, the 保存 hint and the テスト送信
+      // button all read the form, so every keystroke has to redraw them.
+      onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         border: const OutlineInputBorder(),
-        helperText: enabled ? null : 'プリセットが決めています',
       ),
     ),
   );
 }
 
-/// How to get a Gmail app password, per spec 11.5.
-///
-/// Written out rather than linked: the user is standing in a settings screen
-/// at some point in the evening, and 「2段階認証を先に有効にする」 is the step
-/// everybody misses — the アプリパスワード page simply does not exist until it
-/// is on.
-class _GmailHelp extends StatelessWidget {
-  const _GmailHelp();
+/// Where the app password lives, said plainly. Not a how-to any more — the
+/// per-provider 「アプリパスワードを取得」 button links the page that walks the user
+/// through it — just the one promise that matters.
+class _StorageNote extends StatelessWidget {
+  const _StorageNote();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SettingsIsland(
-      title: 'Gmail のアプリパスワードの作り方',
+      title: 'アプリパスワードの保管について',
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            key: const ValueKey('mailGmailHelp'),
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final line in const [
-                '1. Google アカウントの「セキュリティ」を開きます。',
-                '2. 「2段階認証プロセス」を有効にします。（先に有効にしないと次の項目が出てきません）',
-                '3. 同じページの「アプリパスワード」を開きます。',
-                '4. 名前を決めて作成すると、16文字のパスワードが表示されます。',
-                '5. その16文字をここの「アプリパスワード」に貼り付けます。'
-                    '（ふだんの Google のパスワードではありません）',
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(line, style: theme.textTheme.bodyMedium),
-                ),
-              Text(
-                'アプリパスワードは、この端末の暗号化された保管領域に保存されます。'
-                'アプリの通常の設定ファイルには書き込まれず、ログにも出しません。',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
+          child: Text(
+            'アプリパスワードは、この端末の暗号化された保管領域に保存されます。'
+            'アプリの通常の設定ファイルには書き込まれず、ログにも出しません。'
+            'ふだんお使いのログインパスワードではなく、'
+            'メール提供者が発行する「アプリパスワード」を入力してください。',
+            key: const ValueKey('mailStorageNote'),
+            style: theme.textTheme.bodyMedium,
           ),
         ),
       ],

@@ -306,7 +306,7 @@ void main() {
       expect(find.byKey(const ValueKey('contactMailSetupRow')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('contactMailSetupRow')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('mailPreset-gmail')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mailFromField')), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
     });
