@@ -1,0 +1,18 @@
+name = "wake-or-pay-discord"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+# The Discord application's client ID. Public — it is in the authorize URL the
+# browser opens, and it is in the app's source too.
+DISCORD_CLIENT_ID = "1542696296337506415"
+
+# Browser origins allowed to POST here, comma separated. Left empty on
+# purpose: only the Android app calls this, and a native app sends no Origin
+# header at all. Anything that *does* send one is a web page, and a web page
+# has no business spending this Worker's client secret.
+ALLOWED_ORIGINS = ""
+
+# DISCORD_CLIENT_SECRET is **not** here and must never be.
+#   wrangler secret put DISCORD_CLIENT_SECRET
+# A secret in this file is a secret in every clone of the repository.

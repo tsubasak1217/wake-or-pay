@@ -1,0 +1,4 @@
+node_modules/
+.wrangler/
+# The client secret for `wrangler dev`. Never committed — see README.md.
+.dev.vars
