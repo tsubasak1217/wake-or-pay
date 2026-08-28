@@ -260,6 +260,92 @@ void main() {
     });
   });
 
+  testWidgets('名前を変更 renames the 共有先 and the list shows the new name', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+
+    await inWebhookList(tester, () async {
+      await tester.longPress(find.byKey(const ValueKey('webhook-w1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('webhookRename')));
+      await tester.pumpAndSettle();
+
+      // Pre-filled with the current name.
+      final field = tester.widget<TextField>(
+        find.byKey(const ValueKey('webhookRenameField')),
+      );
+      expect(field.controller!.text, 'みんなのサーバー/#一般');
+
+      await tester.enterText(
+        find.byKey(const ValueKey('webhookRenameField')),
+        'みんなのサーバー/#報告',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('webhookRenameSave')));
+      await tester.pumpAndSettle();
+
+      // The renamed row is in the list; the other one is untouched.
+      expect(find.text('みんなのサーバー/#報告'), findsOneWidget);
+      expect(find.text('みんなのサーバー/#一般'), findsNothing);
+      expect(find.text('寝坊部/#通報'), findsOneWidget);
+    });
+
+    final saved = await container.read(discordWebhookRepositoryProvider).getAll();
+    expect(
+      saved.firstWhere((w) => w.id == 'w1').displayName,
+      'みんなのサーバー/#報告',
+    );
+    expect(saved, hasLength(2), reason: 'a rename edits the row, never adds one');
+  });
+
+  testWidgets('an empty 名前を変更 is rejected — 保存 stays disabled', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+
+    await inWebhookList(tester, () async {
+      await tester.longPress(find.byKey(const ValueKey('webhook-w1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('webhookRename')));
+      await tester.pumpAndSettle();
+
+      // 保存 is enabled while the pre-filled name stands.
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('webhookRenameSave')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+
+      // Clear it: a nameless row could not be picked out of the list, so 保存
+      // greys out and there is no way to commit the empty name.
+      await tester.enterText(
+        find.byKey(const ValueKey('webhookRenameField')),
+        '   ',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('webhookRenameSave')),
+            )
+            .onPressed,
+        isNull,
+        reason: 'an empty name is rejected',
+      );
+    });
+
+    // Nothing was written: the name is still the seed value.
+    final saved = await container.read(discordWebhookRepositoryProvider).getAll();
+    expect(
+      saved.firstWhere((w) => w.id == 'w1').displayName,
+      'みんなのサーバー/#一般',
+    );
+  });
+
   testWidgets('a long press deletes a 共有先 after asking', (tester) async {
     final container = await openNewAlarm(tester);
 

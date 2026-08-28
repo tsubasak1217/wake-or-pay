@@ -81,7 +81,7 @@ class _DiscordWebhooksSubScreenState
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                       child: Text(
                         'タップでこのアラームの共有先を選びます。'
-                        '長押しすると テスト送信 / 削除 ができます。',
+                        '長押しすると テスト送信 / 名前を変更 / 削除 ができます。',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
@@ -170,7 +170,14 @@ class _DiscordWebhooksSubScreenState
       final webhook = DiscordWebhook(
         id: grant.id,
         url: grant.url,
-        displayName: grant.displayName,
+        // Defaults to the server name; 「Wake or Pay」 (the webhook's own name)
+        // is only the fallback. The user renames from the long-press menu to
+        // tell two channels in the same server apart.
+        displayName: webhookDefaultName(
+          grant.guildName,
+          grant.channelName,
+          grant.webhookName,
+        ),
         createdAt: DateTime.now(),
       );
       await ref.read(discordWebhookRepositoryProvider).save(webhook);
@@ -212,11 +219,20 @@ void _showActions(BuildContext context, WidgetRef ref, DiscordWebhook webhook) =
                 unawaited(_testSend(context, ref, webhook));
               },
             ),
-            // 編集 is gone with the form behind it: the only fields it had
-            // were the hand-typed Webhook URL and a hand-typed display name,
-            // and both now come from Discord itself. A wrong 共有先 is deleted
-            // and linked again, which is two taps and cannot end up with a URL
-            // pointing somewhere nobody meant.
+            // 名前を変更 is the one field the old 編集 form had that still makes
+            // sense: the URL comes from Discord and must not be hand-typed, but
+            // the label defaults to the server name, and two channels in the
+            // same server land on the same label — a rename is how they are
+            // told apart (「みんなのサーバー/#報告」).
+            ListTile(
+              key: const ValueKey('webhookRename'),
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('名前を変更'),
+              onTap: () {
+                Navigator.of(sheet).pop();
+                unawaited(_renameDialog(context, ref, webhook));
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('削除'),
@@ -253,6 +269,91 @@ Future<void> _testSend(
       .post(url: webhook.url, content: discordTestSendMessage);
   messenger.showSnackBar(
     SnackBar(content: Text(result.ok ? 'テスト送信しました' : result.label)),
+  );
+}
+
+/// Renames one 共有先 in the app-wide list.
+///
+/// The label defaults to the server name, and two channels in the same server
+/// both land on it, so this is the only way to tell them apart. Only the label
+/// is touched — the URL is a live Discord credential and is never editable by
+/// hand. An empty name is rejected: a nameless row cannot be picked out of the
+/// list ([DiscordWebhook.isUsable] would read false), so the 保存 button simply
+/// stays disabled until there is something to save.
+Future<void> _renameDialog(
+  BuildContext context,
+  WidgetRef ref,
+  DiscordWebhook webhook,
+) async {
+  final name = await showDialog<String>(
+    context: context,
+    builder: (_) => _RenameDialog(initial: webhook.displayName),
+  );
+  if (name == null || name.isEmpty) return;
+  await ref
+      .read(discordWebhookRepositoryProvider)
+      .save(webhook.copyWith(displayName: name));
+}
+
+/// The rename dialog owns its own [TextEditingController] so the controller is
+/// disposed with the dialog, not before it — disposing it the moment
+/// [showDialog] returns leaves the closing transition rebuilding a listener on
+/// a dead notifier.
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isNotEmpty) Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('共有先の名前を変更'),
+    content: TextField(
+      key: const ValueKey('webhookRenameField'),
+      controller: _controller,
+      autofocus: true,
+      decoration: const InputDecoration(
+        labelText: '表示名',
+        hintText: 'みんなのサーバー/#報告',
+      ),
+      // 完了 on the keyboard commits, on the same non-empty rule as 保存.
+      onSubmitted: (_) => _submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('やめる'),
+      ),
+      // Rebuilt on every keystroke so 保存 lights up the moment there is a name
+      // and greys out again if it is cleared.
+      ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) => FilledButton(
+          key: const ValueKey('webhookRenameSave'),
+          onPressed: _controller.text.trim().isEmpty ? null : _submit,
+          child: const Text('保存'),
+        ),
+      ),
+    ],
   );
 }
 

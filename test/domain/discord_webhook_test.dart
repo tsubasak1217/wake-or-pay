@@ -118,4 +118,32 @@ void main() {
       expect(renamed.createdAt, webhook.createdAt);
     });
   });
+
+  group('webhookDefaultName', () {
+    test('server only — where it lands in practice', () {
+      // channel_name is null from Discord, so the server name alone is the
+      // label, and never the webhook's own 「Wake or Pay」.
+      expect(
+        webhookDefaultName('みんなのサーバー', '', 'Wake or Pay'),
+        'みんなのサーバー',
+      );
+    });
+
+    test('server and channel — the form the user recognises', () {
+      expect(
+        webhookDefaultName('みんなのサーバー', '一般', 'Wake or Pay'),
+        'みんなのサーバー/#一般',
+      );
+    });
+
+    test('neither — the webhook name, then the plain fallback', () {
+      // No server name came back: the webhook's own name is a real name and
+      // beats the empty-list-proof fallback.
+      expect(webhookDefaultName('', '', 'Wake or Pay'), 'Wake or Pay');
+      // Nothing at all: an unnamed row could not be picked out of the list.
+      expect(webhookDefaultName('', '', ''), 'Discord 連携先');
+      // Whitespace is nothing.
+      expect(webhookDefaultName('   ', '', '  '), 'Discord 連携先');
+    });
+  });
 }

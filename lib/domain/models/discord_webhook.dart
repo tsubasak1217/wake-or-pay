@@ -5,11 +5,15 @@ import 'package:flutter/foundation.dart';
 /// App-wide, not per alarm: the same server is worth registering once, and
 /// each alarm then ticks the ones it posts to ([OversleepShare.webhookIds]).
 ///
-/// [displayName] is typed by hand. **Discord does not expose the server or
-/// channel name through a webhook** — the webhook API answers with the
-/// webhook's own name and a pair of ids — so 「みんなのサーバー/#一般」 can only ever
-/// be what the user calls it. The webhook's own name is offered as the initial
-/// value and nothing more.
+/// [displayName] **defaults to the server name** the 連携 landed in — see
+/// [webhookDefaultName], which the 「チャンネルを連携」 path fills this from. The
+/// channel name would make it 「みんなのサーバー/#一般」, but Discord does not expose
+/// it through user OAuth (that needs a bot in the guild or `guilds.members.read`
+/// — see `worker/README.md`), so the server name alone is where it lands, and
+/// the webhook's own name (「Wake or Pay」) is only the fallback when even the
+/// server name is missing. The user can **rename** any row afterwards — two
+/// channels in the same server both default to the same server name, and a
+/// rename is how they are told apart.
 @immutable
 class DiscordWebhook {
   const DiscordWebhook({
@@ -57,6 +61,36 @@ class DiscordWebhook {
 
   @override
   String toString() => 'DiscordWebhook($displayName)';
+}
+
+/// The name a freshly-linked 共有先 is registered under. Pure.
+///
+/// Priority, highest first:
+///
+/// 1. **`{guild}/#{channel}`** when both are known. This is what the user
+///    recognises, and the only branch that shows a channel — reachable only if
+///    [channelName] ever becomes non-empty, which today it never does (Discord
+///    withholds it from user OAuth).
+/// 2. **The server name** alone — where it lands in practice.
+/// 3. **The webhook's own name** (「Wake or Pay」, the application name) — worse,
+///    but a real name, used only when no server name came back.
+/// 4. **「Discord 連携先」** — an unnamed row cannot be picked out of a list, so
+///    it never gets an empty label.
+///
+/// Deliberately not 「Wake or Pay」 whenever a server name is available: that
+/// fixed application name is the same on every row and tells the user nothing.
+String webhookDefaultName(
+  String guildName,
+  String channelName,
+  String webhookName,
+) {
+  final guild = guildName.trim();
+  final channel = channelName.trim();
+  final webhook = webhookName.trim();
+  if (guild.isNotEmpty && channel.isNotEmpty) return '$guild/#$channel';
+  if (guild.isNotEmpty) return guild;
+  if (webhook.isNotEmpty) return webhook;
+  return 'Discord 連携先';
 }
 
 /// Every host Discord serves webhooks from.
