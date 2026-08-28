@@ -36,7 +36,7 @@ Phase 0（端末内完結・サーバーなし・Android のみ）の実装。
 
 | 島 | 内容 |
 |---|---|
-| プロフィール設定 | **あなたの名前** / **Discord ユーザーID**（共有投稿のメンション用・任意・数字のみ） / **メール送信設定**（設定済み／未設定。下の「メール送信設定」） |
+| プロフィール設定 | **あなたの名前** / **Discord ユーザーID**（共有投稿のメンション用・任意・数字のみ） / **Discord で連携**（下の「Discord 連携」） / **連携サーバーURL** / **メール送信設定**（設定済み／未設定。下の「メール送信設定」） |
 | コレクション | アイコン・名前の背景・フレームを横スクロールで選ぶ。各3種で、**いまは全部所持済み** |
 | アクティビティ | 枠だけ。「近日追加：寝坊や起床までの時間をグラフで表示します」 |
 
@@ -48,6 +48,10 @@ Phase 0（端末内完結・サーバーなし・Android のみ）の実装。
   開く。名前の置き場所は 1 か所だけにしてある。
 - Discord ユーザーIDは**数字だけを残す**（`<@123…>` を貼り付けても `123…` になる。
   キーボードも数字のみ）。未設定なら、共有投稿はメンションではなく名前で呼びかける。
+- **「Discord で連携」を押せば、その ID は自分で調べなくてよい。** ブラウザで
+  Discord にログインすると ID と表示名が入り、行の下が「連携済み：@なまえ」になる。
+  手で入れるには Discord の開発者モードを先に出す必要があり、そこで止まる人がいちばん多い。
+  詳しくは下の「Discord 連携（OAuth2）」。
 - コレクションは所持集合（`Profile.ownedIconIds` ほか）を見て描いているだけで、
   **入手の仕組みはまだ無い**（すべて最初から所持）。所持していないものは薄くなって押せなくなる、
   という経路だけが先に通してある。カタログ（`ProfileCatalog`）は絵文字と色のプレースホルダー。
@@ -606,7 +610,29 @@ lossAt(now, session):
 - 予約 id はセッション id の FNV-1a ハッシュ（`backgroundAlarmId`）。Dart の `String.hashCode`
   は**実行ごとに変わりうる**ので使えない——再起動後に取り消せなくなる。
 
-### Discord Webhook の設定手順
+### Discord 共有先の作り方（2 通り）
+
+Discord 共有先設定の下には**名前の付いたボタンが 2 つ**ある。＋ は廃止した。
+
+```
+[ チャンネルを連携（Discord で選ぶ） ]    ← 連携サーバーを立てていれば、こちらが速い
+  Webhook URL を手動で登録               ← 何も立てずに使える。従来どおり
+```
+
+#### A. チャンネルを連携（Discord で選ぶ）
+
+1. アラームを開いて **覚悟を ON** →「**寝坊時連絡・共有**」→「**寝坊の共有**」→「**Discord**」
+2. 「**チャンネルを連携（Discord で選ぶ）**」を押す
+3. ブラウザ（または Discord アプリ）が開き、**投稿先のチャンネルを選ぶ画面**が出る
+4. 選んで「認証」を押すとアプリに戻り、**共有先が追加され、このアラームで ON になっている**
+
+Discord 側で Webhook を作る作業はまったく無い（Discord が代わりに作ってくれる）。
+表示名は**サーバー名**が入る。
+
+**この経路には「連携サーバーURL」の設定が要る**（下の「Discord Developer Portal と
+連携サーバー」）。未設定なら、ボタンを押したときにそう出る。
+
+#### B. Webhook URL を手動で登録（サーバー不要）
 
 **Discord 側**（PC でもスマホでも同じ場所にある）：
 
@@ -619,7 +645,7 @@ lossAt(now, session):
 **アプリ側**：
 
 5. アラームを開いて **覚悟を ON** →「**寝坊時連絡・共有**」→「**寝坊の共有**」→「**Discord**」
-6. 右下の **＋** を押し、コピーした URL を「Webhook URL」に貼る
+6. 「**Webhook URL を手動で登録**」を押し、コピーした URL を「Webhook URL」に貼る
 7. 「**表示名**」を入れて **保存**
 
 - **サーバー名・チャンネル名は Webhook からは取得できない。** Webhook API が返すのは
@@ -638,9 +664,93 @@ lossAt(now, session):
   **外部キーは張っていない**。共有先を消しても、それを選んでいたアラームは
   **そのぶん投稿先が減るだけ**で壊れない（連絡帳と同じ規則・同じ理由）。
 
+## Discord 連携（OAuth2）
+
+Discord には 2 か所つながる。**片方はサーバー不要で、もう片方だけが小さなサーバーを要る。**
+
+| 何をするか | 使う流れ | サーバー |
+|---|---|---|
+| **Discord で連携**（プロフィール）＝ ユーザーID を自動で入れる | 暗黙フロー（`response_type=token`・`scope=identify`） | **要らない** |
+| **チャンネルを連携**（Discord 共有先設定）＝ 投稿先を Discord に選ばせる | 認可コードフロー（`response_type=code`・`scope=webhook.incoming identify`） | **要る**（`worker/`） |
+
+分かれ目は 1 つだけ。`webhook.incoming` は Webhook を**トークンと一緒に**渡してくるので、
+コードをトークンに交換する手順が要り、その交換には**クライアントシークレット**が要る。
+APK に埋めたシークレットは誰でも取り出せるので、そこだけを外に出している。
+`identify` のほうは暗黙フローで完結するので、何も立てずに動く。
+
+### 端末に残るもの・残らないもの
+
+- **アクセストークンは保存しない。** `/users/@me` に 1 回使って捨てる。
+  `shared_preferences` にも `flutter_secure_storage` にも書かない
+  （prefs の全キー・全値をなめて、トークンの断片も無いことを見る単体テストで固定してある）。
+- 残るのは **ユーザーID・表示名・アバターハッシュ**の 3 つだけ。どれも公開の値で、
+  それを持っていてもあなたの代わりに何かができるものではない。
+- **手で違う ID を入れると表示名は消える。** 表示名は「認可された口座から来た」という証拠なので、
+  手入力の ID に「連携済み：@…」を付けたままにはしない。
+- **「連携を解除」は ID も一緒に消す。** ID だけ残すと、解除したはずの口座を
+  メンションし続けることになる。
+- 連携サーバーは**ユーザーのデータを何も持たない**。DB もセッションもログもない。
+  返してくるのは Webhook と、そのサーバー名だけで、**アクセストークンもリフレッシュトークンも
+  アプリには渡らない**。
+
+### Discord Developer Portal と連携サーバー（この機能を使う人がやること）
+
+「Discord で連携」だけなら **1 と 2 だけ**でよい。「チャンネルを連携」も使うなら 3 以降。
+
+**1. アプリを作る**
+
+1. https://discord.com/developers/applications を開いて「**New Application**」
+2. 名前を決めて作る（この名前が、作られる Webhook の既定の名前になる）
+
+**2. リダイレクト URI を登録する**
+
+3. 左の「**OAuth2**」→「**Redirects**」→「**Add Redirect**」
+4. 次を**1 文字違わず**入れて **Save Changes**：
+
+   ```
+   wakeorpay://discord/callback
+   ```
+
+   ここが違うと、同意画面が出る前に「無効な OAuth2 リダイレクト URI」で止まる。
+
+5. 同じページの「**Client ID**」を控える。既定では
+   `lib/domain/discord_oauth.dart` の `kDiscordClientId` が
+   **`1542696296337506415`** になっている。自分のアプリを使うなら、この定数を
+   自分の Client ID に書き換えてビルドし直す（Client ID は秘密ではない。
+   認可 URL に必ず入る値なので、ソースにあってよい）。
+
+**3. 連携サーバー（Cloudflare Worker）を立てる**
+
+手順の全文は [`worker/README.md`](worker/README.md)。要点だけ：
+
+```bash
+npm i -g wrangler
+wrangler login
+cd worker
+wrangler secret put DISCORD_CLIENT_SECRET   # Portal の OAuth2 → Reset Secret で出る文字列
+wrangler deploy
+```
+
+**シークレットは `wrangler.toml` にもリポジトリにも絶対に書かない。**
+`wrangler secret put` で入れたものは Cloudflare 側に暗号化されて置かれる。
+
+**4. 出てきた URL をアプリに貼る**
+
+`wrangler deploy` の最後に出る
+`https://wake-or-pay-discord.<あなたのサブドメイン>.workers.dev` を、
+プロフィール（ヘッダーのアイコン）→「**連携サーバーURL**」に入れて閉じる。
+末尾の `/discord/exchange` は付けても付けなくてもよい。**再ビルドは要らない。**
+
+- 既定値 `kDiscordExchangeEndpoint`（`lib/services/discord_exchange.dart`）は
+  **わざと空にしてある**。ここに誰かの Worker を焼き込むと、すべてのインストールが
+  その 1 人の Cloudflare アカウントを向き、その人のシークレットが他人の認可に使われる。
+- URL は **https のみ**。本文が認可コードなので、暗号化されていない経路には出さない。
+- 空にすれば既定に戻る。
+
 ## プライバシー（端末の中にしか無いもの）
 
-このアプリがネットワークに出るのは **Discord**（投稿と Webhook 名の取得）と
+このアプリがネットワークに出るのは **Discord**（投稿・Webhook 名の取得・OAuth2）と、
+**あなたが立てた連携サーバー**（「チャンネルを連携」のときだけ）と、
 **あなたが自分で入れた SMTP サーバー**だけ。ほかにデータを送る先は無い
 （分析・クラッシュ収集・広告の SDK も無い）。SMS と電話は**アプリのサーバーを一切通さず**、
 端末の無線から直接出る。
@@ -659,6 +769,9 @@ lossAt(now, session):
 | メール送信設定のサーバー項目（ホスト・ポート・送信元アドレス・ユーザー名） | shared_preferences（端末内） | 送信元アドレスとユーザー名は、その SMTP サーバーに対してだけ使う |
 | 共有音声の録音 | アプリ領域の m4a ファイル（パスは共有の JSON 列に） | **選んだ Discord 共有先にだけ**、`share.m4a` という名前で添付される |
 | プロフィール（名前・Discord ユーザーID・経験値・コレクション） | shared_preferences（端末内） | 名前または Discord ID は**投稿の本文に入る**（それが投稿の目的） |
+| Discord の表示名・アバターハッシュ（連携したとき） | shared_preferences（`profile.discordUsername` / `profile.discordAvatar`） | **出ない。**「連携済み：@なまえ」を出すためだけの表示用 |
+| Discord のアクセストークン | **どこにも保存しない** | `/users/@me` に 1 回使って捨てる。prefs にも secure store にもメモリ上の永続オブジェクトにも残らない |
+| 連携サーバーURL（あなたが立てた Worker） | shared_preferences（`discord.exchangeEndpoint`） | 「チャンネルを連携」のときだけ、そのサーバーに認可コードを送る |
 | 寝坊時連絡の記録 | drift の `contact_event_rows`（端末内） | 出ない |
 
 - **Webhook URL は資格情報として扱う。** それを持っている人は誰でもそのチャンネルに投稿できる。
@@ -856,6 +969,7 @@ lib/
     level.dart           経験値 → レベル・次のLvまで・バーの進捗（25·n·(n−1)）
     profile_catalog.dart アイコン・名前の背景・フレームの静的カタログ
     discord_post.dart    投稿本文の組み立て・引用・2000字の切り詰め・multipart の記述
+    discord_oauth.dart   認可 URL の組み立て・コールバックの解釈・state・/users/@me の解釈
     schedule.dart        nextFireTime
     wake_check.dart      長押し進捗・計算問題生成・入力文・ランダム抽選
     shake_detector.dart  振る確認の純粋ロジック（サンプル列 → 進捗）
@@ -869,6 +983,8 @@ lib/
     sound_preview_player.dart    プレビュー再生（audioplayers、インタフェース越し）
     sound_file_importer.dart     端末内ファイルの選択とアプリ領域へのコピー
     discord_sender.dart          Webhook への POST と Webhook 名の取得（インタフェース越し）
+    discord_oauth.dart           OAuth2 の流れ（ブラウザを開く所だけインタフェース越し）
+    discord_exchange.dart        連携サーバーへの交換要求と、そのURL設定（既定は空）
     oversleep_notifier.dart      発火の判定と実行（電話・SMS・メール・Discord すべて実送信）
     mail_settings.dart           メール送信設定の状態と「テスト送信」
     mail_sender.dart             mailer 越しの SMTP 送信（インタフェース越し）
@@ -882,6 +998,8 @@ lib/
     profile/             app_header（3タブ共通のヘッダー）,
                          profile_overlay（上から被さるプロフィール）,
                          user_name_screen, discord_user_id_screen,
+                         discord_link_row（「Discord で連携」/「連携済み：@…」）,
+                         discord_endpoint_row / discord_endpoint_screen（連携サーバーURL）,
                          mail_settings_screen（SMTP・テスト送信・Gmail の手順）
     alarms/              home_screen（スワイプ削除・スヌーズ中の表示）,
                          alarm_edit_screen（島レイアウト）,
@@ -898,6 +1016,10 @@ lib/
                          seed_shop_screen（種屋）, garden_board（容器と地面）,
                          terrarium_painter, garden_controller,
                          item_source.dart ← 入手ロジックの差し替え口
+worker/                  Discord の認可コード交換だけをする Cloudflare Worker
+  src/index.ts           POST /discord/exchange。シークレットはここにしか無い
+  test/exchange.test.ts  vitest（fetch をスタブするので Discord には出ない）
+  README.md              デプロイ手順（wrangler login → secret put → deploy）
 packages/
   wop_platform/          この app 専用のローカル Flutter プラグイン（Android のみ）
     lib/wop_platform.dart  チャネル名とエラーコードだけ（Dart 側の実装は app に置く）
@@ -1002,8 +1124,42 @@ R8 の難読化が `flutter_secure_storage` を壊していないことの確認
 段階D時点で **688 テスト**。
 | `test/app/` | テーマ切替と永続化 |
 
+**段階E（Discord OAuth2）もエミュレータ（AVD `wop`、リリース APK）で確認した。**
+
+- プロフィールに「**Discord で連携**」と「**連携サーバーURL**」の 2 行が出ること。
+- 「Discord で連携」を押すと **Chrome の Custom Tab が開き、`discord.com` の
+  ログインページが出る**（不正な `client_id` や未登録の `redirect_uri` なら
+  ここでエラーページになるので、認可 URL が Discord に受理されていることまでは言える）。
+- そこへ **`adb shell am start -a android.intent.action.VIEW -d
+  'wakeorpay://discord/callback#access_token=FAKE&state=not-the-one'`** を投げると、
+  `com.linusu.flutter_web_auth_2.CallbackActivity` が intent を受け、アプリに戻って
+  「**確認に失敗しました。アプリからもう一度お試しください**」が出る。
+  **プロフィールの Discord ユーザーID は「未設定」のまま**で、state が合わない
+  コールバックはトークンを持っていても一切使われない。
+- Discord 共有先設定から ＋ が消え、「**チャンネルを連携（Discord で選ぶ）**」と
+  「**Webhook URL を手動で登録**」の 2 つになっていること。連携サーバーURL が未設定の
+  状態で前者を押すと、**ブラウザを開かずに**「先に連携サーバー（Cloudflare Worker）を
+  立てて…」と出る。
+- **正しい state で成功する経路（プロフィールが埋まるところ）は端末上では未確認。**
+  state は毎回ランダムで、アプリの外からは知りようがないため（ログにも出していない）。
+  この経路はフェイクを差した単体・ウィジェットテストで押さえてある。
+- **`shared_prefs` の実ファイル確認は今回できていない。** リリース APK は
+  `debuggable` ではないので `run-as` が使えない。「アクセストークンが prefs に
+  一切入らない」は、prefs の全キー・全値をなめる単体テストのほうで固定してある。
+
 ## 既知の制約
 
+- **「チャンネルを連携」には自分で立てたサーバーが要る。** `webhook.incoming` の
+  コード交換にはクライアントシークレットが要り、APK に埋めたシークレットは
+  シークレットではないため。`kDiscordExchangeEndpoint` を空のままにしてあるのは、
+  埋めれば全インストールが 1 人の Cloudflare アカウントを向くから。
+  立てない人は「Webhook URL を手動で登録」を使う（従来どおり、何も要らない）。
+- **チャンネル名は取れない。** Webhook の `channel_id` から人が読む名前に変えるには
+  Bot をサーバーに入れるか `guilds.members.read` が要る。ラベルを綺麗にするために
+  もっと怖い同意画面を出すのは割に合わないので、表示名は**サーバー名**で止めている。
+- **Discord で連携できるのは 1 つの流れずつ。** ブラウザが開いている間、
+  ボタンは押せなくなる。コールバックのスキームは 1 つしかないので、2 つ目の流れは
+  1 つ目のリダイレクトで解決されてしまう。
 - **ストリーミング音源（YouTube 等）には対応しない。** 理由は 2 つ。(1) **鳴動の信頼性**：
   目覚ましは機内モード・圏外・通信障害・ログイン切れ・広告の割り込みのいずれでも必ず鳴らなければ
   ならないが、ストリーミングはそのどれでも無音になりうる。(2) **利用規約**：各サービスは
