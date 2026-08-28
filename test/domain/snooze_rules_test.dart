@@ -132,6 +132,28 @@ void main() {
     });
   });
 
+  group('defaults (改訂5)', () {
+    test('a new alarm defaults to the pausing (reset) clock', () {
+      // The seed the editor plants the first time 覚悟 is switched on.
+      expect(defaultKakugo.snoozeResetsClock, isTrue);
+    });
+
+    test('the constructor default is still strict — old rows are untouched', () {
+      // Only the new-alarm seed flipped; the bare constructor (used by every
+      // deserialiser fallback) stays false, so a stored row keeps its value.
+      expect(
+        const Kakugo(ratePerMinute: 100, cap: 1000).snoozeResetsClock,
+        isFalse,
+      );
+      expect(
+        Kakugo.fromJson(const {'ratePerMinute': 100, 'cap': 1000})
+            .snoozeResetsClock,
+        isFalse,
+        reason: 'a pre-改訂5 row with no field reads as strict',
+      );
+    });
+  });
+
   group('labels', () {
     test('the re-ring time reads as a clock, zero padded', () {
       expect(snoozeUntilLabel(DateTime(2026, 8, 27, 7, 5)), 'スヌーズ中 7:05');

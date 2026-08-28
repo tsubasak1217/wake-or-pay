@@ -620,16 +620,19 @@ class _SnoozeClockSelector extends ConsumerWidget {
   static const continuousLabel = '規定時刻から加算し続ける';
   static const resetLabel = '次に鳴る時刻を起点にし直す';
 
+  // Reset first, and marked 推奨: it is the default for new alarms (改訂5), the
+  // mode where snoozed time costs nothing but the per-press penalty. Continuing
+  // to burn through a snooze is the deliberate opt-in below it.
   static const _options = <({bool value, String label, String description})>[
+    (
+      value: true,
+      label: '$resetLabel（推奨）',
+      description: '鳴っていない間はコインが燃えません（スヌーズ罰だけ）。再び鳴った時点から、猶予もあらためて数え直します。',
+    ),
     (
       value: false,
       label: continuousLabel,
       description: 'スヌーズで鳴っていない間もコインは燃え続けます。厳しいほう。',
-    ),
-    (
-      value: true,
-      label: resetLabel,
-      description: '鳴っていない間は燃えません。再び鳴った時点から、猶予もあらためて数え直します。',
     ),
   ];
 

@@ -178,8 +178,12 @@ void main() {
       await inSubScreen(tester, '寝坊ペナルティ', () async {
         expect(find.text('スヌーズ中の加算'), findsOneWidget);
         expect(find.text('規定時刻から加算し続ける'), findsOneWidget);
-        expect(find.text('次に鳴る時刻を起点にし直す'), findsOneWidget);
-        await tester.tap(find.text('次に鳴る時刻を起点にし直す'));
+        // 改訂5: the pausing mode is the recommended default and reads 「（推奨）」.
+        expect(find.text('次に鳴る時刻を起点にし直す（推奨）'), findsOneWidget);
+        // Flip to continuous and back, to prove the choice sticks either way.
+        await tester.tap(find.text('規定時刻から加算し続ける'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('次に鳴る時刻を起点にし直す（推奨）'));
         await tester.pumpAndSettle();
       });
 

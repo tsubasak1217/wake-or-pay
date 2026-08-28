@@ -124,7 +124,13 @@ void main() {
     // the spec's editor shows. It costs nothing here — this alarm has no
     // snooze, so there is nothing to penalise.
     expect(saved.kakugo, defaultKakugo.copyWith(ratePerMinute: 500));
-    expect(saved.kakugo!.snoozeResetsClock, isFalse, reason: 'the strict mode');
+    // 改訂5: new alarms default to the pausing mode, so snoozed time never bills
+    // silently. The strict continuous mode is now the opt-in.
+    expect(
+      saved.kakugo!.snoozeResetsClock,
+      isTrue,
+      reason: 'the pausing mode is the default for new alarms',
+    );
     expect(saved.enabled, isTrue);
     expect(saved.snooze, isNull, reason: 'the toggle was never touched');
     expect(saved.soundId, defaultSoundId);

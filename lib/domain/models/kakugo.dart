@@ -110,4 +110,17 @@ class Kakugo {
 }
 
 /// What the editor puts up the first time 覚悟 is switched on.
-const defaultKakugo = Kakugo(ratePerMinute: 100, cap: 1000, snoozePenalty: 50);
+///
+/// `snoozeResetsClock: true` is the **default for new alarms** (改訂5): the safe,
+/// pausing mode, so snoozed time never bleeds coins while the user is up but not
+/// yet paying attention — only the per-press snooze penalty applies. Continuing
+/// to bill from `firedAt` through a snooze is now the deliberate opt-in.
+///
+/// This is only the seed for *new* alarms: the constructor default and every
+/// deserialiser stay `false`, so a stored row keeps whatever it was saved with.
+const defaultKakugo = Kakugo(
+  ratePerMinute: 100,
+  cap: 1000,
+  snoozePenalty: 50,
+  snoozeResetsClock: true,
+);
