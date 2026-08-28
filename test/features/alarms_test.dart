@@ -273,29 +273,26 @@ void main() {
 
       await toggleInEditor(tester, '覚悟');
 
+      // Two numeric fields share this screen — the rate's and the grace's — so
+      // the grace one is addressed through the section that owns it. Its field
+      // is also where the value is read: there is no separate display any more.
+      final graceField = find.descendant(
+        of: find.byKey(const ValueKey('graceSelector')),
+        matching: find.byKey(const ValueKey('sliderNumberInput')),
+      );
+
       await inSubScreen(tester, '寝坊ペナルティ', () async {
         expect(find.text('起床猶予'), findsOneWidget);
         expect(
-          tester.widget<Text>(find.byKey(const ValueKey('graceValue'))).data,
-          '1分',
+          tester.widget<TextField>(graceField).controller!.text,
+          '1',
           reason: 'today\'s rule, unchanged',
         );
         expect(find.textContaining('鳴り始めからこの時間以内'), findsOneWidget);
 
-        // Two numeric fields share this screen — the rate's and the grace's —
-        // so the grace one is addressed through the section that owns it.
-        await tester.enterText(
-          find.descendant(
-            of: find.byKey(const ValueKey('graceSelector')),
-            matching: find.byKey(const ValueKey('sliderNumberInput')),
-          ),
-          '5',
-        );
+        await tester.enterText(graceField, '5');
         await tester.pumpAndSettle();
-        expect(
-          tester.widget<Text>(find.byKey(const ValueKey('graceValue'))).data,
-          '5分',
-        );
+        expect(tester.widget<TextField>(graceField).controller!.text, '5');
       });
 
       await tester.tap(find.byType(FloatingActionButton));

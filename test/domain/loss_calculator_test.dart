@@ -433,17 +433,54 @@ void main() {
       expect(lossAt(at(minutes: 30), s), 80);
     });
 
-    test('a stored penalty outside 0-1000 is clamped on the way out', () {
-      final s = session(
-        kakugo: const Kakugo(
-          ratePerMinute: 1,
-          cap: 1000000,
-          snoozePenalty: 99999,
-        ),
-        snoozes: presses(1),
-      );
-      expect(lossAt(firedAt, s), maxSnoozePenalty);
-    });
+    test(
+      'a stored penalty outside the allowed range is clamped on the way out',
+      () {
+        // Absurd penalty, nothing else to bite: only the normalising clamp can
+        // hold it, and it holds it at the ceiling.
+        final s = session(
+          kakugo: const Kakugo(
+            ratePerMinute: 1,
+            cap: 1000000,
+            snoozePenalty: 99999,
+          ),
+          snoozes: presses(1),
+        );
+        expect(lossAt(firedAt, s), maxSnoozePenalty);
+        expect(maxSnoozePenalty, lessThan(99999), reason: 'it really was cut');
+
+        // And with a real cap and a real balance, those bite first.
+        expect(
+          lossAt(
+            firedAt,
+            session(
+              kakugo: const Kakugo(
+                ratePerMinute: 1,
+                cap: 700,
+                snoozePenalty: 99999,
+              ),
+              snoozes: presses(1),
+            ),
+          ),
+          700,
+        );
+        expect(
+          lossAt(
+            firedAt,
+            session(
+              kakugo: const Kakugo(
+                ratePerMinute: 1,
+                cap: 700,
+                snoozePenalty: 99999,
+              ),
+              coinsAtFire: 120,
+              snoozes: presses(1),
+            ),
+          ),
+          120,
+        );
+      },
+    );
 
     group('judgeStatus', () {
       test('one press fails the morning however fast the check goes', () {

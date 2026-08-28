@@ -27,6 +27,16 @@ Future<void> scrollTo(WidgetTester tester, Finder target) async {
 String textOf(WidgetTester tester, Key key) =>
     tester.widget<Text>(find.byKey(key)).data!;
 
+/// What the numeric field found by [finder] currently shows. The field *is* the
+/// value display now, so this is how a sub-screen's number is read.
+String numberIn(WidgetTester tester, Finder finder) =>
+    tester.widget<TextField>(finder).controller!.text;
+
+/// The sub-screen's own numeric field. `.first` because the 寝坊ペナルティ screen
+/// carries a second one in its footer — 起床猶予 — below it.
+Finder get subScreenNumber =>
+    find.byKey(const ValueKey('sliderNumberInput')).first;
+
 const resetTile = ValueKey('snoozeClockReset');
 const continuousTile = ValueKey('snoozeClockContinuous');
 
@@ -146,12 +156,71 @@ void main() {
         '250',
       );
       await tester.pumpAndSettle();
-      expect(find.text('250コイン'), findsOneWidget);
+      expect(numberIn(tester, subScreenNumber), '250');
     });
 
     await scrollTo(tester, find.text('スヌーズペナルティ'));
     expect(find.text('250 コイン'), findsOneWidget);
     expect((await save(tester, container)).kakugo!.snoozePenalty, 250);
+  });
+
+  testWidgets('the penalties are bounded by 上限金額, and follow it down', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+
+    // Raise the cap: the rate may now be set anywhere up to it.
+    await inSubScreen(tester, '上限金額', () async {
+      await tester.enterText(subScreenNumber, '2500');
+      await tester.pumpAndSettle();
+    });
+
+    await inSubScreen(tester, '寝坊ペナルティ', () async {
+      expect(find.text('0〜2500コイン/分'), findsOneWidget);
+      await tester.enterText(subScreenNumber, '2000');
+      await tester.pumpAndSettle();
+    });
+    await scrollTo(tester, find.text('寝坊ペナルティ'));
+    expect(find.text('2000 コイン/分'), findsOneWidget);
+
+    // Lower the cap under it and the rate comes down with it.
+    await inSubScreen(tester, '上限金額', () async {
+      await tester.enterText(subScreenNumber, '500');
+      await tester.pumpAndSettle();
+    });
+
+    final saved = await save(tester, container);
+    expect(saved.kakugo!.cap, 500);
+    expect(saved.kakugo!.ratePerMinute, 500, reason: 'clamped to the new cap');
+    expect(
+      saved.kakugo!.snoozePenalty,
+      50,
+      reason: '50 is already under 500, so it is left alone',
+    );
+  });
+
+  testWidgets('lowering 上限金額 under the snooze penalty clamps that too', (
+    tester,
+  ) async {
+    final container = await openNewAlarm(tester);
+    await toggle(tester, '覚悟');
+    await toggle(tester, 'スヌーズ');
+
+    await inSubScreen(tester, 'スヌーズペナルティ', () async {
+      await tester.enterText(subScreenNumber, '800');
+      await tester.pumpAndSettle();
+    });
+
+    await inSubScreen(tester, '上限金額', () async {
+      await tester.enterText(subScreenNumber, '300');
+      await tester.pumpAndSettle();
+    });
+
+    final saved = await save(tester, container);
+    expect(saved.kakugo!.cap, 300);
+    expect(saved.kakugo!.snoozePenalty, 300);
+    expect(saved.kakugo!.ratePerMinute, 100, reason: 'already under the cap');
   });
 
   testWidgets('out of range input is clamped, not accepted', (tester) async {
@@ -244,7 +313,16 @@ void main() {
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       expect(find.text('起床猶予'), findsOneWidget);
       expect(find.byKey(const ValueKey('graceSelector')), findsOneWidget);
-      expect(textOf(tester, const ValueKey('graceValue')), '1分');
+      expect(
+        numberIn(
+          tester,
+          find.descendant(
+            of: find.byKey(const ValueKey('graceSelector')),
+            matching: find.byKey(const ValueKey('sliderNumberInput')),
+          ),
+        ),
+        '1',
+      );
       expect(find.text('1〜5分'), findsOneWidget);
     });
   });

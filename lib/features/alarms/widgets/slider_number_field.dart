@@ -4,6 +4,11 @@ import 'package:flutter/services.dart';
 /// A slider and a text field over the same integer, used by every numeric
 /// sub-screen of the alarm editor.
 ///
+/// The field *is* the value display: a centred, boxed number with its unit
+/// beside it, and the slider spanning the full width underneath. There is no
+/// second, larger copy of the number anywhere — one number, editable where it
+/// is read.
+///
 /// The rules are the spec's:
 ///
 /// * text that is not a number is ignored — the previous value stands, and the
@@ -90,45 +95,59 @@ class _SliderNumberFieldState extends State<SliderNumberField> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final span = widget.max - widget.min;
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: Slider(
-            value: widget.value.toDouble().clamp(
-              widget.min.toDouble(),
-              widget.max.toDouble(),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 112,
+              child: TextField(
+                key: const ValueKey('sliderNumberInput'),
+                controller: _controller,
+                focusNode: _focus,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onChanged: _onTextChanged,
+              ),
             ),
-            min: widget.min.toDouble(),
-            max: widget.max.toDouble(),
-            divisions: span <= SliderNumberField.maxDivisions ? span : null,
-            label: '${widget.value}',
-            semanticFormatterCallback: (v) =>
-                '${widget.semanticLabel ?? ''} ${v.round()}',
-            onChanged: (v) => _report(v.round()),
-          ),
+            if (widget.suffix != null) ...[
+              const SizedBox(width: 12),
+              Text(widget.suffix!, style: theme.textTheme.titleMedium),
+            ],
+          ],
         ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 96,
-          child: TextField(
-            key: const ValueKey('sliderNumberInput'),
-            controller: _controller,
-            focusNode: _focus,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.end,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onChanged: _onTextChanged,
+        const SizedBox(height: 8),
+        Slider(
+          value: widget.value.toDouble().clamp(
+            widget.min.toDouble(),
+            widget.max.toDouble(),
           ),
+          min: widget.min.toDouble(),
+          max: widget.max.toDouble(),
+          divisions: span <= SliderNumberField.maxDivisions ? span : null,
+          label: '${widget.value}',
+          semanticFormatterCallback: (v) =>
+              '${widget.semanticLabel ?? ''} ${v.round()}',
+          onChanged: (v) => _report(v.round()),
         ),
-        if (widget.suffix != null) ...[
-          const SizedBox(width: 8),
-          Text(widget.suffix!, style: Theme.of(context).textTheme.bodyMedium),
-        ],
       ],
     );
   }

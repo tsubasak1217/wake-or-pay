@@ -11,6 +11,7 @@ Future<int Function()> _pumpField(
   int initial = 5,
   int min = 1,
   int max = 30,
+  String? suffix,
 }) async {
   var value = initial;
   late void Function(void Function()) rebuild;
@@ -27,6 +28,7 @@ Future<int Function()> _pumpField(
                   value: value,
                   min: min,
                   max: max,
+                  suffix: suffix,
                   onChanged: (v) => rebuild(() => value = v),
                 ),
                 // Somewhere else for the focus to go.
@@ -44,6 +46,29 @@ Future<int Function()> _pumpField(
 }
 
 void main() {
+  testWidgets('the field is the value display, with the slider under it', (
+    tester,
+  ) async {
+    await _pumpField(tester, suffix: 'コイン/分');
+
+    // The number, boxed, with its unit beside it; the slider spans the width
+    // below. There is no second, larger copy of the value anywhere.
+    expect(
+      tester.getCenter(find.byKey(_fieldKey)).dy,
+      lessThan(tester.getCenter(find.byType(Slider)).dy),
+    );
+    expect(find.text('コイン/分'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(_fieldKey)).controller!.text,
+      '5',
+      reason: 'the field starts showing the value',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(_fieldKey)).textAlign,
+      TextAlign.center,
+    );
+  });
+
   testWidgets('typing a number moves the slider with it', (tester) async {
     final read = await _pumpField(tester);
 

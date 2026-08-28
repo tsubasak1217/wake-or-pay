@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 
 /// What the user puts up as collateral. Only [coin] exists in the MVP.
@@ -8,21 +10,41 @@ enum HostageType { coin }
 /// The rate starts at 0: a pledge whose whole punishment is that somebody gets
 /// phoned is a real pledge, and forcing at least one coin a minute onto it
 /// would be the app inventing a stake the user did not choose.
+///
+/// The editor bounds the rate by the alarm's *own* 上限金額 — no penalty may be
+/// set above the most that alarm can ever cost — so [maxKakugoRate] is only the
+/// ceiling of that bound, reached when the cap itself is at its maximum.
 const minKakugoRate = 0;
-const maxKakugoRate = 1000;
+const maxKakugoRate = maxKakugoCap;
 const minKakugoCap = 100;
 const maxKakugoCap = 10000;
 
 /// What one press of snooze costs in kakugo mode. 0 = snoozing is free even
 /// under a pledge, which is the rule every row written before stage B was
 /// saved under.
+///
+/// Bounded by the alarm's own 上限金額 in the editor, exactly like the rate;
+/// [maxSnoozePenalty] is the ceiling of that bound and the absolute clamp every
+/// stored value is read through.
 const minSnoozePenalty = 0;
-const maxSnoozePenalty = 1000;
+const maxSnoozePenalty = maxKakugoCap;
 
 int normalizeKakugoRate(int rate) => rate.clamp(minKakugoRate, maxKakugoRate);
 int normalizeKakugoCap(int cap) => cap.clamp(minKakugoCap, maxKakugoCap);
 int normalizeSnoozePenalty(int penalty) =>
     penalty.clamp(minSnoozePenalty, maxSnoozePenalty);
+
+/// [kakugo] with its per-minute rate and snooze penalty cut down to [cap]
+/// (and cap itself normalised). Pure. Used when the cap is lowered so no
+/// penalty can be set above the most an alarm may cost.
+Kakugo withCap(Kakugo kakugo, int cap) {
+  final normalized = normalizeKakugoCap(cap);
+  return kakugo.copyWith(
+    cap: normalized,
+    ratePerMinute: math.min(kakugo.ratePerMinute, normalized),
+    snoozePenalty: math.min(kakugo.snoozePenalty, normalized),
+  );
+}
 
 /// The user's pledge for one alarm: how much burns per minute, and the most
 /// a single ring may ever cost.

@@ -57,13 +57,7 @@ class _NumberSubScreenState extends State<NumberSubScreen> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
-            Text(
-              '$_value${widget.suffix ?? ''}',
-              key: const ValueKey('numberSubScreenValue'),
-              style: theme.textTheme.displaySmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
+            // No separate value display: the field below *is* the number.
             SliderNumberField(
               value: _value,
               min: widget.min,

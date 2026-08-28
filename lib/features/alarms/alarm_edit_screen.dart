@@ -528,7 +528,7 @@ class _ContactShareRow extends ConsumerWidget {
   }
 }
 
-/// スヌーズペナルティ: the coin cost of one press, 0-1000.
+/// スヌーズペナルティ: the coin cost of one press, 0 up to this alarm's 上限金額.
 class _SnoozePenaltyRow extends ConsumerWidget {
   const _SnoozePenaltyRow({required this.seed});
 
@@ -540,6 +540,10 @@ class _SnoozePenaltyRow extends ConsumerWidget {
     final penalty = ref.watch(
       draft.select((a) => a.kakugo?.snoozePenalty ?? 0),
     );
+    // A penalty above the cap is unreachable, so the cap is the bound offered.
+    final cap = ref.watch(
+      draft.select((a) => a.kakugo?.cap ?? defaultKakugo.cap),
+    );
     return SettingRow(
       label: 'スヌーズペナルティ',
       value: '$penalty コイン',
@@ -549,7 +553,7 @@ class _SnoozePenaltyRow extends ConsumerWidget {
           title: 'スヌーズペナルティ',
           initial: penalty,
           min: minSnoozePenalty,
-          max: maxSnoozePenalty,
+          max: cap,
           suffix: 'コイン',
           description:
               'スヌーズを1回押すごとに燃えるコインです。0 ならスヌーズは無料のままです。'
@@ -727,15 +731,7 @@ class _GraceSelector extends ConsumerWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          '$grace分',
-          key: const ValueKey('graceValue'),
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: theme.colorScheme.primary,
-          ),
-        ),
+        // No separate value line: the field below shows the number.
         SliderNumberField(
           value: grace,
           min: minGraceMinutes,
@@ -818,9 +814,11 @@ class _RateRow extends ConsumerWidget {
       alarmDraftProvider(seed).select((a) => a.kakugo?.ratePerMinute ?? 0),
     );
     // The gauge is read from the ratio rate/cap rather than from the rate on
-    // its own, so the sub-screen needs the cap this pledge plays against.
+    // its own, so the sub-screen needs the cap this pledge plays against — and
+    // the cap is also the upper bound the rate may be set to.
     final cap = ref.watch(
-      alarmDraftProvider(seed).select((a) => a.kakugo?.cap ?? 0),
+      alarmDraftProvider(seed)
+          .select((a) => a.kakugo?.cap ?? defaultKakugo.cap),
     );
     return SettingRow(
       label: '寝坊ペナルティ',
@@ -831,9 +829,11 @@ class _RateRow extends ConsumerWidget {
           title: '寝坊ペナルティ',
           initial: rate,
           min: minKakugoRate,
-          max: maxKakugoRate,
+          // Bounded by this alarm's own cap: a rate above it can never be paid.
+          max: cap,
           suffix: 'コイン/分',
-          description: '猶予を過ぎたあと、1分ごとに燃えるコインです。'
+          description:
+              '猶予を過ぎたあと、1分ごとに燃えるコインです。'
               '0 にすると、寝坊しても分ごとには燃えません（連絡だけの覚悟）。',
           footer: (context, value) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -898,9 +898,10 @@ class _CapRow extends ConsumerWidget {
           onCommit: (v) => ref
               .read(alarmDraftProvider(seed).notifier)
               .update(
-                (a) => a.copyWith(
-                  kakugo: (a.kakugo ?? defaultKakugo).copyWith(cap: v),
-                ),
+                // Lowering the cap pulls both penalties down with it: nothing
+                // may be set above the most this alarm can ever cost.
+                (a) =>
+                    a.copyWith(kakugo: withCap(a.kakugo ?? defaultKakugo, v)),
               ),
         ),
       ),
