@@ -37,6 +37,11 @@ Finder get editorScrollable => find
     .first;
 
 Future<void> scrollToInEditor(WidgetTester tester, Finder target) async {
+  // scrollUntilVisible only ever scrolls one way, so anything already above the
+  // viewport would be scrolled further away. Start from the top every time —
+  // the editor is a row taller now that new alarms carry a snooze island.
+  tester.state<ScrollableState>(editorScrollable).position.jumpTo(0);
+  await tester.pumpAndSettle();
   await tester.scrollUntilVisible(target, 120, scrollable: editorScrollable);
   // scrollUntilVisible stops as soon as the widget is attached, which can leave
   // it clipped at the edge of the viewport where a tap would miss it.
@@ -124,8 +129,7 @@ void main() {
     expect(saved.repeatDays, {1, 5});
     expect(saved.wakeCheck, WakeCheckType.math);
     // Stage B: switching 覚悟 on now seeds the snooze penalty too, at the 50
-    // the spec's editor shows. It costs nothing here — this alarm has no
-    // snooze, so there is nothing to penalise.
+    // the spec's editor shows.
     expect(saved.kakugo, defaultKakugo.copyWith(ratePerMinute: 500));
     // 改訂5: new alarms default to the pausing mode, so snoozed time never bills
     // silently. The strict continuous mode is now the opt-in.
@@ -135,7 +139,11 @@ void main() {
       reason: 'the pausing mode is the default for new alarms',
     );
     expect(saved.enabled, isTrue);
-    expect(saved.snooze, isNull, reason: 'the toggle was never touched');
+    expect(
+      saved.snooze,
+      const Snooze(),
+      reason: 'the toggle was never touched, and new alarms start snoozeable',
+    );
     expect(saved.soundId, defaultSoundId);
 
     // Saving also armed the platform alarm.
@@ -177,7 +185,9 @@ void main() {
     expect(find.text('09:00'), findsOneWidget, reason: 'shown on Home');
   });
 
-  testWidgets('a new alarm has no kakugo and no snooze island', (tester) async {
+  testWidgets('a new alarm has no kakugo but does have a snooze island', (
+    tester,
+  ) async {
     await pumpHome(tester, coins: 5000);
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
@@ -188,7 +198,6 @@ void main() {
       findsNothing,
       reason: 'kakugo is off on a new alarm',
     );
-    expect(find.text('スヌーズ設定'), findsNothing);
     for (final row in ['曜日', '起床確認方法', 'サウンド', 'スヌーズ', '覚悟']) {
       expect(find.text(row), findsOneWidget, reason: row);
     }
@@ -197,6 +206,13 @@ void main() {
       findsNothing,
       reason: 'it lives in the 寝坊ペナルティ sub-screen, not 基本設定',
     );
+
+    // Snooze is the opposite of kakugo: on by default, at the default interval
+    // and count, so the island is already below 基本設定.
+    await scrollToInEditor(tester, find.text('スヌーズ設定'));
+    expect(find.text('スヌーズ設定'), findsOneWidget);
+    expect(find.text('5分'), findsOneWidget, reason: 'the default interval');
+    expect(find.text('3回'), findsOneWidget, reason: 'the default count');
   });
 
   testWidgets(
@@ -236,13 +252,17 @@ void main() {
     },
   );
 
-  testWidgets('the snooze island appears with the toggle and persists', (
+  testWidgets('the snooze island follows the toggle and persists', (
     tester,
   ) async {
     final container = await pumpHome(tester, coins: 5000);
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
+    // Off and on again: the island is there by default, so the toggle is
+    // exercised in both directions rather than only switching it on.
+    await toggleInEditor(tester, 'スヌーズ');
+    expect(find.text('スヌーズ設定'), findsNothing);
     await toggleInEditor(tester, 'スヌーズ');
     expect(find.text('スヌーズ設定'), findsOneWidget);
     expect(find.text('5分'), findsOneWidget, reason: 'the default interval');

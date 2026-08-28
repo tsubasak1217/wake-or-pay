@@ -8,6 +8,7 @@ import '../../data/providers.dart';
 import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
 import '../../services/voice_recorder.dart';
+import '../widgets/discord_icon.dart';
 import 'discord_webhooks_screen.dart';
 import 'edit_sub_screens.dart';
 import 'widgets/mode_tile.dart';
@@ -125,6 +126,7 @@ class _ShareSubScreenState extends ConsumerState<ShareSubScreen> {
               children: [
                 SettingRow(
                   key: const ValueKey('shareDiscordRow'),
+                  leading: const DiscordIcon(),
                   label: 'Discord',
                   value: live == 0 ? 'なし' : '$live件',
                   onTap: () => pushEditorSubScreen(

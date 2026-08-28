@@ -49,6 +49,7 @@ dependencies:
   # SMS 送信と電話発信の Android 側。app 内のローカルプラグイン。
   wop_platform:
     path: packages/wop_platform
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -63,6 +64,8 @@ flutter:
 
   assets:
     - assets/audio/
+    # Discord マーク（Simple Icons・CC0-1.0）。出典は assets/icons/LICENSE.md。
+    - assets/icons/
 
   # M PLUS Rounded 1c — SIL Open Font License 1.1.
   # 全文は assets/fonts/OFL.txt、経緯は assets/fonts/LICENSE.md にあります。

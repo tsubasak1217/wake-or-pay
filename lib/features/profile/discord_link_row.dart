@@ -4,9 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/profile_controller.dart';
 import '../../services/discord_link_log.dart';
 import '../../services/discord_oauth.dart';
-import '../alarms/edit_sub_screens.dart';
+import '../widgets/discord_icon.dart';
 import 'discord_flow_status_view.dart';
-import 'discord_log_screen.dart';
 
 /// 「Discord で連携」 and everything that hangs off it.
 ///
@@ -86,7 +85,7 @@ class _DiscordLinkRowState extends ConsumerState<DiscordLinkRow> {
         if (profile.discordLinked)
           ListTile(
             key: const ValueKey('profileDiscordLinkedRow'),
-            leading: const Icon(Icons.check_circle_outline),
+            leading: const DiscordIcon(),
             title: Text('連携済み：@${profile.discordUsername}'),
             subtitle: Text(
               '寝坊の共有であなたをメンションします。',
@@ -101,7 +100,7 @@ class _DiscordLinkRowState extends ConsumerState<DiscordLinkRow> {
         else
           ListTile(
             key: const ValueKey('profileDiscordLinkRow'),
-            leading: const Icon(Icons.link),
+            leading: const DiscordIcon(),
             title: const Text('Discord で連携'),
             subtitle: Text(
               'ブラウザが開くので、Discord にログインして「認証」を押してください。'
@@ -113,18 +112,6 @@ class _DiscordLinkRowState extends ConsumerState<DiscordLinkRow> {
           ),
         DiscordFlowStatusView(
           onCancel: () => ref.read(discordOAuthServiceProvider).cancel(),
-        ),
-        ListTile(
-          key: const ValueKey('profileDiscordLogRow'),
-          leading: const Icon(Icons.receipt_long_outlined),
-          title: const Text('連携ログ'),
-          subtitle: Text(
-            'うまくいかなかったときに、何が起きたかを時刻つきで見られます。',
-            style: theme.textTheme.bodySmall,
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () =>
-              pushEditorSubScreen(context, const DiscordLogSubScreen()),
         ),
       ],
     );

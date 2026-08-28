@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/app/profile_controller.dart';
+import 'package:wake_or_pay/features/widgets/discord_icon.dart';
 import 'package:wake_or_pay/main.dart';
 import 'package:wake_or_pay/services/discord_exchange.dart';
 import 'package:wake_or_pay/services/discord_oauth.dart';
@@ -216,15 +217,15 @@ void main() {
     expect(find.byKey(const ValueKey('profileDiscordLinkRow')), findsOneWidget);
   });
 
-  testWidgets('連携ログ opens the log screen', (tester) async {
+  testWidgets('the Discord row is marked with the Discord mark', (tester) async {
     await openOverlay(tester);
 
-    await scrollTo(tester, find.byKey(const ValueKey('profileDiscordLogRow')));
-    await tester.tap(find.byKey(const ValueKey('profileDiscordLogRow')));
-    await tester.pumpAndSettle();
-
-    expect(find.widgetWithText(AppBar, '連携ログ'), findsOneWidget);
-    expect(find.byKey(const ValueKey('discordLogEmpty')), findsOneWidget);
+    final row = find.byKey(const ValueKey('profileDiscordLinkRow'));
+    await scrollTo(tester, row);
+    expect(
+      find.descendant(of: row, matching: find.byType(DiscordIcon)),
+      findsOneWidget,
+    );
   });
 
   testWidgets('linking over an existing link replaces both id and name', (

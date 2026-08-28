@@ -103,21 +103,23 @@ void main() {
 
     await toggle(tester, '覚悟');
     expect(find.text('寝坊ペナルティ'), findsOneWidget, reason: '覚悟 is on');
-    expect(find.text('スヌーズペナルティ'), findsNothing);
-
-    await toggle(tester, 'スヌーズ');
+    // スヌーズ is on from the start on a new alarm, so the row is there already.
     await scrollTo(tester, find.text('スヌーズペナルティ'));
     expect(find.text('スヌーズペナルティ'), findsOneWidget);
 
-    // And it goes away again with it.
+    // It goes away with スヌーズ…
     await toggle(tester, 'スヌーズ');
     expect(find.text('スヌーズペナルティ'), findsNothing);
+
+    // …and comes back with it.
+    await toggle(tester, 'スヌーズ');
+    await scrollTo(tester, find.text('スヌーズペナルティ'));
+    expect(find.text('スヌーズペナルティ'), findsOneWidget);
   });
 
   testWidgets('スヌーズ中の加算 is no longer a row of the island', (tester) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
     await scrollTo(tester, find.text('スヌーズペナルティ'));
 
     expect(
@@ -130,7 +132,7 @@ void main() {
   testWidgets('with 覚悟 off there is no kakugo island at all', (tester) async {
     await openNewAlarm(tester);
 
-    await toggle(tester, 'スヌーズ');
+    await scrollTo(tester, find.text('間隔'));
     expect(find.text('間隔'), findsOneWidget, reason: 'the snooze island');
     expect(find.text('スヌーズペナルティ'), findsNothing);
     expect(find.text('寝坊で失う最大金額'), findsNothing);
@@ -141,7 +143,6 @@ void main() {
   ) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
 
     // The default the editor seeds.
     await scrollTo(tester, find.text('スヌーズペナルティ'));
@@ -205,7 +206,6 @@ void main() {
   ) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(subScreenNumber, '800');
@@ -226,7 +226,6 @@ void main() {
   testWidgets('out of range input is clamped, not accepted', (tester) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
@@ -245,7 +244,6 @@ void main() {
   ) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
@@ -264,7 +262,6 @@ void main() {
     (tester) async {
       final container = await openNewAlarm(tester);
       await toggle(tester, '覚悟');
-      await toggle(tester, 'スヌーズ');
 
       await inSubScreen(tester, '寝坊ペナルティ', () async {
         expect(find.text('スヌーズ中の加算'), findsOneWidget);
@@ -297,6 +294,8 @@ void main() {
   ) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
+    // Off: this test *is* the off case, and new alarms now start snoozeable.
+    await toggle(tester, 'スヌーズ');
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       expect(find.text('スヌーズ中の加算'), findsNothing);
@@ -309,6 +308,8 @@ void main() {
   ) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
+    // Off: the point of this test is that 起床猶予 is there without スヌーズ.
+    await toggle(tester, 'スヌーズ');
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       expect(find.text('起床猶予'), findsOneWidget);
@@ -332,7 +333,6 @@ void main() {
   ) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
 
     await scrollTo(tester, find.byKey(const ValueKey('maxLoss')));
     expect(find.text('寝坊で失う最大金額'), findsOneWidget);
@@ -365,6 +365,8 @@ void main() {
   ) async {
     final container = await openNewAlarm(tester);
     await toggle(tester, '覚悟');
+    // Off: 「no rate, and no snooze either」 is the whole point of the 0 below.
+    await toggle(tester, 'スヌーズ');
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       expect(find.text('0〜1000コイン/分'), findsOneWidget);
@@ -393,7 +395,6 @@ void main() {
   ) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       await tester.enterText(
@@ -416,7 +417,6 @@ void main() {
   testWidgets('nothing in the editor sells or gates a snooze', (tester) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
-    await toggle(tester, 'スヌーズ');
     await scrollTo(tester, find.text('スヌーズペナルティ'));
 
     for (final forbidden in const ['広告', '課金', 'スヌーズを購入', 'プレミアム', '購入']) {
@@ -432,5 +432,13 @@ void main() {
     await openNewAlarm(tester);
     await scrollTo(tester, find.text('覚悟'));
     expect(find.text('起床に対するあなたの"覚悟"を設定できます'), findsOneWidget);
+
+    // The label carries the same red as the 覚悟の設定 island title: the row is
+    // the one place in 基本設定 where money is at stake.
+    final context = tester.element(find.text('覚悟'));
+    expect(
+      tester.widget<Text>(find.text('覚悟')).style?.color,
+      Theme.of(context).colorScheme.error,
+    );
   });
 }

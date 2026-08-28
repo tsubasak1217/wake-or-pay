@@ -81,6 +81,7 @@ class SettingRow extends StatelessWidget {
     this.onTap,
     this.valueColor,
     this.subtitle,
+    this.leading,
   });
 
   final String label;
@@ -89,12 +90,17 @@ class SettingRow extends StatelessWidget {
   final Color? valueColor;
   final String? subtitle;
 
+  /// Sits before the label. Used for the rows that name an outside service —
+  /// the Discord mark says which one faster than the word does.
+  final Widget? leading;
+
   @override
   Widget build(BuildContext context) {
     debugRowBuildCounts.update(label, (n) => n + 1, ifAbsent: () => 1);
     final theme = Theme.of(context);
     return ListTile(
       onTap: onTap,
+      leading: leading,
       title: Text(label),
       subtitle: subtitle == null ? null : Text(subtitle!),
       trailing: Row(
@@ -123,12 +129,17 @@ class SettingSwitchRow extends StatelessWidget {
     required this.onChanged,
     this.subtitle,
     this.enabled = true,
+    this.labelColor,
   });
 
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
   final String? subtitle;
+
+  /// Colours the label only. 覚悟 uses it to carry the same red its island
+  /// title does, so the row reads as the same dangerous thing.
+  final Color? labelColor;
 
   /// false greys the row out and makes it untappable — for a switch that has
   /// nothing to switch, like 電話 on a contact with no number.
@@ -142,7 +153,10 @@ class SettingSwitchRow extends StatelessWidget {
       // A null callback is what makes SwitchListTile draw itself disabled, so
       // the grey and the untappable are the same fact rather than two.
       onChanged: enabled ? onChanged : null,
-      title: Text(label),
+      title: Text(
+        label,
+        style: labelColor == null ? null : TextStyle(color: labelColor),
+      ),
       subtitle: subtitle == null ? null : Text(subtitle!),
     );
   }

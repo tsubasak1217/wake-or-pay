@@ -40,9 +40,17 @@ class _AlarmEditScreenState extends ConsumerState<AlarmEditScreen> {
     final id = widget.alarmId;
     if (id == null) {
       // New alarms start without kakugo: nothing is at stake until the user
-      // deliberately puts something there.
+      // deliberately puts something there. Snooze is the opposite — it starts
+      // on, at the default interval and count, because that is what was asked
+      // for: an alarm you can hit snooze on is the ordinary case, and having
+      // to switch it on before the first use was the surprise.
       return _AlarmEditForm(
-        seed: _seed ??= Alarm(id: AlarmController.newId(), hour: 7, minute: 0),
+        seed: _seed ??= Alarm(
+          id: AlarmController.newId(),
+          hour: 7,
+          minute: 0,
+          snooze: const Snooze(),
+        ),
       );
     }
 
@@ -304,6 +312,7 @@ class _KakugoToggleRow extends ConsumerWidget {
     return SettingSwitchRow(
       label: '覚悟',
       value: on,
+      labelColor: Theme.of(context).colorScheme.error,
       subtitle: '起床に対するあなたの"覚悟"を設定できます',
       onChanged: (v) => ref
           .read(alarmDraftProvider(seed).notifier)

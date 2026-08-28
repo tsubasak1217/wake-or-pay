@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/features/alarms/widgets/settings_island.dart';
+import 'package:wake_or_pay/features/widgets/discord_icon.dart';
 import 'package:wake_or_pay/main.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
 
@@ -191,7 +192,7 @@ void main() {
 
   testWidgets('覚悟の設定 lists its four rows, worst case first', (tester) async {
     await openNewAlarm(tester);
-    await toggle(tester, 'スヌーズ');
+    // スヌーズ is on by default now, so the スヌーズペナルティ row is there already.
     await toggle(tester, '覚悟');
     await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
 
@@ -213,6 +214,8 @@ void main() {
   ) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
+    // Off: new alarms are snoozeable now, and this test is the other case.
+    await toggle(tester, 'スヌーズ');
     await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
 
     expect(islandRows(tester, '覚悟の設定'), [
@@ -326,6 +329,15 @@ void main() {
     await inRow(tester, 'shareRow', () async {
       expect(find.widgetWithText(AppBar, '寝坊共有設定'), findsOneWidget);
       expect(rowValue(tester, 'shareDiscordRow'), 'なし');
+      // The Discord mark sits on the row, so the destination is recognisable
+      // before the word is read.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('shareDiscordRow')),
+          matching: find.byType(DiscordIcon),
+        ),
+        findsOneWidget,
+      );
 
       final x = tester.widget<SwitchListTile>(
         find.widgetWithText(SwitchListTile, 'X に投稿'),
