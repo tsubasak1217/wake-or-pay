@@ -2,82 +2,61 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 
 import '../domain/discord_oauth.dart';
+import 'discord_auth_launcher.dart';
+import 'discord_callback_router.dart';
 import 'discord_exchange.dart';
+import 'discord_link_log.dart';
 import 'discord_sender.dart';
-
-/// Opens an authorize URL and waits for the browser to come back on
-/// `wakeorpay://`.
-///
-/// An interface for one reason: **no test in this app may open a browser.**
-/// Everything above this line — the state check, the `/users/@me` call, what
-/// the profile ends up holding — is then exercised by handing in a fake that
-/// answers with a callback URL string.
-abstract class OAuthAuthorizer {
-  /// The full callback URL, or null when the user backed out.
-  ///
-  /// Never throws: a cancelled login is the most ordinary outcome there is,
-  /// and the caller has nothing to say about it.
-  Future<String?> authorize({
-    required String url,
-    required String callbackUrlScheme,
-  });
-}
-
-/// The real one, over `flutter_web_auth_2`.
-///
-/// Chosen over `url_launcher` + a deep link into MainActivity because the
-/// custom-scheme return is the part that actually breaks: the plugin owns a
-/// `CallbackActivity` that the browser hands the intent to, and it keeps the
-/// **fragment** — which for the implicit grant is where the entire answer is.
-/// A deep link into a `singleTop` MainActivity has to survive the activity
-/// already being alive, the browser deciding to keep the tab, and Android 12's
-/// intent rules, for no gain.
-class WebAuthOAuthAuthorizer implements OAuthAuthorizer {
-  const WebAuthOAuthAuthorizer();
-
-  @override
-  Future<String?> authorize({
-    required String url,
-    required String callbackUrlScheme,
-  }) async {
-    try {
-      return await FlutterWebAuth2.authenticate(
-        url: url,
-        callbackUrlScheme: callbackUrlScheme,
-      );
-    } on Object {
-      // The plugin throws for a cancel, for a missing browser, and for a
-      // second flow started while one is open. None of those is worth a
-      // different sentence than 「連携をやめました」.
-      return null;
-    }
-  }
-}
-
-final oauthAuthorizerProvider = Provider<OAuthAuthorizer>(
-  (ref) => const WebAuthOAuthAuthorizer(),
-);
 
 /// How long `/users/@me` is allowed to take. The user is watching a spinner
 /// on a button they just pressed.
 const discordIdentityTimeout = Duration(seconds: 10);
 
+/// The sentence shown while the app is asking something to open Discord.
+const kDiscordOpeningMessage = 'Discord を開いています…';
+
+/// 承認待ち, in the Discord app.
+const kDiscordWaitingInAppMessage = '承認を待っています…（Discord アプリで「認証」を押してください）';
+
+/// 承認待ち, in a browser.
+const kDiscordWaitingInBrowserMessage = '承認を待っています…（ブラウザで許可してください）';
+
+/// What a five-minute silence means, said as the thing to go and check.
+///
+/// The redirect URI is the one setting that fails **before the consent screen**
+/// and therefore produces exactly this symptom: Discord shows
+/// 「無効な OAuth2 リダイレクト URI」 in the browser, never redirects, and the app
+/// waits forever. Naming it here is the difference between a user who can fix
+/// their own Portal and one who files 「連携できない」.
+const kDiscordTimedOutMessage =
+    '承認が返ってきませんでした。Discord の画面に「無効な OAuth2 リダイレクト URI」と出ていた場合は、'
+    'Developer Portal の OAuth2 → Redirects に wakeorpay://discord/callback を'
+    '1 文字違わず登録してください。';
+
 /// Why 「Discord で連携」 ended the way it did.
 enum DiscordLinkStatus {
   ok,
 
-  /// The user closed the browser or pressed キャンセル on Discord's page.
+  /// Neither the Discord app nor a browser could open the authorize URL.
+  /// Distinct from a cancel: there is nothing to retry until something is
+  /// installed.
+  noApp,
+
+  /// The user pressed 「やめる」 on the waiting row.
   cancelled,
+
+  /// Five minutes with no callback. Most often the redirect URI.
+  timedOut,
 
   /// The `state` did not come back intact. Loud on purpose — this is the one
   /// failure that means something was wrong rather than merely unlucky.
   stateMismatch,
 
-  /// Discord answered the authorize step with `error=…`.
+  /// Discord answered the authorize step with `error=…` — 「キャンセル」 on the
+  /// consent screen, most often.
   denied,
 
   /// A token came back but `/users/@me` did not answer with a user.
@@ -94,15 +73,15 @@ class DiscordLinkResult {
 
   bool get ok => status == DiscordLinkStatus.ok && identity != null;
 
-  /// What the SnackBar says. Japanese, and specific enough to act on: 「連携を
-  /// やめました」 needs no action, 「確認に失敗しました」 means try again from the app
-  /// rather than from a link somebody sent.
+  /// What the status area says. Japanese, and specific enough to act on.
   String get label => switch (status) {
     DiscordLinkStatus.ok => '連携しました',
+    DiscordLinkStatus.noApp => 'Discord アプリもブラウザも見つかりませんでした',
     DiscordLinkStatus.cancelled => '連携をやめました',
+    DiscordLinkStatus.timedOut => kDiscordTimedOutMessage,
     DiscordLinkStatus.stateMismatch => '確認に失敗しました。アプリからもう一度お試しください',
     DiscordLinkStatus.denied => 'Discord で許可されませんでした',
-    DiscordLinkStatus.identityFailed => 'ユーザー情報を取得できませんでした',
+    DiscordLinkStatus.identityFailed => 'ユーザー情報を取得できませんでした（通信エラー）',
   };
 }
 
@@ -112,42 +91,90 @@ class DiscordLinkResult {
 /// because `identify` is all it asks for and no server is involved: the token
 /// arrives in the fragment, is spent once on `/users/@me`, and is dropped on
 /// the floor. It is **never persisted** — not in prefs, not in the secure
-/// store, not in a field on this object. What the app keeps is the id and the
-/// name, which are the two things the oversleep post needs, and neither of
-/// them can be used to act as the user.
+/// store, not in the 連携ログ, not in a field on this object. What the app
+/// keeps is the id and the name.
+///
+/// The two halves of the flow are separate collaborators on purpose. The
+/// [DiscordAuthLauncher] only opens a URL — it never learns the answer — and
+/// the [DiscordCallbackRouter] only delivers a URI — it never opens anything.
+/// That split is the fix for the bug this class used to have: the old
+/// authorizer owned both, and its callback arrived in a browser-owned task
+/// that left the app behind the Custom Tab.
 class DiscordOAuthService {
-  DiscordOAuthService(this._authorizer, this._client);
+  DiscordOAuthService(
+    this._launcher,
+    this._router,
+    this._client, {
+    this.reporter = DiscordFlowReporter.silent,
+  });
 
-  final OAuthAuthorizer _authorizer;
+  final DiscordAuthLauncher _launcher;
+  final DiscordCallbackRouter _router;
   final http.Client _client;
+  final DiscordFlowReporter reporter;
 
-  /// The state of the flow currently in the air, exposed for the emulator
-  /// check only — it is what an `adb am start` has to echo back.
-  @visibleForTesting
-  String? lastState;
+  /// The state of the flow currently in the air, for the emulator check —
+  /// it is what an `adb am start` has to echo back.
+  String? get pendingState => _router.pendingState;
 
-  Future<DiscordLinkResult> link() async {
+  /// Set by [cancel] so the null coming back from the router can be told apart
+  /// from the one the timer produces. Both look identical at the await.
+  bool _cancelRequested = false;
+
+  /// Abandons the flow in the air. The awaiting [link] returns
+  /// [DiscordLinkStatus.cancelled].
+  void cancel() {
+    _cancelRequested = true;
+    _router.cancelPending();
+  }
+
+  Future<DiscordLinkResult> link({Duration timeout = discordFlowTimeout}) async {
+    _cancelRequested = false;
     final state = randomOAuthState();
-    lastState = state;
-    final callback = await _authorizer.authorize(
-      url: buildDiscordAuthorizeUrl(
-        responseType: 'token',
-        scopes: kDiscordIdentifyScopes,
-        state: state,
-        // Always show the consent screen: without it a user who already
-        // authorised once is bounced straight back, which looks like nothing
-        // happened when they pressed the button to *change* accounts.
-        prompt: 'consent',
-      ),
-      callbackUrlScheme: kDiscordCallbackScheme,
+    final url = buildDiscordAuthorizeUrl(
+      responseType: 'token',
+      scopes: kDiscordIdentifyScopes,
+      state: state,
+      // Always show the consent screen: without it a user who already
+      // authorised once is bounced straight back, which looks like nothing
+      // happened when they pressed the button to *change* accounts.
+      prompt: 'consent',
     );
+
+    reporter.phase(DiscordFlowPhase.opening, kDiscordOpeningMessage);
+    // Registered **before** the launch: the Discord app can answer faster than
+    // `launchUrl` returns, and a listener attached afterwards would miss it.
+    final pending = _router.awaitCallback(state, timeout: timeout);
+
+    final channel = await _launcher.open(url);
+    if (channel == DiscordAuthChannel.none) {
+      _router.cancelPending();
+      return _fail(DiscordLinkStatus.noApp);
+    }
+    reporter.phase(
+      DiscordFlowPhase.waiting,
+      channel == DiscordAuthChannel.discordApp
+          ? kDiscordWaitingInAppMessage
+          : kDiscordWaitingInBrowserMessage,
+    );
+
+    final callback = await pending;
     if (callback == null) {
-      return const DiscordLinkResult(DiscordLinkStatus.cancelled);
+      // Null covers three things that look identical at this await: the timer
+      // fired, 「やめる」 was pressed, or a newer flow displaced this one. Only
+      // the first deserves the redirect-URI explanation, so the cancel is
+      // flagged rather than guessed at.
+      return _fail(
+        _cancelRequested
+            ? DiscordLinkStatus.cancelled
+            : DiscordLinkStatus.timedOut,
+      );
     }
 
+    reporter.phase(DiscordFlowPhase.working, 'Discord に問い合わせています…');
     final parsed = parseDiscordCallback(callback, expectedState: state);
     if (!parsed.ok) {
-      return DiscordLinkResult(switch (parsed.error) {
+      return _fail(switch (parsed.error) {
         DiscordCallbackError.stateMismatch => DiscordLinkStatus.stateMismatch,
         DiscordCallbackError.denied => DiscordLinkStatus.denied,
         _ => DiscordLinkStatus.identityFailed,
@@ -155,13 +182,24 @@ class DiscordOAuthService {
     }
     final token = parsed.accessToken;
     if (token == null || token.isEmpty) {
-      return const DiscordLinkResult(DiscordLinkStatus.identityFailed);
+      return _fail(DiscordLinkStatus.identityFailed);
     }
 
     final identity = await fetchIdentity(token);
-    return identity == null
-        ? const DiscordLinkResult(DiscordLinkStatus.identityFailed)
-        : DiscordLinkResult(DiscordLinkStatus.ok, identity);
+    if (identity == null) return _fail(DiscordLinkStatus.identityFailed);
+
+    final result = DiscordLinkResult(DiscordLinkStatus.ok, identity);
+    reporter.phase(
+      DiscordFlowPhase.done,
+      '連携済み：@${identity.displayName}',
+    );
+    return result;
+  }
+
+  DiscordLinkResult _fail(DiscordLinkStatus status) {
+    final result = DiscordLinkResult(status);
+    reporter.phase(DiscordFlowPhase.failed, result.label);
+    return result;
   }
 
   /// `GET /users/@me` with the bearer token. Null for every failure.
@@ -186,8 +224,10 @@ class DiscordOAuthService {
 
 final discordOAuthServiceProvider = Provider(
   (ref) => DiscordOAuthService(
-    ref.watch(oauthAuthorizerProvider),
+    ref.watch(discordAuthLauncherProvider),
+    ref.watch(discordCallbackRouterProvider),
     ref.watch(httpClientProvider),
+    reporter: ref.watch(discordFlowReporterProvider),
   ),
 );
 
@@ -195,12 +235,13 @@ final discordOAuthServiceProvider = Provider(
 enum DiscordChannelLinkStatus {
   ok,
 
-  /// No 連携サーバー is configured. Not a failure so much as a step not yet
-  /// taken, and it gets its own sentence because the fix is in a README and
-  /// not in this app.
+  /// This build has no 連携サーバー baked in. Not a failure so much as a step
+  /// not taken, and the fix is a rebuild rather than anything on screen.
   noEndpoint,
 
+  noApp,
   cancelled,
+  timedOut,
   stateMismatch,
   denied,
 
@@ -221,12 +262,16 @@ class DiscordChannelLinkResult {
 
   String get label => switch (status) {
     DiscordChannelLinkStatus.ok => '共有先を追加しました',
-    DiscordChannelLinkStatus.noEndpoint => '連携サーバーURL が未設定です',
+    DiscordChannelLinkStatus.noEndpoint =>
+      '連携サーバーが設定されていないビルドです（worker/README.md の手順でデプロイし、'
+          'kDiscordExchangeEndpoint に URL を入れてビルドし直してください）',
+    DiscordChannelLinkStatus.noApp => 'Discord アプリもブラウザも見つかりませんでした',
     DiscordChannelLinkStatus.cancelled => '連携をやめました',
+    DiscordChannelLinkStatus.timedOut => kDiscordTimedOutMessage,
     DiscordChannelLinkStatus.stateMismatch =>
       '確認に失敗しました。アプリからもう一度お試しください',
     DiscordChannelLinkStatus.denied => 'Discord で許可されませんでした',
-    DiscordChannelLinkStatus.exchangeFailed => 'チャンネルを連携できませんでした',
+    DiscordChannelLinkStatus.exchangeFailed => 'チャンネルを連携できませんでした（連携サーバーの応答なし）',
   };
 }
 
@@ -234,44 +279,84 @@ class DiscordChannelLinkResult {
 ///
 /// The **code** grant, not the implicit one, because `webhook.incoming` only
 /// hands the webhook over with the token — and that exchange needs the client
-/// secret, which is why [endpoint] (the Worker) has to exist at all. The app
-/// never sees a token: what comes back over [endpoint] is a webhook URL and a
-/// couple of names.
+/// secret, which is why [kDiscordExchangeEndpoint] (the Worker) has to exist
+/// at all. The app never sees a token: what comes back over the Worker is a
+/// webhook URL and a couple of names.
+///
+/// Opening goes through the same [DiscordAuthLauncher], so the server and
+/// channel picker shows up **inside the Discord app** when it is installed —
+/// which is the only place the picker is pleasant to use, and the only place
+/// the user is already signed in.
 class DiscordChannelLinker {
-  const DiscordChannelLinker(this._authorizer, this._exchange);
+  DiscordChannelLinker(
+    this._launcher,
+    this._router,
+    this._exchange, {
+    this.reporter = DiscordFlowReporter.silent,
+  });
 
-  final OAuthAuthorizer _authorizer;
+  final DiscordAuthLauncher _launcher;
+  final DiscordCallbackRouter _router;
   final DiscordExchangeClient _exchange;
+  final DiscordFlowReporter reporter;
 
-  Future<DiscordChannelLinkResult> link({required String endpoint}) async {
+  bool _cancelRequested = false;
+
+  String? get pendingState => _router.pendingState;
+
+  void cancel() {
+    _cancelRequested = true;
+    _router.cancelPending();
+  }
+
+  Future<DiscordChannelLinkResult> link({
+    String endpoint = kDiscordExchangeEndpoint,
+    Duration timeout = discordFlowTimeout,
+  }) async {
+    _cancelRequested = false;
     if (!isDiscordExchangeEndpoint(endpoint)) {
-      return const DiscordChannelLinkResult(
-        DiscordChannelLinkStatus.noEndpoint,
-      );
+      return _fail(DiscordChannelLinkStatus.noEndpoint);
     }
 
     final state = randomOAuthState();
-    final callback = await _authorizer.authorize(
-      url: buildDiscordAuthorizeUrl(
-        responseType: 'code',
-        // `webhook.incoming` is what makes Discord show the channel picker;
-        // `identify` is only so the Worker can name the server it landed in.
-        scopes: kDiscordWebhookScopes,
-        state: state,
-        // No prompt=consent here: picking a channel *is* the consent screen,
-        // and Discord shows it every time regardless.
-      ),
-      callbackUrlScheme: kDiscordCallbackScheme,
+    final url = buildDiscordAuthorizeUrl(
+      responseType: 'code',
+      // `webhook.incoming` is what makes Discord show the channel picker;
+      // `identify` is only so the Worker can name the server it landed in.
+      scopes: kDiscordWebhookScopes,
+      state: state,
+      // No prompt=consent here: picking a channel *is* the consent screen,
+      // and Discord shows it every time regardless.
     );
+
+    reporter.phase(DiscordFlowPhase.opening, kDiscordOpeningMessage);
+    final pending = _router.awaitCallback(state, timeout: timeout);
+
+    final channel = await _launcher.open(url);
+    if (channel == DiscordAuthChannel.none) {
+      _router.cancelPending();
+      return _fail(DiscordChannelLinkStatus.noApp);
+    }
+    reporter.phase(
+      DiscordFlowPhase.waiting,
+      channel == DiscordAuthChannel.discordApp
+          ? '承認を待っています…（Discord アプリでサーバーとチャンネルを選んでください）'
+          : '承認を待っています…（ブラウザでサーバーとチャンネルを選んでください）',
+    );
+
+    final callback = await pending;
     if (callback == null) {
-      return const DiscordChannelLinkResult(
-        DiscordChannelLinkStatus.cancelled,
+      return _fail(
+        _cancelRequested
+            ? DiscordChannelLinkStatus.cancelled
+            : DiscordChannelLinkStatus.timedOut,
       );
     }
 
+    reporter.phase(DiscordFlowPhase.working, '連携サーバーに問い合わせています…');
     final parsed = parseDiscordCallback(callback, expectedState: state);
     if (!parsed.ok) {
-      return DiscordChannelLinkResult(switch (parsed.error) {
+      return _fail(switch (parsed.error) {
         DiscordCallbackError.stateMismatch =>
           DiscordChannelLinkStatus.stateMismatch,
         DiscordCallbackError.denied => DiscordChannelLinkStatus.denied,
@@ -280,9 +365,7 @@ class DiscordChannelLinker {
     }
     final code = parsed.code;
     if (code == null || code.isEmpty) {
-      return const DiscordChannelLinkResult(
-        DiscordChannelLinkStatus.exchangeFailed,
-      );
+      return _fail(DiscordChannelLinkStatus.exchangeFailed);
     }
 
     final grant = await _exchange.exchange(
@@ -293,17 +376,24 @@ class DiscordChannelLinker {
       // then spent and unusable.
       redirectUri: kDiscordRedirectUri,
     );
-    return grant == null
-        ? const DiscordChannelLinkResult(
-            DiscordChannelLinkStatus.exchangeFailed,
-          )
-        : DiscordChannelLinkResult(DiscordChannelLinkStatus.ok, grant);
+    if (grant == null) return _fail(DiscordChannelLinkStatus.exchangeFailed);
+
+    reporter.phase(DiscordFlowPhase.done, '共有先を追加しました：${grant.displayName}');
+    return DiscordChannelLinkResult(DiscordChannelLinkStatus.ok, grant);
+  }
+
+  DiscordChannelLinkResult _fail(DiscordChannelLinkStatus status) {
+    final result = DiscordChannelLinkResult(status);
+    reporter.phase(DiscordFlowPhase.failed, result.label);
+    return result;
   }
 }
 
 final discordChannelLinkerProvider = Provider(
   (ref) => DiscordChannelLinker(
-    ref.watch(oauthAuthorizerProvider),
+    ref.watch(discordAuthLauncherProvider),
+    ref.watch(discordCallbackRouterProvider),
     ref.watch(discordExchangeClientProvider),
+    reporter: ref.watch(discordFlowReporterProvider),
   ),
 );

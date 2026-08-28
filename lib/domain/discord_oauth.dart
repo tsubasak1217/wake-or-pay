@@ -17,8 +17,11 @@ const kDiscordClientId = '1542696296337506415';
 /// the authorize page refuses before the user ever sees a consent screen.
 const kDiscordRedirectUri = 'wakeorpay://discord/callback';
 
-/// The scheme half of [kDiscordRedirectUri]. The Android manifest claims this
-/// scheme, and `flutter_web_auth_2` is told to wait for it.
+/// The scheme half of [kDiscordRedirectUri].
+///
+/// `MainActivity` claims it in the Android manifest — **and nothing else in
+/// the app does**, which is the whole point: one component, in the app's own
+/// task, so the callback intent brings the app itself to the front.
 const kDiscordCallbackScheme = 'wakeorpay';
 
 /// `identify` is the whole of what 「Discord で連携」 asks for: it is exactly

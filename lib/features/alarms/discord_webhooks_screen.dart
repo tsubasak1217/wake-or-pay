@@ -5,9 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
 import '../../domain/models.dart';
-import '../../services/discord_exchange.dart';
+import '../../services/discord_link_log.dart';
 import '../../services/discord_oauth.dart';
 import '../../services/discord_sender.dart';
+import '../profile/discord_flow_status_view.dart';
 
 /// Discord 共有先設定, per spec 11.6.
 ///
@@ -41,13 +42,24 @@ class _DiscordWebhooksSubScreenState
     extends ConsumerState<DiscordWebhooksSubScreen> {
   late final Set<String> _selected = {...widget.initial};
 
-  /// True while the browser is up. Two flows in the air would share one
-  /// callback scheme, and the second would be answered by the first's redirect.
-  bool _linking = false;
+  @override
+  void initState() {
+    super.initState();
+    // The status area is shared with the profile row, so a finished flow from
+    // over there must not greet this screen as if it were its own. A flow
+    // still in the air is left alone — that one really is still happening.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!ref.read(discordFlowStatusProvider).busy) {
+        ref.read(discordFlowStatusProvider.notifier).reset();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final webhooks = ref.watch(discordWebhooksProvider);
+    final status = ref.watch(discordFlowStatusProvider);
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -69,7 +81,7 @@ class _DiscordWebhooksSubScreenState
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                       child: Text(
                         'タップでこのアラームの共有先を選びます。'
-                        '長押しすると テスト送信 / 編集 / 削除 ができます。',
+                        '長押しすると テスト送信 / 削除 ができます。',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
@@ -107,54 +119,52 @@ class _DiscordWebhooksSubScreenState
                   ],
                 ),
         ),
-        // The ＋ is gone. It was one button behind which the only way to add
-        // anything was a URL the user had to go and make in Discord's settings
-        // first — five steps in another app, and the step most people never
-        // finish. The two ways in are now both named, and the one that does
-        // the work for you is first.
+        // 「Webhook URL を手動で登録」 is gone (段階F). It asked the user to open
+        // Discord's channel settings, make a webhook, copy a URL that is a
+        // bearer credential in its own right, and paste it back — five steps
+        // in another app, and the step most people never finished. There is
+        // now one way in, and Discord does the work.
         bottomNavigationBar: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FilledButton.icon(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Above the button, not below: this is what the user watches
+              // after they press it, and after Discord hands them back.
+              DiscordFlowStatusView(
+                onCancel: () =>
+                    ref.read(discordChannelLinkerProvider).cancel(),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: FilledButton.icon(
                   key: const ValueKey('webhookLinkChannel'),
-                  onPressed: _linking
+                  onPressed: status.busy
                       ? null
-                      : () => unawaited(_linkChannel(context, ref)),
+                      : () => unawaited(_linkChannel(ref)),
                   icon: const Icon(Icons.add_link),
                   label: const Text('チャンネルを連携（Discord で選ぶ）'),
                 ),
-                TextButton(
-                  // Same key as the old ＋: this is still 「the other way to
-                  // add one」, and the dialog behind it has not changed.
-                  key: const ValueKey('webhookAdd'),
-                  onPressed: () => _openForm(context, ref),
-                  child: const Text('Webhook URL を手動で登録'),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// 「チャンネルを連携」: Discord shows the channel picker and the 連携サーバー
-  /// turns the code it hands back into a webhook.
+  /// 「チャンネルを連携」: Discord shows the server and channel picker — inside
+  /// the Discord app when it is installed — and the 連携サーバー turns the code
+  /// it hands back into a webhook.
   ///
   /// Registers the 共有先 **and ticks it on for this alarm**. Somebody who just
   /// picked a channel meant to post there; making them tap the row afterwards
   /// would be asking the same question twice.
-  Future<void> _linkChannel(BuildContext context, WidgetRef ref) async {
-    if (_linking) return;
-    setState(() => _linking = true);
-    final messenger = ScaffoldMessenger.of(context);
-    final endpoint = ref.read(discordExchangeEndpointProvider);
-    final result = await ref
-        .read(discordChannelLinkerProvider)
-        .link(endpoint: endpoint);
+  ///
+  /// Nothing is reported by SnackBar any more: this flow spends minutes in
+  /// another app, and a SnackBar fired on the way back is a message shown to
+  /// an empty room. [DiscordFlowStatusView] holds the outcome instead.
+  Future<void> _linkChannel(WidgetRef ref) async {
+    final result = await ref.read(discordChannelLinkerProvider).link();
     final grant = result.grant;
     if (result.ok && grant != null) {
       final webhook = DiscordWebhook(
@@ -166,24 +176,6 @@ class _DiscordWebhooksSubScreenState
       await ref.read(discordWebhookRepositoryProvider).save(webhook);
       if (mounted) setState(() => _selected.add(webhook.id));
     }
-    if (mounted) setState(() => _linking = false);
-
-    if (result.status == DiscordChannelLinkStatus.noEndpoint) {
-      // The fix is not in this screen and not even in this app, so pointing
-      // at it is the whole message.
-      messenger.showSnackBar(
-        const SnackBar(
-          duration: Duration(seconds: 8),
-          content: Text(
-            '先に連携サーバー（Cloudflare Worker）を立てて、'
-            'プロフィールの「連携サーバーURL」にその URL を入れてください。'
-            '手順は worker/README.md にあります。',
-          ),
-        ),
-      );
-      return;
-    }
-    messenger.showSnackBar(SnackBar(content: Text(result.label)));
   }
 }
 
@@ -220,14 +212,11 @@ void _showActions(BuildContext context, WidgetRef ref, DiscordWebhook webhook) =
                 unawaited(_testSend(context, ref, webhook));
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('編集'),
-              onTap: () {
-                Navigator.of(sheet).pop();
-                _openForm(context, ref, initial: webhook);
-              },
-            ),
+            // 編集 is gone with the form behind it: the only fields it had
+            // were the hand-typed Webhook URL and a hand-typed display name,
+            // and both now come from Discord itself. A wrong 共有先 is deleted
+            // and linked again, which is two taps and cannot end up with a URL
+            // pointing somewhere nobody meant.
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('削除'),
@@ -295,161 +284,5 @@ Future<void> _confirmDelete(
   );
   if (yes == true) {
     await ref.read(discordWebhookRepositoryProvider).delete(webhook.id);
-  }
-}
-
-Future<void> _openForm(
-  BuildContext context,
-  WidgetRef ref, {
-  DiscordWebhook? initial,
-}) => Navigator.of(context).push<void>(
-  MaterialPageRoute(builder: (_) => DiscordWebhookForm(initial: initial)),
-);
-
-/// The one form behind both ＋ and 編集.
-///
-/// The URL is checked before anything is saved: a URL that is not a Discord
-/// webhook could only ever fail silently at 6am, which is the one time this
-/// app must not fail silently.
-///
-/// The display name is prefilled by GET-ing the webhook — the API answers with
-/// the *webhook's* own name — and **every failure is silent**. Offline, a
-/// revoked webhook, a captive portal serving HTML: none of them is a reason to
-/// refuse a registration that works perfectly well typed by hand.
-class DiscordWebhookForm extends ConsumerStatefulWidget {
-  const DiscordWebhookForm({super.key, this.initial});
-
-  final DiscordWebhook? initial;
-
-  @override
-  ConsumerState<DiscordWebhookForm> createState() => _DiscordWebhookFormState();
-}
-
-class _DiscordWebhookFormState extends ConsumerState<DiscordWebhookForm> {
-  late final _url = TextEditingController(text: widget.initial?.url ?? '');
-  late final _name = TextEditingController(
-    text: widget.initial?.displayName ?? '',
-  );
-
-  String? _urlError;
-  bool _looking = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _url.addListener(_onUrlChanged);
-  }
-
-  @override
-  void dispose() {
-    _url.dispose();
-    _name.dispose();
-    super.dispose();
-  }
-
-  /// The last URL a lookup was started for, so the same paste does not fire a
-  /// second request every time the field rebuilds.
-  String _lookedUp = '';
-
-  void _onUrlChanged() {
-    final url = normalizeDiscordWebhookUrl(_url.text);
-    if (url == _lookedUp || !isDiscordWebhookUrl(url)) return;
-    _lookedUp = url;
-    unawaited(_lookUpName(url));
-  }
-
-  /// Fills 表示名 in, but **only while it is blank**: whatever the user has
-  /// typed is theirs, and a lookup arriving a second later must never take it
-  /// away from under the cursor.
-  Future<void> _lookUpName(String url) async {
-    setState(() => _looking = true);
-    final name = await ref.read(discordSenderProvider).fetchWebhookName(url);
-    if (!mounted) return;
-    setState(() {
-      _looking = false;
-      if (name != null && _name.text.trim().isEmpty) _name.text = name;
-    });
-  }
-
-  Future<void> _save() async {
-    final url = normalizeDiscordWebhookUrl(_url.text);
-    if (!isDiscordWebhookUrl(url)) {
-      setState(
-        () => _urlError =
-            'Discord の Webhook URL を入力してください。'
-            '（https://discord.com/api/webhooks/… の形式です）',
-      );
-      return;
-    }
-    final typed = _name.text.trim();
-    final existing = widget.initial;
-    final webhook = DiscordWebhook(
-      id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      url: url,
-      // A blank name would leave an unpickable row in the list, so it falls
-      // back to something the user can at least recognise as theirs.
-      displayName: typed.isEmpty ? 'Discord 共有先' : typed,
-      createdAt: existing?.createdAt ?? DateTime.now(),
-    );
-    await ref.read(discordWebhookRepositoryProvider).save(webhook);
-    if (mounted) Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.initial == null ? '共有先を追加' : '共有先を編集')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-        children: [
-          TextField(
-            key: const ValueKey('webhookUrlField'),
-            controller: _url,
-            keyboardType: TextInputType.url,
-            decoration: InputDecoration(
-              labelText: 'Webhook URL',
-              helperText: 'Discord のチャンネル設定 →「連携サービス」→「ウェブフック」で作れます',
-              errorText: _urlError,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            key: const ValueKey('webhookNameField'),
-            controller: _name,
-            decoration: InputDecoration(
-              labelText: '表示名',
-              helperText: '一覧に出る名前です。例：みんなのサーバー/#一般',
-              suffixIcon: _looking
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : null,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Discord は Webhook からサーバー名やチャンネル名を教えてくれません'
-            '（返ってくるのは Webhook 自身の名前と ID だけです）。'
-            'そのため表示名は手入力です。URL を入れると Webhook 名を初期値として入れますが、'
-            '取得できなくても登録はできます。',
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        key: const ValueKey('webhookSave'),
-        onPressed: _save,
-        icon: const Icon(Icons.check),
-        label: const Text('保存'),
-      ),
-    );
   }
 }

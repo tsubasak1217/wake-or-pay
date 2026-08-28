@@ -4,23 +4,32 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
-import '../data/providers.dart';
 import 'discord_sender.dart';
 
-/// The deployed 連携サーバー, baked in at build time.
+/// The deployed 連携サーバー — **the single place this app learns about it.**
 ///
-/// **Empty by default, and that is on purpose.** Every install of this app
-/// would otherwise point at one person's Cloudflare account, whose client
-/// secret would be spent on strangers' authorizations. Whoever builds the app
-/// puts their own Worker here, or the user pastes theirs into the
-/// 「連携サーバーURL」 row — see [discordExchangeEndpointProvider].
+/// A compile-time constant and nothing else. There used to be a
+/// 「連携サーバーURL」 row the user could paste into, and it was the wrong shape
+/// for the job twice over: it asked a user to know a deployment detail, and it
+/// made a URL that decides where an authorization code is sent into something
+/// anybody could change from inside the app. The person who deploys the Worker
+/// is the person who builds the APK, so this belongs in the build.
 ///
-/// The base URL only. `/discord/exchange` is appended by
-/// [buildDiscordExchangeUrl].
-const kDiscordExchangeEndpoint = '';
-
-/// Where the runtime override lives. One key, one string.
-const kDiscordExchangeEndpointPrefsKey = 'discord.exchangeEndpoint';
+/// This value is **the Worker belonging to whoever built this APK**, and it is
+/// the one thing in this file a fork has to change. Pointing a build at
+/// somebody else's Worker spends *their* client secret on *your* users'
+/// authorizations — see `worker/README.md`, which is five commands long.
+///
+/// Leaving it empty is a legitimate build: 「Discord で連携」 needs no server at
+/// all and keeps working, and only 「チャンネルを連携」 refuses, saying so by name
+/// rather than failing quietly.
+///
+/// **The base URL only.** `/discord/exchange` is appended by
+/// [buildDiscordExchangeUrl] — which is forgiving about a trailing slash and
+/// about somebody pasting the full path, because both are what actually gets
+/// copied out of a terminal.
+const kDiscordExchangeEndpoint =
+    'https://wake-or-pay-discord.wakeorpay.workers.dev';
 
 /// The path the Worker serves. Kept beside the URL builder so the app and
 /// `worker/src/index.ts` cannot drift apart silently.
@@ -191,37 +200,3 @@ class DiscordExchangeClient {
 final discordExchangeClientProvider = Provider(
   (ref) => DiscordExchangeClient(ref.watch(httpClientProvider)),
 );
-
-/// The endpoint actually in force: what the user pasted, or the build-time
-/// constant when they have pasted nothing.
-final discordExchangeEndpointProvider =
-    NotifierProvider<DiscordExchangeEndpointController, String>(
-      DiscordExchangeEndpointController.new,
-    );
-
-class DiscordExchangeEndpointController extends Notifier<String> {
-  @override
-  String build() {
-    final stored = ref
-        .watch(sharedPreferencesProvider)
-        .getString(kDiscordExchangeEndpointPrefsKey);
-    return (stored == null || stored.trim().isEmpty)
-        ? kDiscordExchangeEndpoint
-        : stored.trim();
-  }
-
-  /// Blank clears the override, which puts [kDiscordExchangeEndpoint] back —
-  /// so the row can always be emptied to get to the default, rather than
-  /// needing a separate 「戻す」.
-  Future<void> set(String endpoint) async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final trimmed = endpoint.trim();
-    if (trimmed.isEmpty) {
-      await prefs.remove(kDiscordExchangeEndpointPrefsKey);
-      state = kDiscordExchangeEndpoint;
-      return;
-    }
-    await prefs.setString(kDiscordExchangeEndpointPrefsKey, trimmed);
-    state = trimmed;
-  }
-}

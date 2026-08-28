@@ -40,10 +40,16 @@
         android:label="覚悟の目覚まし"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- launchMode は singleTask（段階F）。singleTop から変えたのは
+             Discord のコールバックのため：`wakeorpay://` の VIEW intent が
+             **この Activity 自身**に来て、既にあるインスタンスが載っている
+             タスクごと前面に出る必要がある。singleTop だと、ブラウザの
+             タスクから来た intent が MainActivity を**新しく**作り、
+             Custom Tab の上に別のアプリの画面が生えることになる。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -57,24 +63,39 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Flutter 側のディープリンクは **切る**（段階F）。
+                 これが既定の true のままだと、下の intent-filter を足した
+                 瞬間にエンジンが `wakeorpay://discord/callback#access_token=…`
+                 を **go_router のパス**として渡してしまい、アプリ全体が
+                 「Page Not Found / no routes for location: wakeorpay://…」の
+                 赤い画面に差し替わる（エミュレータで実際にそうなった）。
+                 コールバックが要るのは app_links だけで、あちらは Intent を
+                 直接読むのでこれを false にしても何も失わない。
+                 このアプリはルーティングにディープリンクを使っていない。 -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
-        <!-- Discord OAuth2 の戻り先（段階E）。ブラウザが
-             `wakeorpay://discord/callback#access_token=…` を投げてくる先で、
-             flutter_web_auth_2 がこの Activity で受け取り、待っている
-             authenticate() にフラグメントごと渡す。
-             **本体のマニフェストに置く**：INTERNET のときと同じで、debug に
-             しか無ければリリース版だけが壊れる。
-             exported="true" は必須（ブラウザという別プロセスから来るため）。
-             掴むのは wakeorpay スキームだけで、https は掴まない。 -->
-        <activity
-            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
-            android:exported="true"
-            android:taskAffinity="">
-            <intent-filter android:label="flutter_web_auth_2">
+
+            <!-- Discord OAuth2 の戻り先（段階F）。Discord アプリまたは
+                 ブラウザが `wakeorpay://discord/callback#access_token=…` を
+                 投げてくる先。app_links がこの intent を Dart 側に流す。
+
+                 **前は flutter_web_auth_2 の CallbackActivity が受けていて、
+                 それがユーザーの言う「承認したのに何も起きない」の正体だった。**
+                 あの Activity は `taskAffinity=""` で自前のタスクに落ちるので、
+                 Dart の future は解決するのに、画面はブラウザの Custom Tab の
+                 まま。アプリは後ろで「連携済み」になっているが、誰にも見えない。
+                 ここに置けば、intent がアプリのタスクそのものを前に出す。
+
+                 exported="true" は必須（別プロセスから来るため）。
+                 掴むのは wakeorpay スキームだけで、https は掴まない。
+                 autoVerify も不要：カスタムスキームに App Links の検証は無い。
+                 このスキームを扱うコンポーネントは、アプリ全体でここ 1 つ。 -->
+            <intent-filter android:label="Discord 連携">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -128,12 +149,26 @@
             <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
         <!-- 同じ理由（Android 11+ のパッケージ可視性）で、Discord の認可ページを
-             開く先が見えるようにしておく。上が Custom Tab を出せるブラウザ、
-             下が普通のブラウザ。どちらも見えないと 0 件になり、
-             flutter_web_auth_2 は何も開けないまま失敗する。 -->
+             開く先が見えるようにしておく。ここが 0 件だと url_launcher は
+             「開ける先が無い」と答え、連携はボタンを押した瞬間に終わる。
+
+             1 つめ：**Discord アプリ**。`discord.com` の https リンクを
+             掴むアプリが見える。`LaunchMode.externalNonBrowserApplication`
+             （FLAG_ACTIVITY_REQUIRE_NON_BROWSER）はブラウザを除いて解決するので、
+             これが見えていれば認可は Discord アプリの中で終わる——
+             既にログイン済みなので「認証」を押すだけになる。 -->
         <intent>
-            <action android:name="android.support.customtabs.action.CustomTabsService"/>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https" android:host="discord.com"/>
         </intent>
+        <!-- 2 つめ：Discord の独自スキーム。アプリが入っているかを
+             もう一方から見る保険で、片方だけでは隠れる端末があるため。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="discord"/>
+        </intent>
+        <!-- 3 つめ：フォールバックのブラウザ。Discord アプリが無いときは
+             こちらに落ちる。 -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <category android:name="android.intent.category.BROWSABLE"/>

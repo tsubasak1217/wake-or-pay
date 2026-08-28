@@ -28,11 +28,20 @@ dependencies:
   flutter_tts: ^4.2.5
   record: ^7.1.1
   http: ^1.2.0
-  # Discord OAuth2（段階E）。ブラウザを開いて wakeorpay:// で戻ってくるところ
-  # だけを担う。url_launcher + deep link ではなくこちらにしたのは、暗黙フロー
-  # の答えが **フラグメント**（#access_token=…）にあるため：このプラグインは
-  # 専用の CallbackActivity で intent を受け取り、フラグメントごと返す。
-  flutter_web_auth_2: ^5.1.0
+  # Discord OAuth2（段階F）。開く側と戻る側の 2 つに分かれている。
+  #
+  # **開く側は url_launcher。** `LaunchMode.externalNonBrowserApplication` は
+  # ブラウザ以外にしか渡らないので、Discord アプリが入っていればそこに解決し、
+  # 入っていなければ false／例外になる。そこでブラウザに落とす。
+  #
+  # **戻る側は app_links。** `wakeorpay://` の intent を MainActivity 自身が
+  # 受け取る（`launchMode=singleTask` ＋ scheme の intent-filter）ので、
+  # コールバックが来た瞬間にアプリのタスクが前に出る。
+  # flutter_web_auth_2 をやめた理由がまさにここ：あちらの CallbackActivity は
+  # 別タスクに落ちるため、Dart の future は解決するのに画面は Custom Tab の
+  # まま——「承認したのに何も起きない」の正体だった（README の「根本原因」）。
+  url_launcher: ^6.3.1
+  app_links: ^6.4.0
   # 段階D。SMTP 送信と、そのアプリパスワードの保管先。
   mailer: ^7.2.0
   flutter_secure_storage: ^11.0.0

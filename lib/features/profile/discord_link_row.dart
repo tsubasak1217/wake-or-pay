@@ -2,15 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/profile_controller.dart';
+import '../../services/discord_link_log.dart';
 import '../../services/discord_oauth.dart';
+import '../alarms/edit_sub_screens.dart';
+import 'discord_flow_status_view.dart';
+import 'discord_log_screen.dart';
 
-/// 「Discord で連携」, right under the Discord ユーザーID row.
+/// 「Discord で連携」 and everything that hangs off it.
 ///
-/// The row above takes an 18-digit snowflake by hand, and getting one requires
-/// turning on Discord's developer mode first — which is where most people stop.
-/// This is the same field filled in by logging in, and it is the only way the
-/// name beside it can be shown at all: an ID typed by hand is just digits, and
-/// nothing can say whose they are.
+/// This is now the **only** way a Discord user ID gets into the app. The
+/// hand-typed 「Discord ユーザーID」 row is gone: it asked the user to turn on
+/// Discord's developer mode, long-press their own avatar and paste 18 digits
+/// that nothing could verify — and an ID typed that way could never carry the
+/// name beside it, because nothing knew whose it was.
+///
+/// Authorisation happens **in the Discord app** when it is installed, which is
+/// where the user is already signed in, so approving is one tap and the app
+/// comes straight back. A browser is the fallback, not the plan.
 ///
 /// The access token that makes this work is spent once, on `/users/@me`, and
 /// is never written down. See [DiscordOAuthService].
@@ -22,18 +30,26 @@ class DiscordLinkRow extends ConsumerStatefulWidget {
 }
 
 class _DiscordLinkRowState extends ConsumerState<DiscordLinkRow> {
-  /// True while the browser is open. Guards a second tap: two flows in the air
-  /// share one callback scheme, and the second would be answered by the first
-  /// one's redirect.
-  bool _busy = false;
+  @override
+  void initState() {
+    super.initState();
+    // The status is app-wide, and it has to be: the callback can arrive with
+    // this screen closed, and the answer must survive until somebody looks.
+    // But it belongs to **one attempt**, so opening this screen fresh clears
+    // whatever the last one left — otherwise the 共有先 screen greets a user
+    // with 「連携済み：@…」 from a flow that happened in the profile an hour ago.
+    // A flow still in the air is left alone; only a finished one is cleared.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!ref.read(discordFlowStatusProvider).busy) {
+        ref.read(discordFlowStatusProvider.notifier).reset();
+      }
+    });
+  }
 
   Future<void> _link() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    // Taken before the await: the overlay can be dismissed while the browser
-    // is up, and this context goes with it.
-    final messenger = ScaffoldMessenger.of(context);
-    final result = await ref.read(discordOAuthServiceProvider).link();
+    final service = ref.read(discordOAuthServiceProvider);
+    final result = await service.link();
     final identity = result.identity;
     if (result.ok && identity != null) {
       await ref
@@ -44,55 +60,71 @@ class _DiscordLinkRowState extends ConsumerState<DiscordLinkRow> {
             avatar: identity.avatar,
           );
     }
-    if (mounted) setState(() => _busy = false);
-    messenger.showSnackBar(SnackBar(content: Text(result.label)));
+    // No SnackBar. The whole failure this rework fixes was a SnackBar shown
+    // while the app was behind a browser: it fired, timed out and was gone
+    // before the user ever looked at this screen again. The outcome lives in
+    // the status area instead, which is still there when they come back.
   }
 
   Future<void> _unlink() async {
-    final messenger = ScaffoldMessenger.of(context);
     await ref.read(profileProvider.notifier).unlinkDiscordAccount();
-    messenger.showSnackBar(const SnackBar(content: Text('連携を解除しました')));
+    ref.read(discordFlowStatusProvider.notifier).reset();
+    ref.read(discordLinkLogProvider.notifier).add('連携を解除しました');
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final profile = ref.watch(profileProvider);
+    final status = ref.watch(discordFlowStatusProvider);
 
-    if (profile.discordLinked) {
-      return ListTile(
-        key: const ValueKey('profileDiscordLinkedRow'),
-        leading: const Icon(Icons.check_circle_outline),
-        title: Text('連携済み：@${profile.discordUsername}'),
-        subtitle: Text(
-          '寝坊の共有であなたをメンションします。',
-          style: theme.textTheme.bodySmall,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (profile.discordLinked)
+          ListTile(
+            key: const ValueKey('profileDiscordLinkedRow'),
+            leading: const Icon(Icons.check_circle_outline),
+            title: Text('連携済み：@${profile.discordUsername}'),
+            subtitle: Text(
+              '寝坊の共有であなたをメンションします。',
+              style: theme.textTheme.bodySmall,
+            ),
+            trailing: TextButton(
+              key: const ValueKey('profileDiscordUnlink'),
+              onPressed: _unlink,
+              child: const Text('連携を解除'),
+            ),
+          )
+        else
+          ListTile(
+            key: const ValueKey('profileDiscordLinkRow'),
+            leading: const Icon(Icons.link),
+            title: const Text('Discord で連携'),
+            subtitle: Text(
+              'Discord アプリが入っていればそちらが開き、「認証」を押すだけで戻ってきます。'
+              '入っていなければブラウザで開きます。ユーザーIDと表示名は自動で入ります。',
+              style: theme.textTheme.bodySmall,
+            ),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: status.busy ? null : _link,
+          ),
+        DiscordFlowStatusView(
+          onCancel: () => ref.read(discordOAuthServiceProvider).cancel(),
         ),
-        trailing: TextButton(
-          key: const ValueKey('profileDiscordUnlink'),
-          onPressed: _unlink,
-          child: const Text('連携を解除'),
+        ListTile(
+          key: const ValueKey('profileDiscordLogRow'),
+          leading: const Icon(Icons.receipt_long_outlined),
+          title: const Text('連携ログ'),
+          subtitle: Text(
+            'うまくいかなかったときに、何が起きたかを時刻つきで見られます。',
+            style: theme.textTheme.bodySmall,
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () =>
+              pushEditorSubScreen(context, const DiscordLogSubScreen()),
         ),
-      );
-    }
-
-    return ListTile(
-      key: const ValueKey('profileDiscordLinkRow'),
-      leading: const Icon(Icons.link),
-      title: const Text('Discord で連携'),
-      subtitle: Text(
-        'ブラウザで Discord にログインすると、ユーザーIDが自動で入ります。'
-        '開発者モードを出す必要はありません。',
-        style: theme.textTheme.bodySmall,
-      ),
-      trailing: _busy
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.open_in_new),
-      onTap: _busy ? null : _link,
+      ],
     );
   }
 }

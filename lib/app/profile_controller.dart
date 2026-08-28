@@ -17,26 +17,20 @@ class ProfileController extends Notifier<Profile> {
   Future<void> setUserName(String name) =>
       _update((p) => p.copyWith(userName: name.trim()));
 
-  /// Digits only — the repository strips the rest, and doing it here too keeps
-  /// what the screen shows next frame equal to what was stored.
-  /// Typing a **different** ID drops the linked name and avatar with it: those
-  /// are the evidence that the ID came from an authorised account, and leaving
-  /// 「連携済み：@なまえ」 over a hand-typed ID would vouch for something nobody
-  /// checked. Re-typing the same ID changes nothing.
-  Future<void> setDiscordUserId(String id) => _update((p) {
-    final normalized = normalizeDiscordUserId(id);
-    if (normalized == p.discordUserId) return p;
-    return p.copyWith(
-      discordUserId: normalized,
-      discordUsername: '',
-      discordAvatar: '',
-    );
-  });
+  // `setDiscordUserId` went with the hand-typed 「Discord ユーザーID」 screen
+  // (段階F). It existed to keep 「連携済み：@なまえ」 from vouching for an ID
+  // somebody had merely pasted — a rule with nothing left to protect, now that
+  // [linkDiscordAccount] is the only way an ID can get in at all.
 
   /// Stores what an authorised Discord account said about itself.
   ///
-  /// Overwrites a hand-typed ID on purpose: the user just proved which account
-  /// is theirs, which is a better answer than whatever they pasted.
+  /// **The only way a Discord ID enters this app.** It always arrives with the
+  /// name beside it, and the name is the evidence: it came from an account
+  /// that authorised, not from eighteen digits somebody read off a screen.
+  ///
+  /// The ID is normalised on the way in — people paste the mention (`<@123…>`)
+  /// far more often than the bare snowflake — so what is stored is always
+  /// something a webhook can actually mention.
   Future<void> linkDiscordAccount({
     required String id,
     required String username,

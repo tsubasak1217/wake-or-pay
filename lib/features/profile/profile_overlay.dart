@@ -6,11 +6,8 @@ import '../../domain/level.dart';
 import '../../domain/models.dart';
 import '../../domain/profile_catalog.dart';
 import '../../services/mail_settings.dart';
-import '../alarms/edit_sub_screens.dart';
 import '../alarms/widgets/settings_island.dart';
-import 'discord_endpoint_row.dart';
 import 'discord_link_row.dart';
-import 'discord_user_id_screen.dart';
 import 'mail_settings_screen.dart';
 import 'user_name_screen.dart';
 
@@ -212,15 +209,13 @@ class _ProfileSettingsIsland extends ConsumerWidget {
           value: profile.userName.isEmpty ? '未設定' : profile.userName,
           onTap: () => pushUserNameSubScreen(context),
         ),
-        SettingRow(
-          key: const ValueKey('profileDiscordIdRow'),
-          label: 'Discord ユーザーID',
-          value: profile.discordUserId.isEmpty ? '未設定' : profile.discordUserId,
-          onTap: () =>
-              pushEditorSubScreen(context, const DiscordUserIdSubScreen()),
-        ),
+        // 手入力の行は 3 つとも無くなった（段階F）。
+        // 「Discord ユーザーID」は開発者モードを出させて 18 桁を貼らせる行で、
+        // しかも貼られた数字が誰のものかは誰にも分からなかった。
+        // 「連携サーバーURL」はデプロイの都合で、ユーザーの持ち物ではない
+        // （いまは kDiscordExchangeEndpoint というビルド時定数）。
+        // 残ったのは、押せば全部入る 1 つのボタンだけ。
         const DiscordLinkRow(),
-        const DiscordEndpointRow(),
         // 設定済み only when the app could actually send: a half-filled account
         // is 未設定 as far as every other screen is concerned, so this row must
         // not be the one place that calls it done.
