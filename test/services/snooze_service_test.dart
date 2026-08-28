@@ -4,6 +4,7 @@ import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/loss_calculator.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
+import 'package:wake_or_pay/services/background_dispatch.dart';
 
 import '../helpers.dart';
 
@@ -221,6 +222,97 @@ void main() {
         await r.container.read(walletRepositoryProvider).read(),
         const Wallet(coins: 5000 - 750),
       );
+    });
+
+    test('early dismiss via dismissSnoozed settles once and cancels the '
+        're-ring, the trigger and the notice', () async {
+      final r = await ringing(snoozable);
+      await r.service.snooze(r.id, now: at(minutes: 2));
+      final sessionId = r.id;
+      r.service.cancelled.clear();
+      notifierOf(r.container).cancelled.clear();
+      final scheduler =
+          r.container.read(exactAlarmSchedulerProvider)
+              as RecordingExactAlarmScheduler;
+
+      // Cleared at 4 minutes, while the 7:07 re-ring is still pending.
+      final settled = await r.service.dismissSnoozed(sessionId, now: at(minutes: 4));
+
+      expect(settled!.status, SessionStatus.failed);
+      // 4 billed minutes (grace 1, continuous clock) plus one press.
+      expect(settled.loss, 450);
+      expect(settled.dismissedAt, at(minutes: 4));
+
+      expect(r.service.cancelled, contains('a1'), reason: 're-ring silenced');
+      expect(
+        scheduler.cancelled,
+        contains(backgroundAlarmId(sessionId)),
+        reason: 'the background contact trigger is dropped',
+      );
+      expect(
+        notifierOf(r.container).cancelled,
+        isNotEmpty,
+        reason: 'the スヌーズ中 notification is removed',
+      );
+
+      expect(
+        await r.container.read(walletRepositoryProvider).read(),
+        const Wallet(coins: 5000 - 450),
+      );
+    });
+
+    test('a second dismissSnoozed is a no-op — no double charge', () async {
+      final r = await ringing(snoozable);
+      await r.service.snooze(r.id, now: at(minutes: 2));
+
+      await r.service.dismissSnoozed(r.id, now: at(minutes: 4));
+      final again = await r.service.dismissSnoozed(r.id, now: at(minutes: 6));
+
+      // The stored session keeps the first settlement; the second call reads
+      // it back through the settle guard and touches nothing.
+      expect(again!.loss, 450);
+      expect(again.dismissedAt, at(minutes: 4));
+      expect(
+        await r.container.read(walletRepositoryProvider).read(),
+        const Wallet(coins: 5000 - 450),
+        reason: 'charged exactly once',
+      );
+    });
+
+    test('early dismiss never costs more than waiting for the re-ring', () async {
+      final r = await ringing(snoozable);
+      await r.service.snooze(r.id, now: at(minutes: 2));
+
+      // What clearing it at the 7:07 re-ring would have cost.
+      final waited = lossAt(at(minutes: 7), (await stored(r.container, r.id))!);
+      final early = await r.service.dismissSnoozed(r.id, now: at(minutes: 4));
+
+      expect(early!.loss, lessThan(waited));
+      expect(early.loss, lossAt(at(minutes: 4), early));
+    });
+
+    test('reset-clock mode: a snoozed minute costs 0, only the press bites', () async {
+      const resetKakugo = Kakugo(
+        ratePerMinute: 100,
+        cap: 10000,
+        snoozePenalty: 50,
+        snoozeResetsClock: true,
+      );
+      const resetAlarm = Alarm(
+        id: 'a1',
+        hour: 7,
+        minute: 0,
+        repeatDays: {1, 2, 3, 4, 5},
+        snooze: Snooze(intervalMinutes: 5, maxCount: 2),
+        kakugo: resetKakugo,
+      );
+      final r = await ringing(resetAlarm);
+      await r.service.snooze(r.id, now: at(minutes: 2));
+
+      // At 4 minutes the re-ring is still in the future, so the minute clock
+      // has not started: only the one press is owed.
+      final settled = await r.service.dismissSnoozed(r.id, now: at(minutes: 4));
+      expect(settled!.loss, 50);
     });
 
     test('a plain snoozed alarm is failed but costs nothing', () async {

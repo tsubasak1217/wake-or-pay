@@ -232,6 +232,50 @@ class AlarmService {
     return snoozed;
   }
 
+  /// The user got up during a snooze and cleared it early — spec 12.1.
+  ///
+  /// Runs the *same* settlement as clearing the wake check on the ring screen:
+  /// [SessionService.dismiss] makes the session failed under the current rules
+  /// with the loss frozen at [now]. On top of that it cancels the pending
+  /// re-ring, cancels the background contact trigger (11.7), and takes the
+  /// 「スヌーズ中」 notification down — the same three things a re-ring or a valve
+  /// settlement would have done, brought forward to now.
+  ///
+  /// Idempotent, so the notification's 解除 and the Home row's button can both
+  /// fire without charging twice: the settle guard in [SessionService.settle]
+  /// is a no-op on an already-settled session, and the cancels below are all
+  /// harmless to repeat. Returns the settled session, or null if there was no
+  /// such session at all.
+  Future<domain.AlarmSession?> dismissSnoozed(
+    String sessionId, {
+    DateTime? now,
+  }) async {
+    final at = now ?? DateTime.now();
+    final session = await _ref
+        .read(alarmSessionRepositoryProvider)
+        .getById(sessionId);
+    if (session == null) return null;
+
+    final settled = await _ref
+        .read(sessionServiceProvider)
+        .dismiss(session, at);
+
+    // The morning is over: drop the trigger Android is holding for it (11.7),
+    // keyed on the session so a deleted alarm is cancelled too.
+    await _ref.read(oversleepBackgroundSchedulerProvider).cancel(session);
+
+    // Stand the alarm itself down. _afterRing cancels the re-ring, removes the
+    // 「スヌーズ中」 notification, clears the snooze-pending flag, and reschedules
+    // or disables the alarm — exactly the path a cleared wake check takes.
+    final alarm = await _ref
+        .read(alarmRepositoryProvider)
+        .getById(session.alarmId);
+    if (alarm != null) await _afterRing(alarm);
+
+    _ref.invalidate(sessionByIdProvider(sessionId));
+    return settled;
+  }
+
   /// Stops the platform alarm once the wake check has been cleared.
   Future<void> stopRinging(domain.Alarm alarm) => _afterRing(alarm);
 
