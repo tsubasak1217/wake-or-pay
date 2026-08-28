@@ -114,7 +114,7 @@ void main() {
     // The authorize URL asked for the channel picker, not a bare identity.
     final opened = Uri.parse(launcher.opened.single);
     expect(opened.queryParameters['response_type'], 'code');
-    expect(opened.queryParameters['scope'], 'webhook.incoming identify');
+    expect(opened.queryParameters['scope'], 'webhook.incoming identify guilds');
 
     // The code went to the 連携サーバー, with the same redirect that went out.
     final post = http.posted.single;

@@ -82,7 +82,7 @@ void main() {
 
     final opened = Uri.parse(launcher.opened.single);
     expect(opened.queryParameters['response_type'], 'code');
-    expect(opened.queryParameters['scope'], 'webhook.incoming identify');
+    expect(opened.queryParameters['scope'], 'webhook.incoming identify guilds');
     // Picking a channel is the consent screen; forcing another one on top of
     // it is not asked for.
     expect(opened.queryParameters.containsKey('prompt'), isFalse);
