@@ -50,7 +50,7 @@ STRIPE_PUBLISHABLE_KEY = "pk_test_51U9duQAPhpIXWYKDgizN5lwnK7vYTYCxkobH8c5VoTkU1
 [[d1_databases]]
 binding = "DB"
 database_name = "wake-or-pay-billing"
-database_id = "REPLACE_WITH_WRANGLER_D1_CREATE_OUTPUT"
+database_id = "3513fb56-ab92-4a96-ade8-bfe896b56a76"
 
 # シークレットはこのファイルに **1 つも** ありませんし、置いてはいけません。
 # ここに書いたものはリポジトリのすべてのコピーに入ります。
