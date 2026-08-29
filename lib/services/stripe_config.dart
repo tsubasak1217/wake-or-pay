@@ -14,3 +14,12 @@
 /// round charges nothing.
 const kStripePublishableKey =
     'pk_test_51U9duQAPhpIXWYKDgizN5lwnK7vYTYCxkobH8c5VoTkU1H8Moz0hYepyusCWWjvwJx3dYVGDGAw6zTqFWpAANuzM00EWieWdwT';
+
+/// Whether [key] is a Stripe **test**-mode publishable key.
+///
+/// Publishable keys are prefixed by Stripe itself — `pk_test_…` or
+/// `pk_live_…` — so this is a pure string check, not a guess: it lets the
+/// card sheet derive things like Google Pay's `testEnv` flag from whichever
+/// key is actually in force, instead of hardcoding a second copy of the
+/// test/live switch.
+bool isStripeTestKey(String key) => key.startsWith('pk_test_');

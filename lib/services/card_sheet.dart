@@ -94,6 +94,17 @@ class StripeCardSheet implements CardSheet {
           customerEphemeralKeySecret: session.ephemeralKeySecret,
           merchantDisplayName: 'Wake or Pay',
           style: ThemeMode.system,
+          // Google Pay is offered on top of manual entry, not instead of it:
+          // the saved PaymentMethod is a normal card either way, reusable
+          // off-session the same as one typed by hand. `testEnv` follows the
+          // publishable key so switching to `pk_live_` flips it automatically.
+          // Production also needs Google Pay & Wallet Console approval for
+          // this app once it's published on Play.
+          googlePay: PaymentSheetGooglePay(
+            merchantCountryCode: 'JP',
+            currencyCode: 'JPY',
+            testEnv: isStripeTestKey(publishableKey),
+          ),
         ),
       );
       await Stripe.instance.presentPaymentSheet();
