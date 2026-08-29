@@ -221,6 +221,7 @@ class _ProfileSettingsIsland extends ConsumerWidget {
         // not be the one place that calls it done.
         SettingRow(
           key: const ValueKey('profileMailRow'),
+          leading: const Icon(Icons.mail_outline),
           label: 'メール送信設定',
           value: mail.isConfigured ? '設定済み' : '未設定',
           subtitle: mail.isConfigured
