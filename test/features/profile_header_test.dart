@@ -5,7 +5,7 @@ import 'package:wake_or_pay/app/profile_controller.dart';
 import 'package:wake_or_pay/app/router.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
-import 'package:wake_or_pay/features/wallet/wallet_screen.dart';
+import 'package:wake_or_pay/features/shop/shop_screen.dart';
 import 'package:wake_or_pay/main.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 
@@ -42,7 +42,7 @@ void main() {
   testWidgets('every tab wears the header', (tester) async {
     await pumpApp(tester);
 
-    for (final tab in const ['アラーム', 'お庭', 'ウォレット']) {
+    for (final tab in const ['アラーム', 'アクティビティ', '庭', 'ショップ']) {
       await openTab(tester, tab);
       expect(
         find.byKey(const ValueKey('appHeader')),
@@ -122,14 +122,14 @@ void main() {
     );
   });
 
-  testWidgets('the ＋ beside the coins goes to the wallet tab', (tester) async {
+  testWidgets('the ＋ beside the coins goes to the ショップ tab', (tester) async {
     await pumpApp(tester);
-    expect(find.byType(WalletScreen), findsNothing);
+    expect(find.byType(ShopScreen), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('appHeaderCharge')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(WalletScreen), findsOneWidget);
+    expect(find.byType(ShopScreen), findsOneWidget);
     expect(find.text('開発用チャージ（+1,000コイン）'), findsOneWidget);
   });
 

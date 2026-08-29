@@ -25,12 +25,12 @@ Future<void> pumpApp(
   await tester.pumpAndSettle();
 }
 
-/// 設定 is reached through the wallet tab: Home has no app bar action any more,
-/// only the shared header.
+/// 設定 is reached through オプション: Home has no app bar action any more, only
+/// the shared header, and ショップ carries no links of its own.
 Future<void> openSettings(WidgetTester tester) async {
-  await tester.tap(find.text('ウォレット'));
+  await tester.tap(find.byKey(const ValueKey('appHeaderOptions')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('設定・テーマ'));
+  await tester.tap(find.byKey(const ValueKey('optionsSettingsRow')));
   await tester.pumpAndSettle();
 }
 

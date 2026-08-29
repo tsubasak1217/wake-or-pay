@@ -138,7 +138,13 @@ final ringingSessionsProvider = StreamProvider<List<AlarmSession>>(
   (ref) => ref.watch(alarmSessionRepositoryProvider).watchRinging(),
 );
 
-/// The oversleep contact log, newest first. Shown in the wallet history.
+/// The 請求台帳, oldest first. アクティビティ reads it for 「請求予定 N 円」 — the
+/// half of a penalty that never came out of the coin balance.
+final pendingChargesProvider = StreamProvider<List<PendingCharge>>(
+  (ref) => ref.watch(pendingChargeRepositoryProvider).watchAll(),
+);
+
+/// The oversleep contact log, newest first. Shown in アクティビティ.
 final contactEventsProvider = StreamProvider<List<ContactEvent>>(
   (ref) => ref.watch(contactEventRepositoryProvider).watchRecent(),
 );

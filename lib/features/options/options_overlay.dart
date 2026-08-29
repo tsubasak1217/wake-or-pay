@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/router.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
 import '../../services/app_update.dart';
@@ -37,11 +39,38 @@ class OptionsOverlay extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(4, 4, 4, 20),
           child: Text('オプション', style: theme.textTheme.titleLarge),
         ),
-        const SettingsIsland(title: 'アプリ', children: [_UpdateRow()]),
+        const SettingsIsland(
+          title: 'アプリ',
+          children: [_SettingsRow(), _UpdateRow()],
+        ),
         const _DangerIsland(),
       ],
     );
   }
+}
+
+/// 「設定・テーマ」 — the only way into 設定 now that ショップ sells nothing but
+/// coins and carries no links of its own.
+///
+/// The sheet is closed before the push: 設定 is a full screen, and leaving the
+/// overlay stacked over it would put a barrier between the user and the screen
+/// they asked for.
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow();
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    key: const ValueKey('optionsSettingsRow'),
+    leading: const Icon(Icons.tune),
+    title: const Text('設定・テーマ'),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: () {
+      // Resolved before the pop: after it this context is defunct.
+      final router = GoRouter.of(context);
+      Navigator.of(context).pop();
+      router.push(AppRoute.settings);
+    },
+  );
 }
 
 /// 「アプリの更新」 — the manual half of the sideloaded build's update check.

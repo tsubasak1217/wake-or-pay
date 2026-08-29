@@ -16,7 +16,7 @@ Future<ProviderContainer> pumpEditor(WidgetTester tester) async {
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('お庭'));
+  await tester.tap(find.text('庭'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('模様替え'));
   await tester.pumpAndSettle();

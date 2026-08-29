@@ -39,7 +39,7 @@ Future<ProviderContainer> pumpGarden(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('お庭'));
+  await tester.tap(find.text('庭'));
   await tester.pumpAndSettle();
   return container;
 }
@@ -179,7 +179,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('お庭'));
+    await tester.tap(find.text('庭'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('苔・開花'), findsOneWidget);

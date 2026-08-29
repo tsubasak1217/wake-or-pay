@@ -21,6 +21,7 @@ import 'package:wake_or_pay/services/discord_auth_launcher.dart';
 import 'package:wake_or_pay/services/discord_callback_router.dart';
 import 'package:wake_or_pay/services/discord_sender.dart';
 import 'package:wake_or_pay/services/mail_sender.dart';
+import 'package:wake_or_pay/services/recording_library.dart';
 import 'package:wake_or_pay/services/route_permissions.dart';
 import 'package:wake_or_pay/services/secret_store.dart';
 import 'package:wake_or_pay/services/sms_sender.dart';
@@ -219,6 +220,36 @@ class FakeVoicePlayer implements VoicePlayer {
     await _position.close();
   }
 }
+
+Override fakeVoicePlayerOverride(FakeVoicePlayer player) =>
+    voicePlayerProvider.overrideWithValue(player);
+
+/// The 寝言の録音 shelf, in memory. No `path_provider`, no directory, no files —
+/// just the paths a test says are on it.
+class FakeRecordingLibrary implements RecordingLibrary {
+  FakeRecordingLibrary([Iterable<String> paths = const []])
+    : paths = [...paths];
+
+  final List<String> paths;
+
+  /// Every path this was asked to delete, in order.
+  final deleted = <String>[];
+
+  @override
+  Future<List<Recording>> list() async => sortedRecordings([
+    for (final path in paths)
+      Recording(path: path, recordedAt: recordingTimestamp(path)),
+  ]);
+
+  @override
+  Future<void> delete(String path) async {
+    deleted.add(path);
+    paths.remove(path);
+  }
+}
+
+Override fakeRecordingLibraryOverride(RecordingLibrary library) =>
+    recordingLibraryProvider.overrideWithValue(library);
 
 /// An HTTP client that never reaches the network.
 ///

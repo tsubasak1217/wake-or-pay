@@ -13,7 +13,7 @@ import 'profile_overlay.dart';
 
 /// The bar every tab wears: who you are on the left, what you own on the right.
 ///
-/// Only the three tabs get it. A ringing alarm, a result and the editors are
+/// Only the four tabs get it. A ringing alarm, a result and the editors are
 /// full-screen routes on purpose, and a header there would offer a way out of a
 /// screen that must not have one.
 class AppHeaderBar extends ConsumerWidget implements PreferredSizeWidget {
@@ -54,12 +54,12 @@ class AppHeaderBar extends ConsumerWidget implements PreferredSizeWidget {
             emoji: '🪙',
             amount: wallet.coins,
           ),
-          // The charge lives on the wallet tab; this is only the way to it.
+          // The charge lives on the ショップ tab; this is only the way to it.
           IconButton(
             key: const ValueKey('appHeaderCharge'),
             tooltip: 'コインをチャージ',
             visualDensity: VisualDensity.compact,
-            onPressed: () => context.go(AppRoute.wallet),
+            onPressed: () => context.go(AppRoute.shop),
             icon: Icon(Icons.add_circle_outline, color: theme.hintColor),
           ),
           // オプション: the app's own settings, opposite the avatar that opens

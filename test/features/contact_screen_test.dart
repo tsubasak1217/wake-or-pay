@@ -586,11 +586,11 @@ void main() {
 
   testWidgets('設定 no longer carries the name', (tester) async {
     final container = await openNewAlarm(tester);
-    // Out of the new-alarm editor and over to 設定, which is on the wallet tab.
+    // Out of the new-alarm editor and over to 設定, which オプション opens.
     await save(tester, container);
-    await tester.tap(find.text('ウォレット'));
+    await tester.tap(find.byKey(const ValueKey('appHeaderOptions')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('設定・テーマ'));
+    await tester.tap(find.byKey(const ValueKey('optionsSettingsRow')));
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(AppBar, '設定'), findsOneWidget);

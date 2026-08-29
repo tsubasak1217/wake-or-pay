@@ -21,28 +21,47 @@ Future<ProviderContainer> pumpHome(WidgetTester tester) async {
   return container;
 }
 
-/// Home lost its 設定 action along with its app bar, so 設定 is reached the one
-/// remaining way: the wallet tab's row.
-Future<void> openSettings(WidgetTester tester) async {
-  await tester.tap(find.text('ウォレット'));
+Future<void> openShop(WidgetTester tester) async {
+  await tester.tap(find.text('ショップ'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('設定・テーマ'));
+}
+
+/// 設定 has one entrance now: オプション › 設定・テーマ.
+Future<void> openSettings(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('appHeaderOptions')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('optionsSettingsRow')));
   await tester.pumpAndSettle();
 }
 
 void main() {
-  group('Wallet', () {
+  group('ショップ', () {
+    testWidgets('shows both balances', (tester) async {
+      final container = await pumpHome(tester);
+      await container
+          .read(walletRepositoryProvider)
+          .write(const Wallet(coins: 300, tokens: 7));
+      await openShop(tester);
+
+      expect(find.text('ショップ'), findsWidgets);
+      expect(find.text('🪙 300'), findsOneWidget);
+      expect(find.text('🎁 7'), findsOneWidget);
+      expect(find.text('コインとトークンは交換できません。'), findsOneWidget);
+      expect(find.textContaining('コインをトークン'), findsNothing);
+    });
+
     testWidgets('dev charge adds 1,000 coins and is labelled as dev-only', (
       tester,
     ) async {
       final container = await pumpHome(tester);
-      await tester.tap(find.text('ウォレット'));
-      await tester.pumpAndSettle();
+      await openShop(tester);
 
       expect(find.text('🪙 0'), findsOneWidget);
+      expect(find.text('コインを手に入れる'), findsOneWidget);
       expect(find.textContaining('開発用'), findsWidgets);
+      expect(find.textContaining('コインの入手方法は準備中です。'), findsOneWidget);
 
-      await tester.tap(find.text('開発用チャージ（+1,000コイン）'));
+      await tester.tap(find.byKey(const ValueKey('shopDevCharge')));
       await tester.pumpAndSettle();
 
       expect(find.text('🪙 1000'), findsOneWidget);
@@ -52,7 +71,9 @@ void main() {
       );
     });
 
-    testWidgets('history lists past sessions', (tester) async {
+    testWidgets('carries no history, no contact log and no settings link', (
+      tester,
+    ) async {
       final container = await pumpHome(tester);
       await container
           .read(alarmSessionRepositoryProvider)
@@ -67,22 +88,34 @@ void main() {
               kakugoSnapshot: const Kakugo(ratePerMinute: 100, cap: 2000),
             ),
           );
+      await container
+          .read(contactEventRepositoryProvider)
+          .save(
+            ContactEvent(
+              id: 'e1',
+              sessionId: 's1',
+              firedAt: DateTime(2026, 8, 27, 7, 5),
+              contactName: '田中太郎さん',
+              channel: ContactChannel.sms,
+            ),
+          );
 
-      await tester.tap(find.text('ウォレット'));
-      await tester.pumpAndSettle();
+      await openShop(tester);
 
-      expect(find.text('8/27 07:00'), findsOneWidget);
-      expect(find.text('起床失敗'), findsOneWidget);
-      expect(find.text('−1300'), findsOneWidget);
+      expect(find.text('履歴'), findsNothing);
+      expect(find.text('8/27 07:00'), findsNothing);
+      expect(find.text('起床失敗'), findsNothing);
+      expect(find.byKey(const ValueKey('activityContactLog')), findsNothing);
+      expect(find.text('設定・テーマ'), findsNothing);
     });
 
-    testWidgets('there is no coin to token conversion offered', (tester) async {
+    testWidgets('ショップ sells no feature', (tester) async {
       await pumpHome(tester);
-      await tester.tap(find.text('ウォレット'));
-      await tester.pumpAndSettle();
+      await openShop(tester);
 
-      expect(find.text('コインとトークンは交換できません。'), findsOneWidget);
-      expect(find.textContaining('コインをトークン'), findsNothing);
+      for (final word in const ['課金', '購入', '広告', 'プレミアム']) {
+        expect(find.textContaining(word), findsNothing, reason: word);
+      }
     });
   });
 

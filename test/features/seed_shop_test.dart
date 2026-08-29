@@ -25,7 +25,7 @@ Future<ProviderContainer> pumpShop(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('お庭'));
+  await tester.tap(find.text('庭'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('種屋'));
   await tester.pumpAndSettle();
