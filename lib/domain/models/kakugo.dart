@@ -2,19 +2,51 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-/// What the user puts up as collateral. Only [coin] exists in the MVP.
-enum HostageType { coin }
+/// What the user puts up as collateral: the in-app coins, or the card
+/// registered in プロフィール › クレジットカードを人質にする.
+///
+/// **1 コイン = 1 円.** Every kakugo amount — the rate, the snooze penalty, the
+/// cap — is stored as one integer and read as coins or as yen depending on this
+/// enum alone. Nothing converts, because there is nothing to convert: the
+/// numbers the editor writes are the numbers the card is charged.
+enum HostageType {
+  /// Nothing is at stake. 連絡だけの覚悟: the alarm still judges the morning and
+  /// still tells whoever it was told to tell, and the loss is always 0.
+  none,
+  coin,
+  card;
+
+  /// What the 人質 row shows.
+  String get label => switch (this) {
+    HostageType.none => 'なし',
+    HostageType.coin => 'コイン',
+    HostageType.card => 'クレジットカード',
+  };
+
+  /// The unit every amount under this pledge is read in. [none] has no amounts
+  /// to read — every row that would use a unit is hidden — so it answers
+  /// コイン rather than inventing a word for a number nobody sees.
+  String get unit => switch (this) {
+    HostageType.none || HostageType.coin => 'コイン',
+    HostageType.card => '円',
+  };
+
+  /// Whether oversleeping under this 人質 can cost anything at all.
+  bool get burns => this != HostageType.none;
+}
 
 /// The bounds the editor offers, and the bounds every read is clamped to.
 ///
-/// The rate starts at 0: a pledge whose whole punishment is that somebody gets
-/// phoned is a real pledge, and forcing at least one coin a minute onto it
-/// would be the app inventing a stake the user did not choose.
+/// The rate starts at 10, not at 0. 「連絡だけの覚悟」 — a pledge whose whole
+/// punishment is that somebody gets told — is now said by choosing
+/// [HostageType.none], not by setting a price of nothing against a hostage that
+/// would still be named. A rate below this in stored data is exactly that older
+/// spelling, and is read back as [HostageType.none]; see [Kakugo.fromJson].
 ///
 /// The editor bounds the rate by the alarm's *own* 上限金額 — no penalty may be
 /// set above the most that alarm can ever cost — so [maxKakugoRate] is only the
 /// ceiling of that bound, reached when the cap itself is at its maximum.
-const minKakugoRate = 0;
+const minKakugoRate = 10;
 const maxKakugoRate = maxKakugoCap;
 const minKakugoCap = 100;
 const maxKakugoCap = 10000;
@@ -30,6 +62,24 @@ const minSnoozePenalty = 0;
 const maxSnoozePenalty = maxKakugoCap;
 
 int normalizeKakugoRate(int rate) => rate.clamp(minKakugoRate, maxKakugoRate);
+
+/// The 人質 a stored pledge reads back as, from the name that was written down
+/// and the rate it was written beside. Pure — and the **one** place both
+/// [Kakugo.fromJson] and the Drift mapper get this answer from.
+///
+/// * A missing or unrecognised name reads as [HostageType.coin]: every row
+///   written before カード人質 existed was written when coins were the only
+///   thing that could burn, and that is the rule it was saved under.
+/// * A rate below [minKakugoRate] reads as [HostageType.none] whatever the name
+///   says. 「0 コイン/分」 was how 連絡だけの覚悟 used to be written down; rounding
+///   it up to 10 would start burning coins nobody pledged.
+HostageType hostageFor(String? name, int ratePerMinute) {
+  if (ratePerMinute < minKakugoRate) return HostageType.none;
+  return HostageType.values.firstWhere(
+    (h) => h.name == name,
+    orElse: () => HostageType.coin,
+  );
+}
 int normalizeKakugoCap(int cap) => cap.clamp(minKakugoCap, maxKakugoCap);
 int normalizeSnoozePenalty(int penalty) =>
     penalty.clamp(minSnoozePenalty, maxSnoozePenalty);
@@ -97,10 +147,13 @@ class Kakugo {
   };
 
   factory Kakugo.fromJson(Map<String, dynamic> json) => Kakugo(
-    hostage: HostageType.values.firstWhere(
-      (h) => h.name == json['hostage'],
-      orElse: () => HostageType.coin,
+    hostage: hostageFor(
+      json['hostage'] as String?,
+      json['ratePerMinute'] as int,
     ),
+    // Kept as written, never rounded up to [minKakugoRate]: a rate below the
+    // bound is what makes [hostageFor] read the row as 人質なし, and a pledge
+    // that costs nothing must not be turned into one that costs ten a minute.
     ratePerMinute: json['ratePerMinute'] as int,
     cap: json['cap'] as int,
     snoozePenalty: normalizeSnoozePenalty(json['snoozePenalty'] as int? ?? 0),
@@ -138,9 +191,16 @@ class Kakugo {
 /// yet paying attention — only the per-press snooze penalty applies. Continuing
 /// to bill from `firedAt` through a snooze is now the deliberate opt-in.
 ///
+/// `hostage: none` is likewise the default for **new** pledges: switching 覚悟
+/// on puts nothing at stake until the user says what the stake is. The numbers
+/// below are seeded anyway, so choosing コイン or クレジットカード one row down
+/// arrives at a pledge that already reads sensibly instead of at zeroes.
+///
 /// This is only the seed for *new* alarms: the constructor default and every
-/// deserialiser stay `false`, so a stored row keeps whatever it was saved with.
+/// deserialiser stay `false` (and `coin`), so a stored row keeps whatever it
+/// was saved with.
 const defaultKakugo = Kakugo(
+  hostage: HostageType.none,
   ratePerMinute: 100,
   cap: 1000,
   snoozePenalty: 50,

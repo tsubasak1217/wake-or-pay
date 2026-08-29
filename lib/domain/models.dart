@@ -9,6 +9,7 @@ export 'models/mail_settings.dart';
 export 'models/ojisan_state.dart';
 export 'models/oversleep_contact.dart';
 export 'models/oversleep_share.dart';
+export 'models/pending_charge.dart';
 export 'models/profile.dart';
 export 'models/settings.dart';
 export 'models/snooze.dart';

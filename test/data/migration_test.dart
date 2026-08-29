@@ -479,6 +479,133 @@ INSERT INTO wallet_rows (id, coins, tokens) VALUES (0, 4300, 120);
 PRAGMA user_version = 6;
 ''';
 
+/// The v7 schema — v6 plus the share blob, the shared delay and the Discord
+/// 共有先 table — as it shipped before 人質 was a choice.
+///
+/// Three alarms, because reading a stored 人質 back is the whole point of the
+/// v8 upgrade: `a1` never had a name written down at all, `a2` names the coins,
+/// and `a3` is the old spelling of 連絡だけの覚悟 — a hostage named, at a price
+/// of nothing a minute.
+const _v7 = '''
+CREATE TABLE alarm_rows (
+  id TEXT NOT NULL,
+  hour INTEGER NOT NULL,
+  minute INTEGER NOT NULL,
+  repeat_days TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK ("enabled" IN (0, 1)),
+  wake_check TEXT NOT NULL,
+  grace_minutes INTEGER NOT NULL DEFAULT 1,
+  snooze_interval_minutes INTEGER NULL,
+  snooze_max_count INTEGER NULL,
+  sound_id TEXT NOT NULL DEFAULT 'bell',
+  kakugo_hostage TEXT NULL,
+  kakugo_rate_per_minute INTEGER NULL,
+  kakugo_cap INTEGER NULL,
+  kakugo_snooze_penalty INTEGER NULL,
+  kakugo_snooze_resets_clock INTEGER NULL,
+  oversleep_contact TEXT NULL,
+  oversleep_share TEXT NULL,
+  oversleep_trigger_minutes INTEGER NULL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE alarm_session_rows (
+  id TEXT NOT NULL,
+  alarm_id TEXT NOT NULL,
+  fired_at_ms INTEGER NOT NULL,
+  dismissed_at_ms INTEGER NULL,
+  status TEXT NOT NULL,
+  loss INTEGER NOT NULL DEFAULT 0,
+  kakugo_hostage TEXT NULL,
+  kakugo_rate_per_minute INTEGER NULL,
+  kakugo_cap INTEGER NULL,
+  kakugo_snooze_penalty INTEGER NULL,
+  kakugo_snooze_resets_clock INTEGER NULL,
+  coins_at_fire INTEGER NOT NULL DEFAULT 0,
+  grace_minutes INTEGER NOT NULL DEFAULT 1,
+  wake_check_resolved TEXT NULL,
+  snoozes TEXT NULL,
+  current_ring_at_ms INTEGER NULL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE wallet_rows (
+  id INTEGER NOT NULL,
+  coins INTEGER NOT NULL DEFAULT 0,
+  tokens INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+);
+CREATE TABLE ojisan_rows (
+  id INTEGER NOT NULL,
+  total_oversleeps INTEGER NOT NULL DEFAULT 0,
+  total_earned INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+);
+CREATE TABLE garden_placement_rows (
+  id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  x INTEGER NOT NULL,
+  y INTEGER NOT NULL,
+  placed_at_ms INTEGER NOT NULL,
+  growth_stage INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+);
+CREATE TABLE garden_inventory_rows (
+  item_id TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (item_id)
+);
+CREATE TABLE contact_event_rows (
+  id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  fired_at_ms INTEGER NOT NULL,
+  contact_name TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  detail TEXT NULL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE contact_book_rows (
+  id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  reading TEXT NULL,
+  phone TEXT NULL,
+  email TEXT NULL,
+  created_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE discord_webhook_rows (
+  id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (id)
+);
+INSERT INTO alarm_rows
+  (id, hour, minute, repeat_days, enabled, wake_check, grace_minutes,
+   snooze_interval_minutes, snooze_max_count, sound_id,
+   kakugo_hostage, kakugo_rate_per_minute, kakugo_cap,
+   kakugo_snooze_penalty, kakugo_snooze_resets_clock,
+   oversleep_trigger_minutes)
+  VALUES ('a1', 6, 30, '1,5', 1, 'math', 3, 9, 4, 'siren',
+          NULL, 100, 2000, 50, 0, 7);
+INSERT INTO alarm_rows
+  (id, hour, minute, repeat_days, enabled, wake_check, grace_minutes,
+   sound_id, kakugo_hostage, kakugo_rate_per_minute, kakugo_cap,
+   oversleep_trigger_minutes)
+  VALUES ('a2', 7, 0, '', 1, 'longPress', 1, 'bell', 'coin', 500, 1000, 0);
+INSERT INTO alarm_rows
+  (id, hour, minute, repeat_days, enabled, wake_check, grace_minutes,
+   sound_id, kakugo_hostage, kakugo_rate_per_minute, kakugo_cap,
+   kakugo_snooze_penalty, oversleep_trigger_minutes)
+  VALUES ('a3', 8, 15, '', 1, 'longPress', 1, 'bell', 'coin', 0, 1000, 0, 0);
+INSERT INTO alarm_session_rows
+  (id, alarm_id, fired_at_ms, dismissed_at_ms, status, loss,
+   kakugo_hostage, kakugo_rate_per_minute, kakugo_cap, coins_at_fire,
+   grace_minutes)
+  VALUES ('s1', 'a1', 1000000, 1420000, 'failed', 700,
+          NULL, 100, 2000, 5000, 3);
+INSERT INTO wallet_rows (id, coins, tokens) VALUES (0, 4300, 120);
+PRAGMA user_version = 7;
+''';
+
 void main() {
   test(
     'v1 databases upgrade to v2 with grace 1, changing nothing else',
@@ -914,5 +1041,104 @@ void main() {
         {'w1'},
       );
     },
+  );
+
+  test(
+    'v7 databases upgrade to v8 with an empty 請求台帳 and their 人質 read back',
+    () async {
+      final container = await testContainer(
+        extra: [
+          appDatabaseProvider.overrideWith((ref) {
+            final db = AppDatabase(
+              NativeDatabase.memory(setup: (raw) => raw.execute(_v7)),
+            );
+            ref.onDispose(db.close);
+            return db;
+          }),
+        ],
+      );
+
+      final alarms = container.read(alarmRepositoryProvider);
+
+      // No 人質 was ever written down: coins were the only thing that could
+      // burn when the row was saved, so coins is what it means.
+      final a1 = (await alarms.getById('a1'))!;
+      expect(a1.kakugo!.hostage, HostageType.coin);
+      expect(a1.kakugo!.ratePerMinute, 100);
+
+      // The one that named them says the same thing.
+      expect((await alarms.getById('a2'))!.kakugo!.hostage, HostageType.coin);
+
+      // 「0 コイン/分」 was how 連絡だけの覚悟 used to be written down. It reads
+      // back as 人質なし rather than being rounded up to the new minimum, so
+      // nothing starts burning that never burned before.
+      final a3 = (await alarms.getById('a3'))!;
+      expect(a3.kakugo!.hostage, HostageType.none);
+      expect(a3.kakugo!.ratePerMinute, 0, reason: 'kept exactly as written');
+
+      // A session's frozen pledge reads under the same rule.
+      final session = await container
+          .read(alarmSessionRepositoryProvider)
+          .getById('s1');
+      expect(session!.kakugoSnapshot!.hostage, HostageType.coin);
+      expect(session.loss, 700, reason: 'a settled loss is never recomputed');
+
+      // Nothing else the upgrade touched moved.
+      expect(a1.snooze, const Snooze(intervalMinutes: 9, maxCount: 4));
+      expect(a1.soundId, 'siren');
+      expect(a1.oversleepTriggerMinutes, 7);
+      expect(
+        await container.read(walletRepositoryProvider).read(),
+        const Wallet(coins: 4300, tokens: 120),
+      );
+
+      // The new ledger exists, starts empty, and takes one charge per session.
+      final charges = container.read(pendingChargeRepositoryProvider);
+      expect(await charges.getAll(), isEmpty, reason: 'it starts empty');
+
+      final charge = PendingCharge(
+        sessionId: 's1',
+        alarmId: 'a1',
+        amount: 700,
+        createdAt: DateTime(2026, 8, 29),
+      );
+      expect(await charges.insertIfAbsent(charge), isTrue);
+      expect(
+        await charges.insertIfAbsent(charge.copyWithAmountForTest(9999)),
+        isFalse,
+        reason: 'the session id is the identity: a second write is ignored',
+      );
+      final stored = (await charges.getAll()).single;
+      expect(stored.amount, 700, reason: 'the first amount is the one kept');
+      expect(stored.currency, 'jpy');
+      expect(stored.status, PendingChargeStatus.pending);
+
+      await charges.mark('s1', PendingChargeStatus.paid);
+      expect(
+        (await charges.getBySessionId('s1'))!.status,
+        PendingChargeStatus.paid,
+      );
+
+      // And an alarm can be saved with any 人質 now, 人質なし included.
+      await alarms.save(
+        a1.copyWith(kakugo: a1.kakugo!.copyWith(hostage: HostageType.none)),
+      );
+      expect(
+        (await alarms.getById('a1'))!.kakugo!.hostage,
+        HostageType.none,
+        reason: 'a stored none is a none, not a coin',
+      );
+    },
+  );
+}
+
+extension on PendingCharge {
+  /// A second charge for the same session, differing only in what it is for —
+  /// the write the ledger has to ignore.
+  PendingCharge copyWithAmountForTest(int amount) => PendingCharge(
+    sessionId: sessionId,
+    alarmId: alarmId,
+    amount: amount,
+    createdAt: createdAt,
   );
 }

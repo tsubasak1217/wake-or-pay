@@ -133,6 +133,12 @@ CREATE TABLE cards (
 
 ## Phase 3 への布石（実装はしない）
 
-- `charges` 台帳：`session_id` を UNIQUE にして二重請求を構造的に防ぐ。
+- **端末側の台帳はもうある。** drift v8 の `pending_charges`
+  （`session_id` PRIMARY KEY / `alarm_id` / `amount` / `currency='jpy'` /
+  `created_at` / `status='pending'`）。人質が「クレジットカード」でカード登録済みの
+  寝坊を確定したとき、コインを減らす代わりにここへ1件書く（`session_id` が主キーなので
+  二度確定しても1件）。**送信はしない**。Phase 3 はこの台帳を Worker に同期する。
+- `charges` 台帳：`session_id` を UNIQUE にして二重請求を構造的に防ぐ（端末側の
+  `pending_charges` と同じ鍵）。
 - 月末バッチ：Cron Trigger で端末ごとに合算 → `PaymentIntent(off_session=true, confirm=true)`。
 - 失敗（`requires_payment_method`）→ アプリへ「カードの再認証が必要」を通知。

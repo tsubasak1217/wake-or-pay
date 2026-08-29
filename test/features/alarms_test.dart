@@ -70,6 +70,27 @@ Future<void> toggleInEditor(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// Picks a 人質 in the sub-screen behind the 人質 row.
+///
+/// A new pledge starts at 「なし」 — 連絡だけの覚悟 — and that hides 寝坊ペナルティ,
+/// スヌーズペナルティ, 上限金額 and the 寝坊で失う最大金額 header, so anything about
+/// those has to name a hostage first.
+Future<void> chooseHostage(WidgetTester tester, String label) async {
+  await scrollToInEditor(tester, find.text('人質'));
+  await tester.tap(find.text('人質'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+  await tester.pageBack();
+  await tester.pumpAndSettle();
+}
+
+/// 覚悟 on with the coins put up: the state the money rows exist in.
+Future<void> toggleKakugoWithCoins(WidgetTester tester) async {
+  await toggleInEditor(tester, '覚悟');
+  await chooseHostage(tester, 'コイン');
+}
+
 /// Types [value] into the numeric field a number sub-screen owns.
 ///
 /// `.first` because the 寝坊ペナルティ screen carries a second one in its footer —
@@ -105,7 +126,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    await toggleInEditor(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       await enterNumber(tester, '500');
       expect(find.text('💀 寝るな'), findsOneWidget);
@@ -131,7 +152,10 @@ void main() {
     expect(saved.wakeCheck, WakeCheckType.math);
     // Stage B: switching 覚悟 on now seeds the snooze penalty too, at the 50
     // the spec's editor shows.
-    expect(saved.kakugo, defaultKakugo.copyWith(ratePerMinute: 500));
+    expect(
+      saved.kakugo,
+      defaultKakugo.copyWith(hostage: HostageType.coin, ratePerMinute: 500),
+    );
     // 改訂5: new alarms default to the pausing mode, so snoozed time never bills
     // silently. The strict continuous mode is now the opt-in.
     expect(
@@ -226,6 +250,10 @@ void main() {
 
       await toggleInEditor(tester, '覚悟');
       expect(find.text('覚悟の設定'), findsOneWidget);
+      // A new pledge starts at 人質「なし」: the island is there, the money is
+      // not, until the user says what is at stake.
+      expect(find.text('寝坊で失う最大金額'), findsNothing);
+      await chooseHostage(tester, 'コイン');
       expect(find.text('寝坊で失う最大金額'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('maxLoss'))).data,
@@ -293,7 +321,7 @@ void main() {
       await tester.tap(find.byType(FloatingActionButton));
       await tester.pumpAndSettle();
 
-      await toggleInEditor(tester, '覚悟');
+      await toggleKakugoWithCoins(tester);
 
       // Two numeric fields share this screen — the rate's and the grace's — so
       // the grace one is addressed through the section that owns it. Its field
@@ -336,7 +364,7 @@ void main() {
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
-    await toggleInEditor(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     // The sub-screen says so too, before the save ever happens.
     await inSubScreen(tester, '上限金額', () async {
@@ -363,7 +391,7 @@ void main() {
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
-    await toggleInEditor(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 

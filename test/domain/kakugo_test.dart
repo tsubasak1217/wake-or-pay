@@ -59,4 +59,81 @@ void main() {
     expect(maxKakugoRate, maxKakugoCap);
     expect(maxSnoozePenalty, maxKakugoCap);
   });
+
+  group('HostageType', () {
+    test('each hostage says what it is and what it is measured in', () {
+      expect(HostageType.none.label, 'なし');
+      expect(HostageType.coin.label, 'コイン');
+      expect(HostageType.card.label, 'クレジットカード');
+
+      // 1 コイン = 1 円: the same stored integer, two words for it.
+      expect(HostageType.coin.unit, 'コイン');
+      expect(HostageType.card.unit, '円');
+      expect(
+        HostageType.none.unit,
+        'コイン',
+        reason: 'none has no amounts on screen; it never reads its unit',
+      );
+
+      expect(HostageType.none.burns, isFalse);
+      expect(HostageType.coin.burns, isTrue);
+      expect(HostageType.card.burns, isTrue);
+    });
+
+    test('a new pledge puts nothing up until the user says what', () {
+      expect(defaultKakugo.hostage, HostageType.none);
+      expect(defaultKakugo.ratePerMinute, 100, reason: 'seeded for later');
+    });
+
+    test('every hostage survives a json round trip', () {
+      for (final hostage in HostageType.values) {
+        final kakugo = Kakugo(hostage: hostage, ratePerMinute: 100, cap: 1000);
+        expect(Kakugo.fromJson(kakugo.toJson()), kakugo, reason: hostage.name);
+      }
+    });
+
+    test('a missing or unknown hostage reads as coins', () {
+      // The rule every row written before カード人質 existed was saved under.
+      expect(
+        Kakugo.fromJson({'ratePerMinute': 100, 'cap': 1000}).hostage,
+        HostageType.coin,
+      );
+      expect(
+        Kakugo.fromJson({
+          'hostage': 'bitcoin',
+          'ratePerMinute': 100,
+          'cap': 1000,
+        }).hostage,
+        HostageType.coin,
+      );
+    });
+
+    test('a rate under the minimum is the old spelling of 人質なし', () {
+      // 「0 コイン/分」 used to mean 連絡だけの覚悟. It must not be rounded up to
+      // 10 and start burning coins nobody pledged.
+      final old = Kakugo.fromJson({
+        'hostage': 'coin',
+        'ratePerMinute': 0,
+        'cap': 1000,
+      });
+      expect(old.hostage, HostageType.none);
+      expect(old.ratePerMinute, 0, reason: 'kept exactly as written');
+
+      expect(hostageFor('coin', minKakugoRate), HostageType.coin);
+      expect(hostageFor('coin', minKakugoRate - 1), HostageType.none);
+      expect(hostageFor('card', 0), HostageType.none);
+      expect(hostageFor(null, 100), HostageType.coin);
+      expect(hostageFor('none', 100), HostageType.none);
+    });
+
+    test('寝坊ペナルティ now starts at 10', () {
+      expect(minKakugoRate, 10);
+      expect(normalizeKakugoRate(5), 10);
+      expect(
+        minSnoozePenalty,
+        0,
+        reason: 'snoozing for free is a separate choice, and it stays',
+      );
+    });
+  });
 }

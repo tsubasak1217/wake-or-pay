@@ -53,6 +53,10 @@ Duration graceRemaining(DateTime now, AlarmSession session) {
 int lossAt(DateTime now, AlarmSession session) {
   final kakugo = session.kakugoSnapshot;
   if (kakugo == null) return 0;
+  // 連絡だけの覚悟: nothing is at stake, so nothing burns — not by the minute
+  // and not per snooze press. The morning is still judged and the contact is
+  // still told; only the money is off.
+  if (!kakugo.hostage.burns) return 0;
 
   final elapsed = now.difference(lossClockBase(session));
   final minutePart = elapsed.isNegative

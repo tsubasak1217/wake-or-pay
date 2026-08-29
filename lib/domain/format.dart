@@ -41,8 +41,42 @@ String snoozeLabel(Snooze? snooze) => snooze == null
     ? 'オフ'
     : '${snooze.intervalMinutes}分 ・ 最大${snooze.maxCount}回';
 
+/// 1234567 → 「1,234,567」. Pure.
+///
+/// Only ever used for 円: a coin count is a game number and reads better bare,
+/// while a yen figure is money and is written the way money is written.
+String thousands(int value) {
+  final negative = value < 0;
+  final digits = value.abs().toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(digits[i]);
+  }
+  return negative ? '-$buffer' : buffer.toString();
+}
+
+/// One kakugo amount in the unit its 人質 is measured in. Pure.
+///
+/// 「1000 コイン」 for a coin pledge, 「1,000 円」 for a card one — the same stored
+/// integer, because 1 コイン = 1 円.
+String hostageAmount(int amount, HostageType hostage) =>
+    hostage == HostageType.card
+    ? '${thousands(amount)} ${hostage.unit}'
+    : '$amount ${hostage.unit}';
+
+/// What a カード人質 loss actually means, in one line. Pure.
+///
+/// Nothing is charged when this is shown — Phase 1 charges nothing at all, and
+/// even in Phase 3 the card is touched once, at the end of the month. 「請求」,
+/// never 「課金」 or 「購入」: the app is collecting on a pledge, not selling.
+String cardChargeNotice(int amount) =>
+    '${thousands(amount)} 円をカードに請求予定（月末）';
+
 /// The rate on its own, for the alarm list. Pure.
-String kakugoRateLabel(int ratePerMinute) => '$ratePerMinute コイン/分';
+String kakugoRateLabel(int ratePerMinute, [
+  HostageType hostage = HostageType.coin,
+]) => '${hostageAmount(ratePerMinute, hostage)}/分';
 
 /// The worst case, in the editor's own words. Pure.
 ///

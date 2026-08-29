@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
+import 'package:wake_or_pay/features/alarms/widgets/settings_island.dart';
 import 'package:wake_or_pay/main.dart';
 
 import '../helpers.dart';
@@ -53,6 +54,31 @@ Future<void> tapOption(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// The value shown on the right of a [SettingRow].
+String rowValue(WidgetTester tester, String key) =>
+    tester.widget<SettingRow>(find.byKey(ValueKey(key))).value;
+
+/// Picks a 人質 in the sub-screen behind the 人質 row.
+///
+/// A new pledge starts at 「なし」 — 連絡だけの覚悟 — and 人質なし hides every money
+/// row, so any test about 寝坊ペナルティ / スヌーズペナルティ / 上限金額 has to say
+/// what is at stake first.
+Future<void> chooseHostage(WidgetTester tester, String label) async {
+  await scrollTo(tester, find.text('人質'));
+  await tester.tap(find.text('人質'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+  await tester.pageBack();
+  await tester.pumpAndSettle();
+}
+
+/// 覚悟 on, with the coins put up: the state the money rows exist in.
+Future<void> toggleKakugoWithCoins(WidgetTester tester) async {
+  await toggle(tester, '覚悟');
+  await chooseHostage(tester, 'コイン');
+}
+
 Future<void> toggle(WidgetTester tester, String label) async {
   await scrollTo(tester, find.text(label));
   await tester.tap(find.widgetWithText(SwitchListTile, label));
@@ -101,7 +127,7 @@ void main() {
   ) async {
     await openNewAlarm(tester);
 
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
     expect(find.text('寝坊ペナルティ'), findsOneWidget, reason: '覚悟 is on');
     // スヌーズ is on from the start on a new alarm, so the row is there already.
     await scrollTo(tester, find.text('スヌーズペナルティ'));
@@ -119,7 +145,7 @@ void main() {
 
   testWidgets('スヌーズ中の加算 is no longer a row of the island', (tester) async {
     await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
     await scrollTo(tester, find.text('スヌーズペナルティ'));
 
     expect(
@@ -142,7 +168,7 @@ void main() {
     tester,
   ) async {
     final container = await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     // The default the editor seeds.
     await scrollTo(tester, find.text('スヌーズペナルティ'));
@@ -169,7 +195,7 @@ void main() {
     tester,
   ) async {
     final container = await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     // Raise the cap: the rate may now be set anywhere up to it.
     await inSubScreen(tester, '上限金額', () async {
@@ -178,7 +204,7 @@ void main() {
     });
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
-      expect(find.text('0〜2500コイン/分'), findsOneWidget);
+      expect(find.text('10〜2500コイン/分'), findsOneWidget);
       await tester.enterText(subScreenNumber, '2000');
       await tester.pumpAndSettle();
     });
@@ -205,7 +231,7 @@ void main() {
     tester,
   ) async {
     final container = await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(subScreenNumber, '800');
@@ -225,7 +251,7 @@ void main() {
 
   testWidgets('out of range input is clamped, not accepted', (tester) async {
     final container = await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
@@ -243,7 +269,7 @@ void main() {
     tester,
   ) async {
     final container = await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
@@ -261,7 +287,7 @@ void main() {
     'the clock mode is a two option choice inside the 寝坊ペナルティ sub-screen',
     (tester) async {
       final container = await openNewAlarm(tester);
-      await toggle(tester, '覚悟');
+      await toggleKakugoWithCoins(tester);
 
       await inSubScreen(tester, '寝坊ペナルティ', () async {
         expect(find.text('スヌーズ中の加算'), findsOneWidget);
@@ -293,7 +319,7 @@ void main() {
     tester,
   ) async {
     await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
     // Off: this test *is* the off case, and new alarms now start snoozeable.
     await toggle(tester, 'スヌーズ');
 
@@ -307,7 +333,7 @@ void main() {
     tester,
   ) async {
     await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
     // Off: the point of this test is that 起床猶予 is there without スヌーズ.
     await toggle(tester, 'スヌーズ');
 
@@ -332,7 +358,7 @@ void main() {
     tester,
   ) async {
     await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     await scrollTo(tester, find.byKey(const ValueKey('maxLoss')));
     expect(find.text('寝坊で失う最大金額'), findsOneWidget);
@@ -360,48 +386,65 @@ void main() {
     );
   });
 
-  testWidgets('寝坊ペナルティ can be 0: a pledge that is only the contact', (
+  testWidgets('人質「なし」 is the pledge that is only the contact', (tester) async {
+    final container = await openNewAlarm(tester);
+    // No 人質 chosen: 覚悟 on and nothing else. 「0 コイン/分」 used to say this;
+    // now the 人質 row does, and it is where a new pledge already starts.
+    await toggle(tester, '覚悟');
+
+    await scrollTo(tester, find.text('人質'));
+    expect(rowValue(tester, 'hostageRow'), 'なし');
+
+    // Every money row is gone with it, header included.
+    expect(find.text('寝坊で失う最大金額'), findsNothing);
+    expect(find.byKey(const ValueKey('maxLoss')), findsNothing);
+    expect(find.text('寝坊ペナルティ'), findsNothing);
+    expect(find.text('スヌーズペナルティ'), findsNothing);
+    expect(find.text('上限金額'), findsNothing);
+    // What is left is the pledge itself, and who hears about it.
+    expect(find.text('寝坊時連絡・共有'), findsOneWidget);
+
+    final saved = await save(tester, container);
+    expect(saved.kakugo, isNotNull, reason: '覚悟 is on');
+    expect(saved.kakugo!.hostage, HostageType.none);
+  });
+
+  testWidgets('choosing コイン brings the money rows back, and seeds the rate', (
     tester,
   ) async {
     final container = await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
-    // Off: 「no rate, and no snooze either」 is the whole point of the 0 below.
-    await toggle(tester, 'スヌーズ');
+    await toggleKakugoWithCoins(tester);
+
+    await scrollTo(tester, find.text('寝坊ペナルティ'));
+    expect(find.text('寝坊ペナルティ'), findsOneWidget);
+    expect(find.text('上限金額'), findsOneWidget);
+    expect(find.text('寝坊で失う最大金額'), findsOneWidget);
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
-      expect(find.text('0〜1000コイン/分'), findsOneWidget);
+      expect(find.text('10〜1000コイン/分'), findsOneWidget);
+      // The bound is a clamp, not a suggestion: 5 is typed, 10 is committed.
       await tester.enterText(
-        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
-        // its footer — 起床猶予 — and the screen's own field is the one above it.
         find.byKey(const ValueKey('sliderNumberInput')).first,
-        '0',
+        '5',
       );
       await tester.pumpAndSettle();
-      expect(textOf(tester, const ValueKey('kakugoGauge')), '😌 ペナルティなし');
     });
 
-    await scrollTo(tester, find.byKey(const ValueKey('maxLoss')));
-    expect(
-      textOf(tester, const ValueKey('maxLoss')),
-      '0 コイン',
-      reason: 'nothing can reach the cap: no rate, and no snooze either',
-    );
-
-    expect((await save(tester, container)).kakugo!.ratePerMinute, 0);
+    expect((await save(tester, container)).kakugo!.ratePerMinute, 10);
   });
 
-  testWidgets('a 0 コイン/分 pledge still shows the cap if snoozing costs', (
+  testWidgets('the header stays the cap under the smallest rate', (
     tester,
   ) async {
     await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       await tester.enterText(
         // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
         // its footer — 起床猶予 — and the screen's own field is the one above it.
         find.byKey(const ValueKey('sliderNumberInput')).first,
-        '0',
+        '10',
       );
       await tester.pumpAndSettle();
     });
@@ -410,13 +453,13 @@ void main() {
     expect(
       textOf(tester, const ValueKey('maxLoss')),
       '1000 コイン',
-      reason: 'the 50 コイン snooze penalty can still add up to the cap',
+      reason: '10 コイン/分 plus the 50 コイン snooze penalty still reach the cap',
     );
   });
 
   testWidgets('nothing in the editor sells or gates a snooze', (tester) async {
     await openNewAlarm(tester);
-    await toggle(tester, '覚悟');
+    await toggleKakugoWithCoins(tester);
     await scrollTo(tester, find.text('スヌーズペナルティ'));
 
     for (final forbidden in const ['広告', '課金', 'スヌーズを購入', 'プレミアム', '購入']) {

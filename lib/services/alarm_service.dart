@@ -15,6 +15,7 @@ import '../domain/schedule.dart';
 import '../domain/snooze_rules.dart';
 import 'alarm_settings_builder.dart';
 import 'background_dispatch.dart';
+import 'card_hostage.dart';
 import 'oversleep_notifier.dart';
 import 'session_service.dart';
 import 'snooze_service.dart';
@@ -25,6 +26,12 @@ final sessionServiceProvider = Provider(
     ref.watch(walletRepositoryProvider),
     ref.watch(ojisanRepositoryProvider),
     ref.watch(profileRepositoryProvider),
+    ref.watch(pendingChargeRepositoryProvider),
+    // Read, not watched: the question is only ever asked at settle time, and
+    // the answer must be the state of the card *then* — not the state this
+    // provider was last rebuilt at.
+    isCardRegistered: () => ref.read(cardHostageProvider).card != null,
+    clock: ref.watch(clockProvider),
   ),
 );
 

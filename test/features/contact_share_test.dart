@@ -38,6 +38,18 @@ Future<void> toggle(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// Picks a 人質 in the sub-screen behind the 人質 row. A new pledge starts at
+/// 「なし」, which hides every money row of the island.
+Future<void> chooseHostage(WidgetTester tester, String label) async {
+  await scrollTo(tester, find.text('人質'));
+  await tester.tap(find.text('人質'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+  await tester.pageBack();
+  await tester.pumpAndSettle();
+}
+
 /// 覚悟の設定 → 寝坊時連絡・共有, and back out again.
 Future<void> inContactShareScreen(
   WidgetTester tester,
@@ -190,13 +202,17 @@ void main() {
     });
   });
 
-  testWidgets('覚悟の設定 lists its four rows, worst case first', (tester) async {
+  testWidgets('覚悟の設定 lists its five rows, 人質 first', (tester) async {
     await openNewAlarm(tester);
     // スヌーズ is on by default now, so the スヌーズペナルティ row is there already.
+    // The 人質 has to be named too: a new pledge starts at 「なし」, which hides
+    // every money row below it.
     await toggle(tester, '覚悟');
+    await chooseHostage(tester, 'コイン');
     await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
 
     expect(islandRows(tester, '覚悟の設定'), [
+      '人質',
       '寝坊時連絡・共有',
       '寝坊ペナルティ',
       'スヌーズペナルティ',
@@ -214,11 +230,13 @@ void main() {
   ) async {
     await openNewAlarm(tester);
     await toggle(tester, '覚悟');
+    await chooseHostage(tester, 'コイン');
     // Off: new alarms are snoozeable now, and this test is the other case.
     await toggle(tester, 'スヌーズ');
     await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
 
     expect(islandRows(tester, '覚悟の設定'), [
+      '人質',
       '寝坊時連絡・共有',
       '寝坊ペナルティ',
       '上限金額',

@@ -155,6 +155,31 @@ class DiscordWebhookRows extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// The local 請求台帳, added in v8: one row per overslept session whose 人質 was
+/// the card, holding the amount that will be billed at the end of the month.
+///
+/// **Nothing here reaches the network.** Phase 3 (see `docs/BILLING_API.md`) is
+/// what syncs these rows to the Worker; until then this is a record on the
+/// device and nothing else. The session id is the primary key, which is what
+/// makes an insert idempotent: settling the same ring twice cannot write two
+/// charges, exactly as the Worker's own `charges` ledger keys off `session_id`.
+class PendingChargeRows extends Table {
+  TextColumn get sessionId => text()();
+  TextColumn get alarmId => text()();
+
+  /// In the smallest unit of [currency] — 円, of which there is no smaller
+  /// unit. 1 コイン = 1 円, so this is the session's `loss` unchanged.
+  IntColumn get amount => integer()();
+  TextColumn get currency => text().withDefault(const Constant('jpy'))();
+  IntColumn get createdAtMs => integer()();
+
+  /// `pending` until something settles it. Phase 3 owns the other values.
+  TextColumn get status => text().withDefault(const Constant('pending'))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {sessionId};
+}
+
 /// Single-row tables. `id` is always 0.
 class WalletRows extends Table {
   IntColumn get id => integer()();
@@ -214,6 +239,7 @@ class GardenInventoryRows extends Table {
     ContactEventRows,
     ContactBookRows,
     DiscordWebhookRows,
+    PendingChargeRows,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -226,7 +252,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(inMemoryExecutor());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   /// v1 → v2 adds the per alarm grace window. Both columns default to 1, which
   /// is the rule every existing row was written under, so no stored session's
@@ -259,6 +285,13 @@ class AppDatabase extends _$AppDatabase {
   /// v5 → v6 adds the 連絡帳 table. It is created empty and nothing else is
   /// touched: an alarm's contact stays exactly the JSON blob it already was,
   /// referencing nobody, so no stored alarm changes who it would call.
+  ///
+  /// v7 → v8 adds the local 請求台帳, [PendingChargeRows], and nothing else. The
+  /// 人質 columns both tables need were already there — `kakugo_hostage` has
+  /// existed since v1 — so an alarm or a session written before カード人質
+  /// existed reads back with `hostage == coin`, which is the rule it was
+  /// written under. The new table starts empty, so no settled session gains a
+  /// charge it never had, and no stored loss or outcome changes.
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
@@ -300,6 +333,9 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(alarmRows, alarmRows.oversleepShare);
         await m.addColumn(alarmRows, alarmRows.oversleepTriggerMinutes);
         await m.createTable(discordWebhookRows);
+      }
+      if (from < 8) {
+        await m.createTable(pendingChargeRows);
       }
     },
   );

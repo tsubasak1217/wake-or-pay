@@ -243,7 +243,10 @@ class _RingingBody extends ConsumerWidget {
               if (grace > Duration.zero)
                 _GracePanel(remaining: grace, kakugo: session.kakugoSnapshot)
               else if (session.kakugoSnapshot != null)
-                _OjisanPanel(loss: loss)
+                _OjisanPanel(
+                  loss: loss,
+                  hostage: session.kakugoSnapshot!.hostage,
+                )
               else
                 Text('覚悟モードはオフです', style: theme.textTheme.bodyLarge),
               // Who is about to hear about this, and when. Only ever shown
@@ -418,9 +421,10 @@ class _GracePanel extends StatelessWidget {
           // 「1分ごとに 0 コイン」 is not a threat, it is a bug on screen: a
           // pledge with no per-minute penalty says the same thing a plain
           // alarm says, because that is what it does.
-          pledge == null || pledge.ratePerMinute == 0
+          pledge == null || !pledge.hostage.burns || pledge.ratePerMinute == 0
               ? '今のうちに解除すれば起床成功'
-              : '過ぎると 1分ごとに ${pledge.ratePerMinute} コイン',
+              : '過ぎると 1分ごとに '
+                    '${hostageAmount(pledge.ratePerMinute, pledge.hostage)}',
           style: theme.textTheme.titleMedium,
           textAlign: TextAlign.center,
         ),
@@ -430,23 +434,43 @@ class _GracePanel extends StatelessWidget {
 }
 
 class _OjisanPanel extends StatelessWidget {
-  const _OjisanPanel({required this.loss});
+  const _OjisanPanel({required this.loss, required this.hostage});
 
   final int loss;
+
+  /// Which 人質 this ring is burning. A card pledge takes nothing out of the
+  /// wallet, so the running total is followed by what will actually happen to
+  /// it: one charge at the end of the month.
+  final HostageType hostage;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
       children: [
-        Text(
-          '💸 あなた：−$loss',
-          style: theme.textTheme.headlineMedium?.copyWith(
-            color: theme.colorScheme.error,
+        // 人質なし burns nothing, and 「−0」 in the danger colour is a threat
+        // the pledge never made. The ojisan still has his say below.
+        if (hostage.burns) ...[
+          Text(
+            '💸 あなた：−$loss',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text('👨 おじさん：+$loss', style: theme.textTheme.headlineMedium),
+          const SizedBox(height: 4),
+          Text('👨 おじさん：+$loss', style: theme.textTheme.headlineMedium),
+        ],
+        if (hostage == HostageType.card) ...[
+          const SizedBox(height: 4),
+          Text(
+            cardChargeNotice(loss),
+            key: const ValueKey('cardChargeNotice'),
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
         const SizedBox(height: 8),
         Text('「$ojisanRingingLine」', style: theme.textTheme.titleMedium),
       ],

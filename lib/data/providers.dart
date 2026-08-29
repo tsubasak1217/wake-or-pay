@@ -11,6 +11,7 @@ import 'repositories/discord_webhook_repository.dart';
 import 'repositories/garden_repository.dart';
 import 'repositories/mail_settings_repository.dart';
 import 'repositories/ojisan_repository.dart';
+import 'repositories/pending_charge_repository.dart';
 import 'repositories/profile_repository.dart';
 import 'repositories/settings_repository.dart';
 import 'repositories/wallet_repository.dart';
@@ -49,6 +50,12 @@ final contactBookRepositoryProvider = Provider(
 
 final discordWebhookRepositoryProvider = Provider(
   (ref) => DiscordWebhookRepository(ref.watch(appDatabaseProvider)),
+);
+
+/// The local 請求台帳 — カード人質 losses waiting for Phase 3. Nothing in it is
+/// sent anywhere.
+final pendingChargeRepositoryProvider = Provider(
+  (ref) => PendingChargeRepository(ref.watch(appDatabaseProvider)),
 );
 
 final walletRepositoryProvider = Provider(

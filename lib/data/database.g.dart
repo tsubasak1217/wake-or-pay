@@ -4383,6 +4383,424 @@ class DiscordWebhookRowsCompanion extends UpdateCompanion<DiscordWebhookRow> {
   }
 }
 
+class $PendingChargeRowsTable extends PendingChargeRows
+    with TableInfo<$PendingChargeRowsTable, PendingChargeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingChargeRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _alarmIdMeta = const VerificationMeta(
+    'alarmId',
+  );
+  @override
+  late final GeneratedColumn<String> alarmId = GeneratedColumn<String>(
+    'alarm_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<int> amount = GeneratedColumn<int>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _currencyMeta = const VerificationMeta(
+    'currency',
+  );
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+    'currency',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('jpy'),
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    sessionId,
+    alarmId,
+    amount,
+    currency,
+    createdAtMs,
+    status,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_charge_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PendingChargeRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('alarm_id')) {
+      context.handle(
+        _alarmIdMeta,
+        alarmId.isAcceptableOrUnknown(data['alarm_id']!, _alarmIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_alarmIdMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('currency')) {
+      context.handle(
+        _currencyMeta,
+        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
+      );
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {sessionId};
+  @override
+  PendingChargeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingChargeRow(
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      )!,
+      alarmId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}alarm_id'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount'],
+      )!,
+      currency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+    );
+  }
+
+  @override
+  $PendingChargeRowsTable createAlias(String alias) {
+    return $PendingChargeRowsTable(attachedDatabase, alias);
+  }
+}
+
+class PendingChargeRow extends DataClass
+    implements Insertable<PendingChargeRow> {
+  final String sessionId;
+  final String alarmId;
+
+  /// In the smallest unit of [currency] — 円, of which there is no smaller
+  /// unit. 1 コイン = 1 円, so this is the session's `loss` unchanged.
+  final int amount;
+  final String currency;
+  final int createdAtMs;
+
+  /// `pending` until something settles it. Phase 3 owns the other values.
+  final String status;
+  const PendingChargeRow({
+    required this.sessionId,
+    required this.alarmId,
+    required this.amount,
+    required this.currency,
+    required this.createdAtMs,
+    required this.status,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['session_id'] = Variable<String>(sessionId);
+    map['alarm_id'] = Variable<String>(alarmId);
+    map['amount'] = Variable<int>(amount);
+    map['currency'] = Variable<String>(currency);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    map['status'] = Variable<String>(status);
+    return map;
+  }
+
+  PendingChargeRowsCompanion toCompanion(bool nullToAbsent) {
+    return PendingChargeRowsCompanion(
+      sessionId: Value(sessionId),
+      alarmId: Value(alarmId),
+      amount: Value(amount),
+      currency: Value(currency),
+      createdAtMs: Value(createdAtMs),
+      status: Value(status),
+    );
+  }
+
+  factory PendingChargeRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingChargeRow(
+      sessionId: serializer.fromJson<String>(json['sessionId']),
+      alarmId: serializer.fromJson<String>(json['alarmId']),
+      amount: serializer.fromJson<int>(json['amount']),
+      currency: serializer.fromJson<String>(json['currency']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+      status: serializer.fromJson<String>(json['status']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'sessionId': serializer.toJson<String>(sessionId),
+      'alarmId': serializer.toJson<String>(alarmId),
+      'amount': serializer.toJson<int>(amount),
+      'currency': serializer.toJson<String>(currency),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+      'status': serializer.toJson<String>(status),
+    };
+  }
+
+  PendingChargeRow copyWith({
+    String? sessionId,
+    String? alarmId,
+    int? amount,
+    String? currency,
+    int? createdAtMs,
+    String? status,
+  }) => PendingChargeRow(
+    sessionId: sessionId ?? this.sessionId,
+    alarmId: alarmId ?? this.alarmId,
+    amount: amount ?? this.amount,
+    currency: currency ?? this.currency,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    status: status ?? this.status,
+  );
+  PendingChargeRow copyWithCompanion(PendingChargeRowsCompanion data) {
+    return PendingChargeRow(
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      alarmId: data.alarmId.present ? data.alarmId.value : this.alarmId,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      currency: data.currency.present ? data.currency.value : this.currency,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+      status: data.status.present ? data.status.value : this.status,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingChargeRow(')
+          ..write('sessionId: $sessionId, ')
+          ..write('alarmId: $alarmId, ')
+          ..write('amount: $amount, ')
+          ..write('currency: $currency, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(sessionId, alarmId, amount, currency, createdAtMs, status);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingChargeRow &&
+          other.sessionId == this.sessionId &&
+          other.alarmId == this.alarmId &&
+          other.amount == this.amount &&
+          other.currency == this.currency &&
+          other.createdAtMs == this.createdAtMs &&
+          other.status == this.status);
+}
+
+class PendingChargeRowsCompanion extends UpdateCompanion<PendingChargeRow> {
+  final Value<String> sessionId;
+  final Value<String> alarmId;
+  final Value<int> amount;
+  final Value<String> currency;
+  final Value<int> createdAtMs;
+  final Value<String> status;
+  final Value<int> rowid;
+  const PendingChargeRowsCompanion({
+    this.sessionId = const Value.absent(),
+    this.alarmId = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.currency = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.status = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PendingChargeRowsCompanion.insert({
+    required String sessionId,
+    required String alarmId,
+    required int amount,
+    this.currency = const Value.absent(),
+    required int createdAtMs,
+    this.status = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : sessionId = Value(sessionId),
+       alarmId = Value(alarmId),
+       amount = Value(amount),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<PendingChargeRow> custom({
+    Expression<String>? sessionId,
+    Expression<String>? alarmId,
+    Expression<int>? amount,
+    Expression<String>? currency,
+    Expression<int>? createdAtMs,
+    Expression<String>? status,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (sessionId != null) 'session_id': sessionId,
+      if (alarmId != null) 'alarm_id': alarmId,
+      if (amount != null) 'amount': amount,
+      if (currency != null) 'currency': currency,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (status != null) 'status': status,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PendingChargeRowsCompanion copyWith({
+    Value<String>? sessionId,
+    Value<String>? alarmId,
+    Value<int>? amount,
+    Value<String>? currency,
+    Value<int>? createdAtMs,
+    Value<String>? status,
+    Value<int>? rowid,
+  }) {
+    return PendingChargeRowsCompanion(
+      sessionId: sessionId ?? this.sessionId,
+      alarmId: alarmId ?? this.alarmId,
+      amount: amount ?? this.amount,
+      currency: currency ?? this.currency,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      status: status ?? this.status,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
+    if (alarmId.present) {
+      map['alarm_id'] = Variable<String>(alarmId.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<int>(amount.value);
+    }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingChargeRowsCompanion(')
+          ..write('sessionId: $sessionId, ')
+          ..write('alarmId: $alarmId, ')
+          ..write('amount: $amount, ')
+          ..write('currency: $currency, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('status: $status, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4404,6 +4822,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $DiscordWebhookRowsTable discordWebhookRows =
       $DiscordWebhookRowsTable(this);
+  late final $PendingChargeRowsTable pendingChargeRows =
+      $PendingChargeRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4418,6 +4838,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     contactEventRows,
     contactBookRows,
     discordWebhookRows,
+    pendingChargeRows,
   ];
 }
 
@@ -6666,6 +7087,240 @@ typedef $$DiscordWebhookRowsTableProcessedTableManager =
       DiscordWebhookRow,
       PrefetchHooks Function()
     >;
+typedef $$PendingChargeRowsTableCreateCompanionBuilder =
+    PendingChargeRowsCompanion Function({
+      required String sessionId,
+      required String alarmId,
+      required int amount,
+      Value<String> currency,
+      required int createdAtMs,
+      Value<String> status,
+      Value<int> rowid,
+    });
+typedef $$PendingChargeRowsTableUpdateCompanionBuilder =
+    PendingChargeRowsCompanion Function({
+      Value<String> sessionId,
+      Value<String> alarmId,
+      Value<int> amount,
+      Value<String> currency,
+      Value<int> createdAtMs,
+      Value<String> status,
+      Value<int> rowid,
+    });
+
+class $$PendingChargeRowsTableFilterComposer
+    extends Composer<_$AppDatabase, $PendingChargeRowsTable> {
+  $$PendingChargeRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get alarmId => $composableBuilder(
+    column: $table.alarmId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PendingChargeRowsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PendingChargeRowsTable> {
+  $$PendingChargeRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get alarmId => $composableBuilder(
+    column: $table.alarmId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PendingChargeRowsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PendingChargeRowsTable> {
+  $$PendingChargeRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
+  GeneratedColumn<String> get alarmId =>
+      $composableBuilder(column: $table.alarmId, builder: (column) => column);
+
+  GeneratedColumn<int> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+}
+
+class $$PendingChargeRowsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PendingChargeRowsTable,
+          PendingChargeRow,
+          $$PendingChargeRowsTableFilterComposer,
+          $$PendingChargeRowsTableOrderingComposer,
+          $$PendingChargeRowsTableAnnotationComposer,
+          $$PendingChargeRowsTableCreateCompanionBuilder,
+          $$PendingChargeRowsTableUpdateCompanionBuilder,
+          (
+            PendingChargeRow,
+            BaseReferences<
+              _$AppDatabase,
+              $PendingChargeRowsTable,
+              PendingChargeRow
+            >,
+          ),
+          PendingChargeRow,
+          PrefetchHooks Function()
+        > {
+  $$PendingChargeRowsTableTableManager(
+    _$AppDatabase db,
+    $PendingChargeRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingChargeRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingChargeRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingChargeRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> sessionId = const Value.absent(),
+                Value<String> alarmId = const Value.absent(),
+                Value<int> amount = const Value.absent(),
+                Value<String> currency = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PendingChargeRowsCompanion(
+                sessionId: sessionId,
+                alarmId: alarmId,
+                amount: amount,
+                currency: currency,
+                createdAtMs: createdAtMs,
+                status: status,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String sessionId,
+                required String alarmId,
+                required int amount,
+                Value<String> currency = const Value.absent(),
+                required int createdAtMs,
+                Value<String> status = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PendingChargeRowsCompanion.insert(
+                sessionId: sessionId,
+                alarmId: alarmId,
+                amount: amount,
+                currency: currency,
+                createdAtMs: createdAtMs,
+                status: status,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PendingChargeRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PendingChargeRowsTable,
+      PendingChargeRow,
+      $$PendingChargeRowsTableFilterComposer,
+      $$PendingChargeRowsTableOrderingComposer,
+      $$PendingChargeRowsTableAnnotationComposer,
+      $$PendingChargeRowsTableCreateCompanionBuilder,
+      $$PendingChargeRowsTableUpdateCompanionBuilder,
+      (
+        PendingChargeRow,
+        BaseReferences<
+          _$AppDatabase,
+          $PendingChargeRowsTable,
+          PendingChargeRow
+        >,
+      ),
+      PendingChargeRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6688,4 +7343,6 @@ class $AppDatabaseManager {
       $$ContactBookRowsTableTableManager(_db, _db.contactBookRows);
   $$DiscordWebhookRowsTableTableManager get discordWebhookRows =>
       $$DiscordWebhookRowsTableTableManager(_db, _db.discordWebhookRows);
+  $$PendingChargeRowsTableTableManager get pendingChargeRows =>
+      $$PendingChargeRowsTableTableManager(_db, _db.pendingChargeRows);
 }

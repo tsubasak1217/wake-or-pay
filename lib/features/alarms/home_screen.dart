@@ -295,7 +295,9 @@ class _AlarmRow extends ConsumerWidget {
           )
         : 0;
 
-    final badge = kakugo == null
+    // 人質なし puts nothing at stake, so it wears no danger badge: the gauge
+    // reads a price, and there is no price.
+    final badge = kakugo == null || !kakugo.hostage.burns
         ? ''
         : kakugoBadge(kakugo.ratePerMinute, kakugo.cap);
 
@@ -424,8 +426,8 @@ class _AlarmRow extends ConsumerWidget {
     int shareCount,
   ) => [
     kakugo == null ? '覚悟なし' : '覚悟あり',
-    if (kakugo != null && kakugo.ratePerMinute > 0)
-      kakugoRateLabel(kakugo.ratePerMinute),
+    if (kakugo != null && kakugo.hostage.burns && kakugo.ratePerMinute > 0)
+      kakugoRateLabel(kakugo.ratePerMinute, kakugo.hostage),
     if (contact != null)
       [
         if (contact.willSms) '💬',

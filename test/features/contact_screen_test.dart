@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/app/profile_controller.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
+import 'package:wake_or_pay/features/alarms/widgets/settings_island.dart';
 import 'package:wake_or_pay/main.dart';
 import 'package:wake_or_pay/services/mail_settings.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
@@ -502,7 +503,14 @@ void main() {
     });
 
     await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
-    expect(find.text('なし'), findsOneWidget);
+    // By key, not by text: the 人質 row above it reads 「なし」 too, and this is
+    // an assertion about *this* row.
+    expect(
+      tester
+          .widget<SettingRow>(find.byKey(const ValueKey('contactShareRow')))
+          .value,
+      'なし',
+    );
     expect((await save(tester, container)).contact, isNull);
   });
 

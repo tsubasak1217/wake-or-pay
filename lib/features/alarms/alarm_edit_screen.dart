@@ -10,6 +10,7 @@ import '../../data/providers.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
 import '../../domain/sound_library.dart';
+import '../../services/card_hostage.dart';
 import 'alarm_controller.dart';
 import 'alarm_draft.dart';
 import 'contact_share_screen.dart';
@@ -160,8 +161,11 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     if (!mounted) return;
 
     // A warning, never a block: pledging more than you hold is allowed, it
-    // simply cannot all burn.
-    final cap = alarm.kakugo?.cap;
+    // simply cannot all burn. Coins only — a card pledge is not measured
+    // against the wallet, so a balance it cannot exceed says nothing.
+    final cap = alarm.kakugo?.hostage == HostageType.card
+        ? null
+        : alarm.kakugo?.cap;
     if (cap != null && cap > coins) {
       final proceed = await showDialog<bool>(
         context: context,
@@ -574,6 +578,15 @@ class _KakugoIsland extends ConsumerWidget {
     final canSnooze = ref.watch(
       alarmDraftProvider(seed).select((a) => a.canSnooze),
     );
+    // 人質なし is 連絡だけの覚悟: there is no amount to set, so the three money
+    // rows and the running total above them are not merely disabled, they are
+    // absent. Dropped from the list rather than returned empty — the island
+    // draws a hairline between children, and an empty child leaves its divider
+    // behind.
+    final burns = ref.watch(
+      alarmDraftProvider(seed)
+          .select((a) => a.kakugo?.hostage.burns ?? false),
+    );
 
     final theme = Theme.of(context);
     // ListTile paints from the ambient colour scheme, so the whole island gets
@@ -595,17 +608,127 @@ class _KakugoIsland extends ConsumerWidget {
         titleColor: theme.colorScheme.error,
         background: background,
         borderColor: danger,
-        header: _MaxLossHeader(seed: seed),
+        header: burns ? _MaxLossHeader(seed: seed) : null,
         children: [
+          // First, because it decides what every number below is measured in —
+          // and whether there are any numbers below at all.
+          _HostageRow(seed: seed),
           _ContactShareRow(seed: seed),
-          _RateRow(seed: seed),
+          // 起床猶予 has exactly one home, and which one depends on the 人質.
+          // Under a burning pledge it belongs *inside* the 寝坊ペナルティ
+          // sub-screen, because the rate above it is only charged for the
+          // minutes this window does not cover — the two numbers are one
+          // decision, and reading them apart would be reading half of it.
+          // Under 人質なし there is no rate and no such sub-screen, but the
+          // window still decides when the morning counts as overslept and the
+          // 連絡・共有 goes out, so it gets a row of its own here. Never both:
+          // two ways to set one number is two places for it to disagree.
+          if (!burns) _GraceRow(seed: seed),
+          if (burns) _RateRow(seed: seed),
           // Only means anything when the alarm can be snoozed at all, so it
           // follows the スヌーズ toggle in the island above. Neither 「スヌーズ中
           // の加算」 nor 「起床猶予」 is a row of its own: both live inside the
           // 寝坊ペナルティ sub-screen, which holds the number they qualify.
-          if (canSnooze) _SnoozePenaltyRow(seed: seed),
-          _CapRow(seed: seed),
+          if (burns && canSnooze) _SnoozePenaltyRow(seed: seed),
+          if (burns) _CapRow(seed: seed),
         ],
+      ),
+    );
+  }
+}
+
+/// 人質: what oversleeping actually costs — the coins, or the card.
+///
+/// A card pledge whose card has since been taken back in プロフィール reads
+/// 「クレジットカード（未登録）」 in the error colour. The stored alarm is left
+/// exactly as it is: the user chose the card, and the editor's job is to say
+/// that the choice currently has nothing behind it, not to quietly rewrite it.
+/// [SessionService.settle] falls back to coins for such a ring.
+class _HostageRow extends ConsumerWidget {
+  const _HostageRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hostage = ref.watch(
+      alarmDraftProvider(seed)
+          .select((a) => a.kakugo?.hostage ?? HostageType.none),
+    );
+    final card = ref.watch(cardHostageProvider.select((s) => s.card));
+
+    final unregistered = hostage == HostageType.card && card == null;
+    return SettingRow(
+      key: const ValueKey('hostageRow'),
+      label: '人質',
+      value: switch (hostage) {
+        HostageType.none || HostageType.coin => hostage.label,
+        HostageType.card => '${hostage.label}（${card?.label ?? '未登録'}）',
+      },
+      valueColor: unregistered ? Theme.of(context).colorScheme.error : null,
+      onTap: () => pushEditorSubScreen(
+        context,
+        HostageSubScreen(
+          initial: hostage,
+          onCommit: (type) => ref
+              .read(alarmDraftProvider(seed).notifier)
+              .update((a) {
+                final kakugo = a.kakugo ?? defaultKakugo;
+                return a.copyWith(
+                  kakugo: kakugo.copyWith(
+                    hostage: type,
+                    // Leaving 人質なし behind means the rate becomes a real
+                    // price for the first time, and a rate carried over from
+                    // the 連絡だけ spelling can be below the bound the editor
+                    // now offers. Seeding it is the only way the row that
+                    // appears reads as something the user could have set.
+                    ratePerMinute:
+                        type.burns && kakugo.ratePerMinute < minKakugoRate
+                        ? defaultKakugo.ratePerMinute
+                        : kakugo.ratePerMinute,
+                  ),
+                );
+              }),
+        ),
+      ),
+    );
+  }
+}
+
+/// 起床猶予 as a row of the island — the 人質なし half of the rule stated in
+/// [_KakugoIsland]'s children.
+///
+/// The same number [_GraceSelector] edits inside the 寝坊ペナルティ sub-screen,
+/// and deliberately never on screen at the same time as it: a pledge that
+/// burns nothing has no rate to read this window against, but still has a
+/// moment at which the morning is failed and the 連絡・共有 goes out, and that
+/// moment has to be settable.
+class _GraceRow extends ConsumerWidget {
+  const _GraceRow({required this.seed});
+
+  final Alarm seed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final draft = alarmDraftProvider(seed);
+    final grace = ref.watch(draft.select((a) => a.graceMinutes));
+    return SettingRow(
+      key: const ValueKey('graceRow'),
+      label: '起床猶予',
+      value: '$grace分',
+      onTap: () => pushEditorSubScreen(
+        context,
+        NumberSubScreen(
+          title: '起床猶予',
+          initial: grace,
+          min: minGraceMinutes,
+          max: maxGraceMinutes,
+          suffix: '分',
+          description: '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。過ぎると寝坊として連絡・共有が動きます。',
+          onCommit: (v) => ref
+              .read(draft.notifier)
+              .update((a) => a.copyWith(graceMinutes: v)),
+        ),
       ),
     );
   }
@@ -682,9 +805,12 @@ class _SnoozePenaltyRow extends ConsumerWidget {
     final cap = ref.watch(
       draft.select((a) => a.kakugo?.cap ?? defaultKakugo.cap),
     );
+    final hostage = ref.watch(
+      draft.select((a) => a.kakugo?.hostage ?? HostageType.coin),
+    );
     return SettingRow(
       label: 'スヌーズペナルティ',
-      value: '$penalty コイン',
+      value: hostageAmount(penalty, hostage),
       onTap: () => pushEditorSubScreen(
         context,
         NumberSubScreen(
@@ -692,11 +818,18 @@ class _SnoozePenaltyRow extends ConsumerWidget {
           initial: penalty,
           min: minSnoozePenalty,
           max: cap,
-          suffix: 'コイン',
-          description:
+          suffix: hostage.unit,
+          description: switch (hostage) {
+            // none never reaches here: the row is not built for it.
+            HostageType.none || HostageType.coin =>
               'スヌーズを1回押すごとに燃えるコインです。0 ならスヌーズは無料のままです。'
-              'スヌーズ自体はいつでも無料で使えます。これはあなたが自分に課した罰であって、'
-              '買うものではありません。',
+                  'スヌーズ自体はいつでも無料で使えます。これはあなたが自分に課した罰であって、'
+                  '買うものではありません。',
+            HostageType.card =>
+              'スヌーズを1回押すごとに積み上がる金額です。0 ならスヌーズは無料のままです。'
+                  'スヌーズ自体はいつでも無料で使えます。これはあなたが自分に課した罰であって、'
+                  '買うものではありません。',
+          },
           onCommit: (v) => ref
               .read(draft.notifier)
               .update(
@@ -917,6 +1050,12 @@ class _MaxLossHeader extends ConsumerWidget {
         return kakugo.ratePerMinute == 0 && snoozePart == 0 ? 0 : kakugo.cap;
       }),
     );
+    // 「1000 コイン」 or 「1,000 円」 — the same stored number, read in the unit
+    // the chosen 人質 is measured in.
+    final hostage = ref.watch(
+      alarmDraftProvider(seed)
+          .select((a) => a.kakugo?.hostage ?? HostageType.coin),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
       child: Column(
@@ -928,7 +1067,7 @@ class _MaxLossHeader extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '$worst コイン',
+            hostageAmount(worst, hostage),
             key: const ValueKey('maxLoss'),
             style: Theme.of(context).textTheme.displaySmall?.copyWith(
               color: _KakugoIsland.danger,
@@ -958,9 +1097,13 @@ class _RateRow extends ConsumerWidget {
       alarmDraftProvider(seed)
           .select((a) => a.kakugo?.cap ?? defaultKakugo.cap),
     );
+    final hostage = ref.watch(
+      alarmDraftProvider(seed)
+          .select((a) => a.kakugo?.hostage ?? HostageType.coin),
+    );
     return SettingRow(
       label: '寝坊ペナルティ',
-      value: '$rate コイン/分',
+      value: kakugoRateLabel(rate, hostage),
       onTap: () => pushEditorSubScreen(
         context,
         NumberSubScreen(
@@ -969,10 +1112,15 @@ class _RateRow extends ConsumerWidget {
           min: minKakugoRate,
           // Bounded by this alarm's own cap: a rate above it can never be paid.
           max: cap,
-          suffix: 'コイン/分',
-          description:
-              '猶予を過ぎたあと、1分ごとに燃えるコインです。'
-              '0 にすると、寝坊しても分ごとには燃えません（連絡だけの覚悟）。',
+          suffix: '${hostage.unit}/分',
+          description: switch (hostage) {
+            // none never reaches here: the row is not built for it, which is
+            // also why neither sentence offers 0 any more — 連絡だけの覚悟 is
+            // said by choosing 人質「なし」, one row up.
+            HostageType.none || HostageType.coin =>
+              '猶予を過ぎたあと、1分ごとに燃えるコインです。',
+            HostageType.card => '猶予を過ぎたあと、1分ごとに積み上がる金額です。',
+          },
           footer: (context, value) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1012,10 +1160,18 @@ class _CapRow extends ConsumerWidget {
     final cap = ref.watch(
       alarmDraftProvider(seed).select((a) => a.kakugo?.cap ?? 0),
     );
-    final coins = ref.watch(walletProvider).valueOrNull?.coins;
+    final hostage = ref.watch(
+      alarmDraftProvider(seed)
+          .select((a) => a.kakugo?.hostage ?? HostageType.coin),
+    );
+    // Only a coin pledge can outrun a balance. A card is not a wallet with a
+    // number in it, so the warning below is coin-only.
+    final coins = hostage == HostageType.coin
+        ? ref.watch(walletProvider).valueOrNull?.coins
+        : null;
     return SettingRow(
       label: '上限金額',
-      value: '$cap コイン',
+      value: hostageAmount(cap, hostage),
       onTap: () => pushEditorSubScreen(
         context,
         NumberSubScreen(
@@ -1023,8 +1179,13 @@ class _CapRow extends ConsumerWidget {
           initial: cap,
           min: minKakugoCap,
           max: maxKakugoCap,
-          suffix: 'コイン',
-          description: 'このアラーム1回で燃える上限です。実際に燃えるのは鳴動時の残高までです。',
+          suffix: hostage.unit,
+          description: switch (hostage) {
+            // none never reaches here: the row is not built for it.
+            HostageType.none ||
+            HostageType.coin => 'このアラーム1回で燃える上限です。実際に燃えるのは鳴動時の残高までです。',
+            HostageType.card => 'このアラーム1回でカードに請求される上限です。',
+          },
           footer: (context, value) => coins != null && value > coins
               ? Text(
                   '残高 $coins コインを超えています。'

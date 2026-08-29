@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/router.dart';
 import '../../data/providers.dart';
+import '../../domain/format.dart';
 import '../../domain/models.dart';
 import '../../domain/ojisan.dart';
 import '../../domain/reward.dart';
@@ -71,7 +72,19 @@ class _ResultBody extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
-            Text('消費：${session.loss}', style: theme.textTheme.headlineSmall),
+            // A card pledge takes nothing out of the wallet, so 「消費」 would
+            // be a lie about a balance that never moved: the ring says what
+            // will happen to the card instead.
+            if (session.kakugoSnapshot?.hostage == HostageType.card &&
+                session.loss > 0)
+              Text(
+                cardChargeNotice(session.loss),
+                key: const ValueKey('cardChargeNotice'),
+                style: theme.textTheme.headlineSmall,
+                textAlign: TextAlign.center,
+              )
+            else
+              Text('消費：${session.loss}', style: theme.textTheme.headlineSmall),
             if (success && session.kakugoSnapshot != null)
               Text(
                 '守った金額：${session.kakugoSnapshot!.cap}',

@@ -1,3 +1,4 @@
+import 'format.dart';
 import 'models.dart';
 
 /// Whether the ringing screen should offer a snooze button right now. Pure.
@@ -75,8 +76,12 @@ String snoozeUntilLabel(DateTime ringAt) =>
 /// Under a pledge it has to state the price: a button that quietly costs 50
 /// coins is exactly the kind of thing this app must not do.
 String snoozeButtonLabel(Kakugo? kakugo) {
-  final penalty = kakugo == null
+  // 人質なし costs nothing per press, so the button must not name a price it
+  // will never charge.
+  final penalty = kakugo == null || !kakugo.hostage.burns
       ? 0
       : normalizeSnoozePenalty(kakugo.snoozePenalty);
-  return penalty > 0 ? 'スヌーズ（−$penalty コイン）' : 'スヌーズ';
+  return penalty > 0
+      ? 'スヌーズ（−${hostageAmount(penalty, kakugo!.hostage)}）'
+      : 'スヌーズ';
 }

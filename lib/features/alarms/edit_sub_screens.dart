@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/format.dart';
 import '../../domain/models.dart';
+import '../../services/card_hostage.dart';
+import '../profile/card_hostage_screen.dart';
 import 'widgets/slider_number_field.dart';
 
 /// Pushes [screen] over the editor and returns when it is closed.
@@ -199,6 +202,121 @@ class _ChoiceSubScreenState<T> extends State<ChoiceSubScreen<T>> {
       ),
     ),
   );
+}
+
+/// 人質: what the user actually loses by oversleeping.
+///
+/// The card option is only selectable once a card is registered — a pledge
+/// against a card that does not exist would be a stake the app cannot take —
+/// so with no card the option is drawn disabled and 「カードを登録する」 sits under
+/// it, opening the same プロフィール screen. Coming back with a card registered
+/// enables the option in place, because the card state is watched.
+///
+/// Committed on pop, like every other sub-screen.
+class HostageSubScreen extends ConsumerStatefulWidget {
+  const HostageSubScreen({
+    super.key,
+    required this.initial,
+    required this.onCommit,
+  });
+
+  final HostageType initial;
+  final ValueChanged<HostageType> onCommit;
+
+  static const noneDescription = '寝坊してもコインもカードも失いません。連絡・共有だけの覚悟です。';
+  static const coinDescription = '寝坊すると、アプリ内のコインが燃えます。';
+  static const cardDescription = '寝坊で確定した金額を、毎月末にまとめてカードに請求します。';
+
+  static const _options =
+      <({HostageType value, String description, Key key})>[
+        (
+          value: HostageType.none,
+          description: noneDescription,
+          key: ValueKey('hostageOptionNone'),
+        ),
+        (
+          value: HostageType.coin,
+          description: coinDescription,
+          key: ValueKey('hostageOptionCoin'),
+        ),
+        (
+          value: HostageType.card,
+          description: cardDescription,
+          key: ValueKey('hostageOptionCard'),
+        ),
+      ];
+
+  @override
+  ConsumerState<HostageSubScreen> createState() => _HostageSubScreenState();
+}
+
+class _HostageSubScreenState extends ConsumerState<HostageSubScreen> {
+  late HostageType _selected = widget.initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final enrolled = ref.watch(cardHostageProvider).card != null;
+
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) widget.onCommit(_selected);
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('人質')),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            RadioGroup<HostageType>(
+              groupValue: _selected,
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _selected = value);
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final option in HostageSubScreen._options)
+                    RadioListTile<HostageType>(
+                      key: option.key,
+                      value: option.value,
+                      // The card cannot be put up before it is handed over.
+                      enabled:
+                          option.value != HostageType.card || enrolled,
+                      selected: _selected == option.value,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        option.value.label,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        option.description,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (!enrolled)
+              ListTile(
+                key: const ValueKey('hostageRegisterCard'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.credit_card),
+                title: const Text('カードを登録する'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => pushCardHostageScreen(context),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// 起床確認方法: which check has to be cleared to stop the alarm.

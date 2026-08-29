@@ -27,10 +27,9 @@ Kakugo? _kakugo(
 }) {
   if (rate == null || cap == null) return null;
   return Kakugo(
-    hostage: HostageType.values.firstWhere(
-      (h) => h.name == hostage,
-      orElse: () => HostageType.coin,
-    ),
+    // One rule, shared with [Kakugo.fromJson]: no name reads as coins, and a
+    // rate below the bound reads as 人質なし however it was labelled.
+    hostage: hostageFor(hostage, rate),
     ratePerMinute: rate,
     cap: cap,
     // Null is a row from before stage B: snoozing was free and never stopped
@@ -197,6 +196,28 @@ extension DiscordWebhookMapper on DiscordWebhook {
     url: Value(url),
     displayName: Value(displayName),
     createdAtMs: Value(createdAt.millisecondsSinceEpoch),
+  );
+}
+
+extension PendingChargeRowMapper on PendingChargeRow {
+  PendingCharge toModel() => PendingCharge(
+    sessionId: sessionId,
+    alarmId: alarmId,
+    amount: amount,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
+    currency: currency,
+    status: PendingChargeStatus.byName(status),
+  );
+}
+
+extension PendingChargeMapper on PendingCharge {
+  PendingChargeRowsCompanion toCompanion() => PendingChargeRowsCompanion(
+    sessionId: Value(sessionId),
+    alarmId: Value(alarmId),
+    amount: Value(amount),
+    createdAtMs: Value(createdAt.millisecondsSinceEpoch),
+    currency: Value(currency),
+    status: Value(status.name),
   );
 }
 

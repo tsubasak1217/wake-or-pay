@@ -36,6 +36,28 @@ void main() {
       expect(lossAt(at(minutes: 600), session(kakugo: null)), 0);
     });
 
+    test('人質なし costs nothing either, rate and snoozes included', () {
+      // 連絡だけの覚悟 in its current spelling: the pledge is real, the morning
+      // is still judged and the contact still told, but nothing is at stake.
+      final s = session(
+        kakugo: const Kakugo(
+          hostage: HostageType.none,
+          ratePerMinute: 500,
+          cap: 10000,
+          snoozePenalty: 500,
+        ),
+        snoozes: [at(minutes: 2), at(minutes: 5)],
+      );
+      expect(lossAt(at(minutes: 1), s), 0);
+      expect(lossAt(at(minutes: 600), s), 0);
+      expect(finalizeSession(s, at(minutes: 30)).loss, 0);
+      expect(
+        finalizeSession(s, at(minutes: 30)).status,
+        SessionStatus.failed,
+        reason: 'the morning is still judged on time',
+      );
+    });
+
     test('59s is still zero minutes, 60s is one', () {
       expect(lossAt(at(seconds: 59), session()), 0);
       expect(lossAt(at(seconds: 60), session()), 100);

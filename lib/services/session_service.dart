@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../data/repositories/alarm_session_repository.dart';
 import '../data/repositories/ojisan_repository.dart';
+import '../data/repositories/pending_charge_repository.dart';
 import '../data/repositories/profile_repository.dart';
 import '../data/repositories/wallet_repository.dart';
 import '../domain/loss_calculator.dart';
@@ -39,14 +40,31 @@ class SessionService {
     this._sessions,
     this._wallet,
     this._ojisan,
-    this._profile, {
+    this._profile,
+    this._pendingCharges, {
+    bool Function()? isCardRegistered,
+    DateTime Function()? clock,
     Random? random,
-  }) : _random = random ?? Random();
+  }) : _isCardRegistered = isCardRegistered ?? _noCard,
+       _clock = clock ?? DateTime.now,
+       _random = random ?? Random();
 
   final AlarmSessionRepository _sessions;
   final WalletRepository _wallet;
   final OjisanRepository _ojisan;
   final ProfileRepository _profile;
+  final PendingChargeRepository _pendingCharges;
+
+  /// Whether a card is registered *right now*. A function rather than a value
+  /// because the answer can change between one ring and the next — the user may
+  /// have taken the card back in プロフィール since the alarm was saved.
+  final bool Function() _isCardRegistered;
+
+  /// When a charge was written down. Injectable so the ledger can be asserted
+  /// on instead of raced.
+  final DateTime Function() _clock;
+
+  static bool _noCard() => false;
 
   /// Injectable so the draw behind [WakeCheckType.random] can be tested.
   final Random _random;
@@ -84,6 +102,19 @@ class SessionService {
   ///
   /// A no-op unless the stored session is still ringing, so a double dismiss
   /// — or a settle racing the recovery pass — cannot charge twice.
+  ///
+  /// **Which 人質 pays.** A failed ring with a loss is taken out of one of two
+  /// places, decided by the pledge frozen at fire time:
+  ///
+  /// - `hostage == card` **and** a card is registered now → the coins are left
+  ///   alone and a [PendingCharge] for the loss is written to the local ledger,
+  ///   keyed by session id so settling twice writes one charge. Nothing is
+  ///   sent anywhere; Phase 3 syncs the ledger (`docs/BILLING_API.md`).
+  /// - anything else — a coin pledge, or a card pledge whose card has since
+  ///   been taken back in プロフィール — burns coins, exactly as before.
+  ///
+  /// The ojisan's takings count the loss either way: he earned it regardless of
+  /// which pocket it came out of.
   Future<AlarmSession> settle(AlarmSession settled) async {
     final stored = await _sessions.getById(settled.id);
     if (stored != null && !stored.isRinging) return stored;
@@ -92,7 +123,21 @@ class SessionService {
 
     if (settled.status == SessionStatus.failed) {
       if (settled.loss > 0) {
-        await _wallet.update((w) => w.copyWith(coins: w.coins - settled.loss));
+        if (settled.kakugoSnapshot?.hostage == HostageType.card &&
+            _isCardRegistered()) {
+          await _pendingCharges.insertIfAbsent(
+            PendingCharge(
+              sessionId: settled.id,
+              alarmId: settled.alarmId,
+              amount: settled.loss,
+              createdAt: _clock(),
+            ),
+          );
+        } else {
+          await _wallet.update(
+            (w) => w.copyWith(coins: w.coins - settled.loss),
+          );
+        }
       }
       // A plain alarm's failure belongs in the history, but the ojisan made
       // nothing off it, so it does not count towards his growth.

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/data/repositories/alarm_session_repository.dart';
 import 'package:wake_or_pay/data/repositories/ojisan_repository.dart';
+import 'package:wake_or_pay/data/repositories/pending_charge_repository.dart';
 import 'package:wake_or_pay/data/repositories/profile_repository.dart';
 import 'package:wake_or_pay/data/repositories/wallet_repository.dart';
 import 'package:wake_or_pay/domain/models.dart';
@@ -49,6 +50,7 @@ void main() {
       container.read(walletRepositoryProvider),
       container.read(ojisanRepositoryProvider),
       container.read(profileRepositoryProvider),
+      container.read(pendingChargeRepositoryProvider),
       random: Random(42),
     );
 
@@ -330,6 +332,145 @@ void main() {
 
       expect((await s.wallet.read()).coins, 3000);
       expect((await s.ojisan.read()).totalOversleeps, 1);
+    });
+  });
+
+  group('カード人質', () {
+    const cardKakugo = Kakugo(
+      hostage: HostageType.card,
+      ratePerMinute: 100,
+      cap: 2000,
+    );
+    const cardAlarm = Alarm(id: 'a1', hour: 7, minute: 0, kakugo: cardKakugo);
+
+    /// A service whose only difference from the default is whether a card is
+    /// registered right now.
+    Future<
+      ({
+        SessionService service,
+        WalletRepository wallet,
+        PendingChargeRepository charges,
+        OjisanRepository ojisan,
+      })
+    >
+    setUpCard({required bool registered, int coins = 5000}) async {
+      final container = await testContainer();
+      final wallet = container.read(walletRepositoryProvider);
+      await wallet.write(Wallet(coins: coins));
+      final charges = container.read(pendingChargeRepositoryProvider);
+      return (
+        service: SessionService(
+          container.read(alarmSessionRepositoryProvider),
+          wallet,
+          container.read(ojisanRepositoryProvider),
+          container.read(profileRepositoryProvider),
+          charges,
+          isCardRegistered: () => registered,
+          clock: () => DateTime(2026, 8, 29, 7, 7),
+        ),
+        wallet: wallet,
+        charges: charges,
+        ojisan: container.read(ojisanRepositoryProvider),
+      );
+    }
+
+    test('a card pledge bills the card and leaves the coins alone', () async {
+      final s = await setUpCard(registered: true);
+      final session = await s.service.start(alarm: cardAlarm, firedAt: firedAt);
+
+      final settled = await s.service.dismiss(
+        session,
+        firedAt.add(const Duration(minutes: 7)),
+      );
+
+      expect(settled.status, SessionStatus.failed);
+      expect(settled.loss, 700);
+      expect(
+        (await s.wallet.read()).coins,
+        5000,
+        reason: 'the wallet is not the hostage here',
+      );
+
+      final charge = (await s.charges.getAll()).single;
+      expect(charge.sessionId, session.id);
+      expect(charge.alarmId, 'a1');
+      expect(charge.amount, 700, reason: '1 コイン = 1 円');
+      expect(charge.currency, 'jpy');
+      expect(charge.status, PendingChargeStatus.pending);
+      expect(charge.createdAt, DateTime(2026, 8, 29, 7, 7));
+
+      // The ojisan earned it either way.
+      expect(
+        await s.ojisan.read(),
+        const OjisanState(totalOversleeps: 1, totalEarned: 700),
+      );
+    });
+
+    test('settling twice still leaves exactly one charge', () async {
+      final s = await setUpCard(registered: true);
+      final session = await s.service.start(alarm: cardAlarm, firedAt: firedAt);
+      final at = firedAt.add(const Duration(minutes: 7));
+
+      await s.service.dismiss(session, at);
+      // The second settle is refused by the ringing check, and would be
+      // refused by the ledger's primary key even if it were not.
+      await s.service.dismiss(session, at);
+
+      expect(await s.charges.getAll(), hasLength(1));
+      expect((await s.wallet.read()).coins, 5000);
+    });
+
+    test('a card pledge with no card falls back to the coins', () async {
+      // The user took the card back in プロフィール after saving the alarm. The
+      // stored alarm is untouched; the ring simply burns coins instead.
+      final s = await setUpCard(registered: false);
+      final session = await s.service.start(alarm: cardAlarm, firedAt: firedAt);
+
+      final settled = await s.service.dismiss(
+        session,
+        firedAt.add(const Duration(minutes: 7)),
+      );
+
+      expect(settled.loss, 700);
+      expect((await s.wallet.read()).coins, 4300);
+      expect(await s.charges.getAll(), isEmpty);
+    });
+
+    test('a coin pledge never touches the ledger, card or no card', () async {
+      final s = await setUpCard(registered: true);
+      final session = await s.service.start(alarm: alarm, firedAt: firedAt);
+
+      await s.service.dismiss(session, firedAt.add(const Duration(minutes: 7)));
+
+      expect((await s.wallet.read()).coins, 4300);
+      expect(await s.charges.getAll(), isEmpty);
+    });
+
+    test('人質なし settles for nothing and writes no charge', () async {
+      final s = await setUpCard(registered: true);
+      final session = await s.service.start(
+        alarm: const Alarm(
+          id: 'a2',
+          hour: 7,
+          minute: 0,
+          kakugo: Kakugo(
+            hostage: HostageType.none,
+            ratePerMinute: 100,
+            cap: 2000,
+          ),
+        ),
+        firedAt: firedAt,
+      );
+
+      final settled = await s.service.dismiss(
+        session,
+        firedAt.add(const Duration(minutes: 7)),
+      );
+
+      expect(settled.status, SessionStatus.failed, reason: 'still overslept');
+      expect(settled.loss, 0);
+      expect((await s.wallet.read()).coins, 5000);
+      expect(await s.charges.getAll(), isEmpty);
     });
   });
 }
