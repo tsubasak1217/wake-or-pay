@@ -41,6 +41,21 @@ subprojects {
                 ?.compilerOptions
                 ?.jvmTarget
                 ?.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+
+        }
+
+        // Keep `play-services-tapandpay` off stripe_android's *lint* classpath.
+        //
+        // Its transitive `stripe-android-issuing-push-provisioning` declares
+        // that Google SDK, which is not on any public Maven repository. The
+        // compile classpath never fetches it (the plugin does not use push
+        // provisioning), but `lintVitalAnalyzeRelease` — run by the app's
+        // release build for every library — resolves the lint checks classpath
+        // and fails on the missing POM. Debug builds never run lint, which is
+        // why only `flutter build apk --release` broke. Excluding it from the
+        // lint configurations alone changes nothing about what ships.
+        configurations.matching { it.name.contains("Lint") }.configureEach {
+            exclude(group = "com.google.android.gms", module = "play-services-tapandpay")
         }
     }
 }
