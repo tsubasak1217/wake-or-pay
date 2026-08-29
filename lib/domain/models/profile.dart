@@ -19,12 +19,14 @@ class Profile {
     this.iconId = ProfileCatalog.defaultIconId,
     this.plateBackgroundId = ProfileCatalog.defaultPlateBackgroundId,
     this.frameId = ProfileCatalog.defaultFrameId,
+    this.backgroundId = ProfileCatalog.defaultBackgroundId,
     this.titlePrefixId = TitleCatalog.defaultPrefixId,
     this.titleConnectorId = TitleCatalog.defaultConnectorId,
     this.titleSuffixId = TitleCatalog.defaultSuffixId,
     this.ownedIconIds = ProfileCatalog.allIconIds,
     this.ownedPlateBackgroundIds = ProfileCatalog.allPlateBackgroundIds,
     this.ownedFrameIds = ProfileCatalog.allFrameIds,
+    this.ownedBackgroundIds = ProfileCatalog.allBackgroundIds,
     this.ownedTitleWordIds = TitleCatalog.allTitleWordIds,
   });
 
@@ -66,6 +68,10 @@ class Profile {
   final String plateBackgroundId;
   final String frameId;
 
+  /// 背景 — painted behind the whole head, not just behind the name plate.
+  /// [ProfileCatalog.defaultBackgroundId] is 「なし」, which paints nothing.
+  final String backgroundId;
+
   /// The three words the 称号 is built from — 「寝坊」「の」「常習犯」 by default.
   final String titlePrefixId;
   final String titleConnectorId;
@@ -81,6 +87,7 @@ class Profile {
   final Set<String> ownedIconIds;
   final Set<String> ownedPlateBackgroundIds;
   final Set<String> ownedFrameIds;
+  final Set<String> ownedBackgroundIds;
 
   /// One set for all three title slots. The ids are namespaced (`p_`/`c_`/`s_`)
   /// so a single set can never confuse a prefix with a suffix.
@@ -95,12 +102,14 @@ class Profile {
     String? iconId,
     String? plateBackgroundId,
     String? frameId,
+    String? backgroundId,
     String? titlePrefixId,
     String? titleConnectorId,
     String? titleSuffixId,
     Set<String>? ownedIconIds,
     Set<String>? ownedPlateBackgroundIds,
     Set<String>? ownedFrameIds,
+    Set<String>? ownedBackgroundIds,
     Set<String>? ownedTitleWordIds,
   }) => Profile(
     userName: userName ?? this.userName,
@@ -111,6 +120,7 @@ class Profile {
     iconId: iconId ?? this.iconId,
     plateBackgroundId: plateBackgroundId ?? this.plateBackgroundId,
     frameId: frameId ?? this.frameId,
+    backgroundId: backgroundId ?? this.backgroundId,
     titlePrefixId: titlePrefixId ?? this.titlePrefixId,
     titleConnectorId: titleConnectorId ?? this.titleConnectorId,
     titleSuffixId: titleSuffixId ?? this.titleSuffixId,
@@ -118,6 +128,7 @@ class Profile {
     ownedPlateBackgroundIds:
         ownedPlateBackgroundIds ?? this.ownedPlateBackgroundIds,
     ownedFrameIds: ownedFrameIds ?? this.ownedFrameIds,
+    ownedBackgroundIds: ownedBackgroundIds ?? this.ownedBackgroundIds,
     ownedTitleWordIds: ownedTitleWordIds ?? this.ownedTitleWordIds,
   );
 
@@ -132,12 +143,14 @@ class Profile {
       other.iconId == iconId &&
       other.plateBackgroundId == plateBackgroundId &&
       other.frameId == frameId &&
+      other.backgroundId == backgroundId &&
       other.titlePrefixId == titlePrefixId &&
       other.titleConnectorId == titleConnectorId &&
       other.titleSuffixId == titleSuffixId &&
       setEquals(other.ownedIconIds, ownedIconIds) &&
       setEquals(other.ownedPlateBackgroundIds, ownedPlateBackgroundIds) &&
       setEquals(other.ownedFrameIds, ownedFrameIds) &&
+      setEquals(other.ownedBackgroundIds, ownedBackgroundIds) &&
       setEquals(other.ownedTitleWordIds, ownedTitleWordIds);
 
   @override
@@ -150,19 +163,21 @@ class Profile {
     iconId,
     plateBackgroundId,
     frameId,
+    backgroundId,
     titlePrefixId,
     titleConnectorId,
     titleSuffixId,
     Object.hashAllUnordered(ownedIconIds),
     Object.hashAllUnordered(ownedPlateBackgroundIds),
     Object.hashAllUnordered(ownedFrameIds),
+    Object.hashAllUnordered(ownedBackgroundIds),
     Object.hashAllUnordered(ownedTitleWordIds),
   );
 
   @override
   String toString() =>
       'Profile("$userName", discord "$discordUserId", xp $xp, '
-      '$iconId/$plateBackgroundId/$frameId, 「$title」)';
+      '$iconId/$plateBackgroundId/$frameId/$backgroundId, 「$title」)';
 }
 
 /// Keeps only the digits of a pasted Discord user ID. Pure.

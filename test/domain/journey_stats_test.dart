@@ -168,6 +168,7 @@ void main() {
           ProfileCatalog.icons.length +
           ProfileCatalog.plateBackgrounds.length +
           ProfileCatalog.frames.length +
+          ProfileCatalog.backgrounds.length +
           TitleCatalog.wordCount;
 
       final all = computeJourneyStats(
@@ -185,12 +186,13 @@ void main() {
           ownedIconIds: {ProfileCatalog.defaultIconId},
           ownedPlateBackgroundIds: {},
           ownedFrameIds: {},
+          ownedBackgroundIds: {ProfileCatalog.defaultBackgroundId},
           // One real word plus an id no catalogue has: the count is of the
           // catalogue, so the stranger cannot push it past the total.
           ownedTitleWordIds: {TitleCatalog.defaultPrefixId, 'retired'},
         ),
       );
-      expect(sparse.ownedCollections, 2);
+      expect(sparse.ownedCollections, 3);
       expect(sparse.totalCollections, total);
     });
   });

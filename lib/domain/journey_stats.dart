@@ -110,11 +110,12 @@ JourneyStats computeJourneyStats({
   );
 }
 
-/// Every cosmetic there is: icons, plates, frames and 称号の語. Pure.
+/// Every cosmetic there is: icons, plates, frames, 背景 and 称号の語. Pure.
 int get totalCollectionCount =>
     ProfileCatalog.icons.length +
     ProfileCatalog.plateBackgrounds.length +
     ProfileCatalog.frames.length +
+    ProfileCatalog.backgrounds.length +
     TitleCatalog.wordCount;
 
 /// How many of them [profile] holds. Pure.
@@ -128,6 +129,9 @@ int ownedCollectionCount(Profile profile) =>
         .length +
     ProfileCatalog.frames
         .where((e) => profile.ownedFrameIds.contains(e.id))
+        .length +
+    ProfileCatalog.backgrounds
+        .where((e) => profile.ownedBackgroundIds.contains(e.id))
         .length +
     [
       ...TitleCatalog.prefixes,

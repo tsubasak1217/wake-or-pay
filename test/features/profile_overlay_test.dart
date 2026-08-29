@@ -64,22 +64,31 @@ Future<void> scrollTo(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
-/// The same, for the editor's own list. Its first Scrollable is the body; the
-/// horizontal picker rows inside it are Scrollables too.
-Finder get _editorList => find
-    .descendant(
-      of: find.byType(ProfileEditScreen),
-      matching: find.byType(Scrollable),
-    )
-    .first;
+/// The editor's panel scrolls on its own; the preview above it does not move.
+Finder get editorPanelScrollable => find.descendant(
+  of: find.byKey(const ValueKey('editPanel')),
+  matching: find.byType(Scrollable),
+);
 
-Future<void> scrollEditorTo(WidgetTester tester, Finder target) async {
-  await tester.scrollUntilVisible(target, 100, scrollable: _editorList);
+/// Opens one category drawer and taps one item in it. Everything in the editor
+/// is two taps now: the chip, then the tile.
+Future<void> pickInEditor(
+  WidgetTester tester,
+  String category,
+  String itemKey,
+) async {
+  await tester.tap(find.byKey(ValueKey('editCategory-$category')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(ValueKey(itemKey)));
   await tester.pumpAndSettle();
 }
 
-Future<void> scrollEditorToTop(WidgetTester tester) async {
-  tester.state<ScrollableState>(_editorList).position.jumpTo(0);
+/// The name lives on the plate: tapping it opens 「名前を変更」.
+Future<void> renameInEditor(WidgetTester tester, String name) async {
+  await tester.tap(find.byKey(const ValueKey('editNameplate')));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(const ValueKey('profileEditName')), name);
+  await tester.tap(find.byKey(const ValueKey('profileEditNameOk')));
   await tester.pumpAndSettle();
 }
 
@@ -268,6 +277,7 @@ void main() {
         ProfileCatalog.icons.length +
         ProfileCatalog.plateBackgrounds.length +
         ProfileCatalog.frames.length +
+        ProfileCatalog.backgrounds.length +
         TitleCatalog.wordCount;
     await expectJourney(tester, 'journeyCollections', '$total / $total');
   });
@@ -325,25 +335,23 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('profileEditButton')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('profileEditName')), findsOneWidget);
+      // The sketch has no name field: the plate is the field.
+      expect(find.byKey(const ValueKey('profileEditName')), findsNothing);
+      expect(find.byKey(const ValueKey('editNameplate')), findsOneWidget);
+      expect(find.byKey(const ValueKey('editPanel')), findsOneWidget);
 
-      await tester.enterText(
-        find.byKey(const ValueKey('profileEditName')),
-        ' 山田花子 ',
-      );
-      await tester.pumpAndSettle();
+      await renameInEditor(tester, ' 山田花子 ');
 
-      for (final key in const [
-        'collectionIcon-sun',
-        'collectionFrame-frame_thick',
-        'collectionPlate-plate_dawn',
-        'titlePrefix-p_hayaoki',
-        'titleConnector-c_taru',
-        'titleSuffix-s_ou',
+      for (final pick in const [
+        ('icon', 'collectionIcon-sun'),
+        ('frame', 'collectionFrame-frame_thick'),
+        ('plate', 'collectionPlate-plate_dawn'),
+        ('background', 'collectionBackground-bg_night'),
+        ('titleA', 'titlePrefix-p_hayaoki'),
+        ('titleB', 'titleConnector-c_taru'),
+        ('titleC', 'titleSuffix-s_ou'),
       ]) {
-        await scrollEditorTo(tester, find.byKey(ValueKey(key)));
-        await tester.tap(find.byKey(ValueKey(key)));
-        await tester.pumpAndSettle();
+        await pickInEditor(tester, pick.$1, pick.$2);
       }
 
       // Nothing is committed yet: the draft lives in the screen, and only the
@@ -352,7 +360,6 @@ void main() {
         container.read(profileProvider).iconId,
         ProfileCatalog.defaultIconId,
       );
-      await scrollEditorToTop(tester);
       expect(textOf(tester, 'profileEditTitle'), '早起きたる王');
       expect(
         find.descendant(
@@ -377,6 +384,7 @@ void main() {
       expect(profile.iconId, 'sun');
       expect(profile.frameId, 'frame_thick');
       expect(profile.plateBackgroundId, 'plate_dawn');
+      expect(profile.backgroundId, 'bg_night');
       expect(profile.title, '早起きたる王');
 
       // Back on the overlay, painted from the stored profile.
@@ -398,6 +406,7 @@ void main() {
       expect(reread.iconId, 'sun');
       expect(reread.frameId, 'frame_thick');
       expect(reread.plateBackgroundId, 'plate_dawn');
+      expect(reread.backgroundId, 'bg_night');
       expect(reread.title, '早起きたる王');
 
       await tester.tap(find.byKey(const ValueKey('profileOverlayClose')));
@@ -432,19 +441,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('profileEditButton')));
     await tester.pumpAndSettle();
 
-    await scrollEditorTo(
-      tester,
-      find.byKey(const ValueKey('collectionIcon-sun')),
-    );
-    await tester.tap(find.byKey(const ValueKey('collectionIcon-sun')));
-    await tester.pumpAndSettle();
-
-    await scrollEditorTo(
-      tester,
-      find.byKey(const ValueKey('titlePrefix-p_hayaoki')),
-    );
-    await tester.tap(find.byKey(const ValueKey('titlePrefix-p_hayaoki')));
-    await tester.pumpAndSettle();
+    // Both are on the screen and both refuse: unowned greys out, it does not
+    // disappear from the drawer.
+    await pickInEditor(tester, 'icon', 'collectionIcon-sun');
+    await pickInEditor(tester, 'titleA', 'titlePrefix-p_hayaoki');
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -452,5 +452,114 @@ void main() {
     final profile = container.read(profileProvider);
     expect(profile.iconId, ProfileCatalog.defaultIconId);
     expect(profile.title, '寝坊の常習犯');
+  });
+
+  testWidgets('an unowned 背景 cannot be picked either', (tester) async {
+    final container = await openOverlay(
+      tester,
+      prefs: {
+        'profile.ownedBackgroundIds': [ProfileCatalog.defaultBackgroundId],
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('profileEditButton')));
+    await tester.pumpAndSettle();
+    await pickInEditor(tester, 'background', 'collectionBackground-bg_dawn');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(profileProvider).backgroundId,
+      ProfileCatalog.defaultBackgroundId,
+    );
+  });
+
+  testWidgets('the category chips swap what the panel is showing', (
+    tester,
+  ) async {
+    await openOverlay(tester);
+    await tester.tap(find.byKey(const ValueKey('profileEditButton')));
+    await tester.pumpAndSettle();
+
+    // アイコン is the drawer that opens first.
+    expect(find.byKey(const ValueKey('collectionIcon-sun')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('collectionBackground-bg_night')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('editCategory-background')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('collectionBackground-bg_night')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('collectionIcon-sun')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('editCategory-titleC')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('titleSuffix-s_ou')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('collectionBackground-bg_night')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the panel scrolls under a preview that does not move', (
+    tester,
+  ) async {
+    await openOverlay(tester);
+    await tester.tap(find.byKey(const ValueKey('profileEditButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProfileEditScreen), findsOneWidget);
+    expect(editorPanelScrollable, findsOneWidget);
+
+    final before = tester.getTopLeft(
+      find.byKey(const ValueKey('profileEditAvatar')),
+    );
+    await tester.drag(editorPanelScrollable, const Offset(0, -400));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('profileEditAvatar'))),
+      before,
+      reason: 'the preview is outside the panel’s scroll',
+    );
+  });
+
+  testWidgets('the head stays put while the rest of the sheet scrolls', (
+    tester,
+  ) async {
+    // A window short enough that 歩み and 連携情報 cannot both fit: the head has
+    // to survive scrolling the list all the way down.
+    tester.view.physicalSize = const Size(400, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await openOverlay(tester);
+
+    final head = find.byKey(const ValueKey('profileAvatar'));
+    final before = tester.getTopLeft(head);
+
+    final list = find
+        .descendant(
+          of: find.byKey(const ValueKey('profileOverlay')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final position = tester.state<ScrollableState>(list).position;
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    expect(position.pixels, greaterThan(0), reason: 'there was room to scroll');
+    expect(head, findsOneWidget);
+    expect(
+      tester.getTopLeft(head),
+      before,
+      reason: 'the head is the sheet’s header, not its first row',
+    );
+    // And the bottom of the list really is on screen.
+    expect(find.byKey(const ValueKey('profileMailRow')), findsOneWidget);
   });
 }

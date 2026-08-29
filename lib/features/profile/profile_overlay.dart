@@ -40,15 +40,17 @@ class ProfileOverlay extends ConsumerWidget {
       scaffoldKey: const ValueKey('profileOverlay'),
       handleKey: const ValueKey('profileOverlayHandle'),
       closeKey: const ValueKey('profileOverlayClose'),
-      children: [
-        ProfileHead(
-          profile: profile,
-          keyPrefix: 'profile',
-          onEdit: () => pushProfileEditScreen(context),
-        ),
-        const SizedBox(height: 24),
-        const _JourneyIsland(),
-        const _LinksIsland(),
+      // 誰であるか stays put: the head is who you are, and scrolling 歩み must
+      // not take your own face off the screen.
+      header: ProfileHead(
+        profile: profile,
+        keyPrefix: 'profile',
+        onEdit: () => pushProfileEditScreen(context),
+      ),
+      children: const [
+        SizedBox(height: 16),
+        _JourneyIsland(),
+        _LinksIsland(),
       ],
     );
   }
@@ -169,7 +171,7 @@ class _LinksIsland extends ConsumerWidget {
         SettingRow(
           key: const ValueKey('profileCardHostageRow'),
           leading: const Icon(Icons.credit_card),
-          label: 'クレジットカードを人質にする',
+          label: 'クレジットカード',
           value: card == null ? 'なし' : card.label,
           subtitle: card == null
               ? '寝坊で確定した金額を、あなたのカードに請求できるようにします。'

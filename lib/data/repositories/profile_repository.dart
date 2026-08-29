@@ -18,9 +18,11 @@ class ProfileRepository {
   static const _iconKey = 'profile.iconId';
   static const _plateKey = 'profile.plateBackgroundId';
   static const _frameKey = 'profile.frameId';
+  static const _backgroundKey = 'profile.backgroundId';
   static const _ownedIconsKey = 'profile.ownedIconIds';
   static const _ownedPlatesKey = 'profile.ownedPlateBackgroundIds';
   static const _ownedFramesKey = 'profile.ownedFrameIds';
+  static const _ownedBackgroundsKey = 'profile.ownedBackgroundIds';
   static const _titlePrefixKey = 'profile.titlePrefixId';
   static const _titleConnectorKey = 'profile.titleConnectorId';
   static const _titleSuffixKey = 'profile.titleSuffixId';
@@ -47,6 +49,10 @@ class ProfileRepository {
     plateBackgroundId:
         _prefs.getString(_plateKey) ?? ProfileCatalog.defaultPlateBackgroundId,
     frameId: _prefs.getString(_frameKey) ?? ProfileCatalog.defaultFrameId,
+    // Missing on every install that predates 背景, and 「なし」 is what a head
+    // without one has always looked like.
+    backgroundId:
+        _prefs.getString(_backgroundKey) ?? ProfileCatalog.defaultBackgroundId,
     // Written by no build before 称号 existed, so every one of these is missing
     // on an upgrade and every one of them falls back to 「寝坊の常習犯」.
     titlePrefixId:
@@ -66,6 +72,9 @@ class ProfileRepository {
     ownedFrameIds:
         _prefs.getStringList(_ownedFramesKey)?.toSet() ??
         ProfileCatalog.allFrameIds,
+    ownedBackgroundIds:
+        _prefs.getStringList(_ownedBackgroundsKey)?.toSet() ??
+        ProfileCatalog.allBackgroundIds,
     ownedTitleWordIds:
         _prefs.getStringList(_ownedTitleWordsKey)?.toSet() ??
         TitleCatalog.allTitleWordIds,
@@ -88,6 +97,7 @@ class ProfileRepository {
     await _prefs.setString(_iconKey, profile.iconId);
     await _prefs.setString(_plateKey, profile.plateBackgroundId);
     await _prefs.setString(_frameKey, profile.frameId);
+    await _prefs.setString(_backgroundKey, profile.backgroundId);
     await _prefs.setStringList(
       _ownedIconsKey,
       profile.ownedIconIds.toList()..sort(),
@@ -99,6 +109,10 @@ class ProfileRepository {
     await _prefs.setStringList(
       _ownedFramesKey,
       profile.ownedFrameIds.toList()..sort(),
+    );
+    await _prefs.setStringList(
+      _ownedBackgroundsKey,
+      profile.ownedBackgroundIds.toList()..sort(),
     );
     await _prefs.setString(_titlePrefixKey, profile.titlePrefixId);
     await _prefs.setString(_titleConnectorKey, profile.titleConnectorId);

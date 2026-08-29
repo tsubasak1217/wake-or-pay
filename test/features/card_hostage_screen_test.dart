@@ -169,7 +169,8 @@ void main() {
 
     final row = find.byKey(const ValueKey('profileCardHostageRow'));
     await scrollTo(tester, row);
-    expect(find.text('クレジットカードを人質にする'), findsOneWidget);
+    // The row, not the screen: the screen it opens is still 「〜を人質にする」.
+    expect(find.text('クレジットカード'), findsOneWidget);
     expect(
       find.descendant(of: row, matching: find.text('なし')),
       findsOneWidget,

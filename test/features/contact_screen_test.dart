@@ -553,10 +553,16 @@ void main() {
       // where it is previewed now, not on a row of its own.
       await tester.tap(find.byKey(const ValueKey('profileEditButton')));
       await tester.pumpAndSettle();
+      // The name has no field of its own now: it is on the plate, and the
+      // plate is what opens the dialog.
+      await tester.tap(find.byKey(const ValueKey('editNameplate')));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('profileEditName')),
         ' 山田花子 ',
       );
+      await tester.tap(find.byKey(const ValueKey('profileEditNameOk')));
+      await tester.pumpAndSettle();
       await tester.pageBack();
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('profileOverlayClose')));

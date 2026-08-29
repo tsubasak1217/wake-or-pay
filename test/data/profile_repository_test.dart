@@ -18,9 +18,36 @@ void main() {
       expect(p.iconId, ProfileCatalog.defaultIconId);
       expect(p.plateBackgroundId, ProfileCatalog.defaultPlateBackgroundId);
       expect(p.frameId, ProfileCatalog.defaultFrameId);
+      expect(p.backgroundId, ProfileCatalog.defaultBackgroundId);
       expect(p.ownedIconIds, ProfileCatalog.allIconIds);
       expect(p.ownedPlateBackgroundIds, ProfileCatalog.allPlateBackgroundIds);
       expect(p.ownedFrameIds, ProfileCatalog.allFrameIds);
+      expect(p.ownedBackgroundIds, ProfileCatalog.allBackgroundIds);
+    });
+
+    test('an install from before 背景 existed reads back 「なし」', () async {
+      // Neither key was ever written by that build, so both fall back — and a
+      // head with no 背景 is exactly the head that install was drawing.
+      final repo = (await testContainer(
+        prefs: {'profile.userName': '山田花子', 'profile.iconId': 'sun'},
+      )).read(profileRepositoryProvider);
+
+      expect(repo.read().backgroundId, ProfileCatalog.defaultBackgroundId);
+      expect(repo.read().ownedBackgroundIds, ProfileCatalog.allBackgroundIds);
+    });
+
+    test('a chosen 背景 survives a round trip', () async {
+      final repo = (await testContainer()).read(profileRepositoryProvider);
+      final written = await repo.update(
+        (p) => p.copyWith(
+          backgroundId: 'bg_night',
+          ownedBackgroundIds: {'bg_night'},
+        ),
+      );
+
+      expect(written.backgroundId, 'bg_night');
+      expect(repo.read(), written);
+      expect(repo.read().ownedBackgroundIds, {'bg_night'});
     });
 
     test('an install that only ever had settings.userName keeps it', () async {

@@ -44,6 +44,7 @@ class TopSheetOverlay extends StatelessWidget {
     required this.handleKey,
     required this.closeKey,
     required this.children,
+    this.header,
   });
 
   /// Identifies this sheet to the tests and to anything looking for its
@@ -54,6 +55,13 @@ class TopSheetOverlay extends StatelessWidget {
 
   /// The rows of the list inside.
   final List<Widget> children;
+
+  /// Pinned between the grab bar and the list: it does not scroll away.
+  ///
+  /// Null for a sheet that is nothing but rows — オプション — so adding this
+  /// could not change what that sheet does. It scrolls nothing, so a downward
+  /// flick on it reaches the detector below and still puts the sheet away.
+  final Widget? header;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +92,11 @@ class TopSheetOverlay extends StatelessWidget {
               child: Column(
                 children: [
                   _GrabBar(handleKey: handleKey),
+                  if (header != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: header,
+                    ),
                   Expanded(
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),

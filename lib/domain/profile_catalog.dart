@@ -14,6 +14,10 @@ class ProfileCatalog {
   static const defaultPlateBackgroundId = 'plate_slate';
   static const defaultFrameId = 'frame_none';
 
+  /// 背景. 「なし」 is transparent, so the head sits on the sheet exactly as it
+  /// did before backgrounds existed — the default has to be invisible.
+  static const defaultBackgroundId = 'none';
+
   static const icons = <ProfileIconDef>[
     ProfileIconDef(id: defaultIconId, label: 'ねむい', emoji: '😪'),
     ProfileIconDef(id: 'sun', label: 'あさひ', emoji: '🌞'),
@@ -59,6 +63,38 @@ class ProfileCatalog {
     ),
   ];
 
+  /// 背景 — painted behind the whole head, not just behind the plate.
+  static const backgrounds = <ProfileBackground>[
+    ProfileBackground(
+      id: defaultBackgroundId,
+      name: 'なし',
+      colors: [Color(0x00000000)],
+    ),
+    ProfileBackground(
+      id: 'bg_night',
+      name: '夜空',
+      colors: [Color(0xFF10182F), Color(0xFF3B3A7A)],
+      pattern: BackgroundPattern.dots,
+    ),
+    ProfileBackground(
+      id: 'bg_dawn',
+      name: '朝焼け',
+      colors: [Color(0xFFE8843C), Color(0xFFE86A9A)],
+    ),
+    ProfileBackground(
+      id: 'bg_forest',
+      name: '深緑',
+      colors: [Color(0xFF15402C), Color(0xFF2F6B45)],
+      pattern: BackgroundPattern.stripes,
+    ),
+    ProfileBackground(
+      id: 'bg_mist',
+      name: '霧',
+      colors: [Color(0xFFD9DDE3)],
+      pattern: BackgroundPattern.stripes,
+    ),
+  ];
+
   /// The full sets, used as the "owned everything" default until there is a
   /// way to earn one. Spelled out rather than derived from the lists above so
   /// they can be `const` defaults on `Profile`.
@@ -69,6 +105,13 @@ class ProfileCatalog {
     'plate_moss',
   };
   static const allFrameIds = {defaultFrameId, 'frame_thin', 'frame_thick'};
+  static const allBackgroundIds = {
+    defaultBackgroundId,
+    'bg_night',
+    'bg_dawn',
+    'bg_forest',
+    'bg_mist',
+  };
 
   /// Lookups fall back to the first entry rather than throwing: a row written
   /// by a future version — or by a build where a cosmetic was retired — must
@@ -81,6 +124,33 @@ class ProfileCatalog {
 
   static PlateFrameDef frameById(String id) =>
       frames.firstWhere((e) => e.id == id, orElse: () => frames.first);
+
+  static ProfileBackground backgroundById(String id) =>
+      backgrounds.firstWhere((e) => e.id == id, orElse: () => backgrounds.first);
+}
+
+/// What is drawn *on top of* a background's fill. Placeholder art, like the
+/// rest of this file: two shapes a [CustomPainter] can draw in a few lines.
+enum BackgroundPattern { none, dots, stripes }
+
+/// 背景 — the fill behind the whole head block.
+@immutable
+class ProfileBackground {
+  const ProfileBackground({
+    required this.id,
+    required this.name,
+    required this.colors,
+    this.pattern = BackgroundPattern.none,
+  });
+
+  final String id;
+  final String name;
+
+  /// One colour is flat; two are a gradient. Same rule as the name plate, so a
+  /// reader only has to learn it once.
+  final List<Color> colors;
+
+  final BackgroundPattern pattern;
 }
 
 @immutable
