@@ -219,7 +219,9 @@ void main() {
     });
 
     await scrollTo(tester, find.text('人質'));
-    expect(rowOf(tester, 'hostageRow').value, 'クレジットカード（VISA •••• 4242）');
+    // The label alone — which card it is belongs to プロフィール, and the
+    // brand + last4 did not fit the row.
+    expect(rowOf(tester, 'hostageRow').value, 'クレジットカード');
     expect(rowOf(tester, 'hostageRow').valueColor, isNull);
 
     // Every amount in the island is now read in yen, with the separators money
@@ -263,7 +265,11 @@ void main() {
     );
 
     await scrollTo(tester, find.text('人質'));
-    expect(rowOf(tester, 'hostageRow').value, 'クレジットカード（未登録）');
+    expect(rowOf(tester, 'hostageRow').value, 'クレジットカード');
+    expect(
+      rowOf(tester, 'hostageRow').subtitle,
+      'カードが未登録です（プロフィールで登録できます）',
+    );
     expect(rowOf(tester, 'hostageRow').valueColor, kakugoDanger);
   });
 

@@ -642,8 +642,9 @@ class _KakugoIsland extends ConsumerWidget {
 
 /// 人質: what oversleeping actually costs — the coins, or the card.
 ///
-/// A card pledge whose card has since been taken back in プロフィール reads
-/// 「クレジットカード（未登録）」 in the error colour. The stored alarm is left
+/// A card pledge whose card has since been taken back in プロフィール keeps the
+/// label 「クレジットカード」 but in the error colour, with a subtitle saying the
+/// card is missing and where to register one. The stored alarm is left
 /// exactly as it is: the user chose the card, and the editor's job is to say
 /// that the choice currently has nothing behind it, not to quietly rewrite it.
 /// [SessionService.settle] falls back to coins for such a ring.
@@ -664,11 +665,12 @@ class _HostageRow extends ConsumerWidget {
     return SettingRow(
       key: const ValueKey('hostageRow'),
       label: '人質',
-      value: switch (hostage) {
-        HostageType.none || HostageType.coin => hostage.label,
-        HostageType.card => '${hostage.label}（${card?.label ?? '未登録'}）',
-      },
+      // Just the label, never the card itself: 「クレジットカード（VISA •••• 4242）」
+      // does not fit the row, and which card it is belongs to プロフィール. The
+      // one thing worth saying here is when there is no card at all.
+      value: hostage.label,
       valueColor: unregistered ? Theme.of(context).colorScheme.error : null,
+      subtitle: unregistered ? 'カードが未登録です（プロフィールで登録できます）' : null,
       onTap: () => pushEditorSubScreen(
         context,
         HostageSubScreen(
