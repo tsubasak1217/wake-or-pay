@@ -28,6 +28,36 @@ ALLOWED_ORIGINS = ""
 #           -alias androiddebugkey -storepass android
 ANDROID_CERT_SHA256 = "11:3E:06:2F:19:63:A2:10:E1:AD:53:CE:73:E6:EF:02:D6:60:6F:AD:B6:01:EF:7F:C9:79:8E:1A:D0:78:BC:61"
 
-# DISCORD_CLIENT_SECRET is **not** here and must never be.
+# Stripe の公開可能キー。**公開情報**です——同じ値が APK にも埋まっていて、
+# ブラウザや PaymentSheet に出ていきます。ここに置いてよい唯一の Stripe の値。
+# /v1/billing/setup-intent がこれをそのまま返すのは、アプリが自分のビルド時定数と
+# 食い違っていないかを確かめられるようにするためです。
+STRIPE_PUBLISHABLE_KEY = "pk_test_51U9duQAPhpIXWYKDgizN5lwnK7vYTYCxkobH8c5VoTkU1H8Moz0hYepyusCWWjvwJx3dYVGDGAw6zTqFWpAANuzM00EWieWdwT"
+
+# 端末・同意・カードのメタデータ（brand/last4/期限だけ）を置く D1。
+# カード番号は入りません——それは Stripe の PaymentMethod に留まります。
+#
+# **database_id は自分で作って貼ること。**
+#
+#   wrangler d1 create wake-or-pay-billing
+#
+# が出力する `database_id = "…"` を下の REPLACE_WITH_WRANGLER_D1_CREATE_OUTPUT と
+# 差し替えてから、
+#
+#   wrangler d1 migrations apply wake-or-pay-billing --remote
+#
+# でスキーマ（migrations/0001_billing.sql）を流します。
+[[d1_databases]]
+binding = "DB"
+database_name = "wake-or-pay-billing"
+database_id = "REPLACE_WITH_WRANGLER_D1_CREATE_OUTPUT"
+
+# シークレットはこのファイルに **1 つも** ありませんし、置いてはいけません。
+# ここに書いたものはリポジトリのすべてのコピーに入ります。
+#
 #   wrangler secret put DISCORD_CLIENT_SECRET
-# A secret in this file is a secret in every clone of the repository.
+#   wrangler secret put STRIPE_SECRET_KEY       # sk_test_… / sk_live_…
+#   wrangler secret put STRIPE_WEBHOOK_SECRET   # whsec_…（Stripe ダッシュボード）
+#
+# `wrangler secret put` で入れた値は Cloudflare 側に暗号化されて置かれ、
+# `wrangler deploy` してもファイルには残りません。

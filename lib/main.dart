@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/router.dart';
@@ -19,6 +20,7 @@ import 'services/secret_store.dart';
 import 'services/sms_sender.dart';
 import 'services/snooze_service.dart';
 import 'services/speaker.dart';
+import 'services/stripe_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +63,14 @@ Future<void> main() async {
 
   // Must run before anything is booked. Cheap, and idempotent.
   await AndroidAlarmManager.initialize();
+
+  // カード人質 (docs/BILLING_API.md). A publishable key — public by Stripe's own
+  // design, and useless without the secret key that lives only in the Worker.
+  //
+  // **Here and not in [WakeOrPayApp].** Assigning this schedules a call over
+  // the Stripe platform channel, and a widget test that pumps the app has no
+  // plugin underneath it. The card sheet sets it again for itself.
+  Stripe.publishableKey = kStripePublishableKey;
 
   runApp(
     UncontrolledProviderScope(

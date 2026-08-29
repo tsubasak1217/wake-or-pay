@@ -2,7 +2,7 @@ package com.wakeorpay.wake_or_pay
 
 import android.content.Intent
 import androidx.core.content.ContextCompat
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -14,7 +14,12 @@ import io.flutter.plugin.common.MethodChannel
  *  - native → Dart: `onDismiss`, when 解除 is tapped while the app is alive
  *    (singleTask means that arrives here as [onNewIntent]).
  */
-class MainActivity : FlutterActivity() {
+/**
+ * FlutterFragmentActivity, not FlutterActivity: Stripe's PaymentSheet
+ * (カード人質, docs/BILLING_API.md) is an AndroidX fragment and needs a
+ * FragmentManager to be shown in. Nothing else about this activity changes.
+ */
+class MainActivity : FlutterFragmentActivity() {
     private var channel: MethodChannel? = null
 
     /** A cold-launch 解除 session id, held until Dart asks for it. */

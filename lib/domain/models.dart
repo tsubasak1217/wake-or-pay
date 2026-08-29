@@ -1,5 +1,6 @@
 export 'models/alarm.dart';
 export 'models/alarm_session.dart';
+export 'models/card_hostage.dart';
 export 'models/contact_entry.dart';
 export 'models/discord_webhook.dart';
 export 'models/garden.dart';

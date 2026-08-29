@@ -19,7 +19,15 @@
  * refresh token, and the webhook's token in isolation. The app gets the
  * webhook's `url` — which it needs and already stores for a hand-registered
  * webhook — plus, for 「Discord で連携」, the four public fields of the user.
+ *
+ * Since Phase 1 of 課金 there **is** a fourth job, and it is deliberately kept
+ * in its own files: everything under `/v1/*` is
+ * {@link handleBilling} in `billing.ts` (docs/BILLING_API.md). That half has a
+ * D1 behind it; the Discord half above still keeps nothing at all.
  */
+
+import { handleBilling } from './billing';
+import { rateLimited } from './ratelimit';
 
 const EXCHANGE_PATH = '/discord/exchange';
 const CALLBACK_PATH = '/discord/callback';
@@ -46,10 +54,6 @@ const DISCORD_ME_URL = 'https://discord.com/api/users/@me';
 
 /** How long Discord is given to answer, per call. */
 const DISCORD_TIMEOUT_MS = 10_000;
-
-/** Rate limit: this many exchanges per IP per window. */
-const RATE_LIMIT = 10;
-const RATE_WINDOW_MS = 60_000;
 
 /**
  * The Android application the callback page bounces back into, and the one
@@ -93,6 +97,36 @@ export interface Env {
    * Android stops verifying the app link and the callback opens a browser.
    */
   ANDROID_CERT_SHA256?: string;
+
+  /* --- 課金（Phase 1）。docs/BILLING_API.md ----------------------------- */
+
+  /**
+   * Stripe's secret key. `wrangler secret put STRIPE_SECRET_KEY`.
+   *
+   * Never in wrangler.toml, never in a log line, never in a response body.
+   * It is the one credential that can move money on this account.
+   */
+  STRIPE_SECRET_KEY?: string;
+
+  /**
+   * The signing secret of the webhook endpoint, `whsec_…`.
+   * `wrangler secret put STRIPE_WEBHOOK_SECRET`.
+   *
+   * Without it `/v1/stripe/webhook` cannot tell Stripe from anyone else, so it
+   * answers 500 rather than trusting an unverifiable body.
+   */
+  STRIPE_WEBHOOK_SECRET?: string;
+
+  /**
+   * Stripe's publishable key, `pk_test_…` / `pk_live_…`. **Public** — it ships
+   * inside the APK, so it lives in wrangler.toml under `[vars]`. It is
+   * returned by `/v1/billing/setup-intent` only so the app can check its own
+   * build-time constant against the Worker's.
+   */
+  STRIPE_PUBLISHABLE_KEY?: string;
+
+  /** The D1 holding devices, consents and card *metadata* — never card numbers. */
+  DB: D1Database;
 }
 
 interface ExchangeRequest {
@@ -140,32 +174,6 @@ function json(body: unknown, status = 200): Response {
 
 function error(message: string, status: number): Response {
   return json({ error: message }, status);
-}
-
-/**
- * Best-effort per-IP rate limiting.
- *
- * In module scope, so it lives as long as the isolate does — which is not
- * long, and is per-colo. That makes this a **speed bump, not a wall**: it
- * stops a loop hammering one Worker instance, and it is honest about not
- * being a distributed limiter. A real one would need Durable Objects, which
- * is a lot of machinery for an endpoint whose only cost is Discord's own rate
- * limit on the application.
- */
-const hits = new Map<string, number[]>();
-
-function rateLimited(ip: string, now: number): boolean {
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  recent.push(now);
-  hits.set(ip, recent);
-  // Unbounded growth is the other way this leaks; the map is swept whenever
-  // it gets big rather than on a timer, because a Worker has no timer.
-  if (hits.size > 1000) {
-    for (const [key, times] of hits) {
-      if (times.every((t) => now - t >= RATE_WINDOW_MS)) hits.delete(key);
-    }
-  }
-  return recent.length > RATE_LIMIT;
 }
 
 /**
@@ -588,6 +596,10 @@ export default {
     }
 
     if (url.pathname === EXCHANGE_PATH) return handleExchange(request, env);
+
+    // 課金（Phase 1）。Everything under /v1/ lives in billing.ts; nothing above
+    // this line changed when it arrived.
+    if (url.pathname.startsWith('/v1/')) return handleBilling(request, env);
 
     return error('not found', 404);
   },

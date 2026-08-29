@@ -14,6 +14,8 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
+import 'package:wake_or_pay/services/billing_api.dart';
+import 'package:wake_or_pay/services/card_sheet.dart';
 import 'package:wake_or_pay/services/discord_auth_launcher.dart';
 import 'package:wake_or_pay/services/discord_callback_router.dart';
 import 'package:wake_or_pay/services/discord_sender.dart';
@@ -387,6 +389,138 @@ Override seededSecretStoreOverride({String mailPassword = 'app-password'}) =>
       InMemorySecretStore()
         ..values[MailSettingsRepository.passwordSecretKey] = mailPassword,
     );
+
+/// A [BillingApi] that reaches no Worker and remembers every call.
+///
+/// The default answers are the happy path. [unauthorizedUntilReregister] makes
+/// the first `/v1/billing/setup-intent` answer 401 exactly once, which is the
+/// recovery path the contract asks for: re-register the same installId, get a
+/// new token, retry.
+class FakeBillingApi implements BillingApi {
+  FakeBillingApi({
+    this.cardToReturn = const HostageCard(
+      brand: 'visa',
+      last4: '4242',
+      expMonth: 12,
+      expYear: 2030,
+    ),
+    this.unauthorizedUntilReregister = false,
+    this.failSetupIntentWith,
+  });
+
+  /// What [confirmCard] hands back, and what [card] answers once enrolled.
+  final HostageCard cardToReturn;
+
+  final bool unauthorizedUntilReregister;
+
+  /// A code to fail `/v1/billing/setup-intent` with, forever.
+  final String? failSetupIntentWith;
+
+  /// Every register, in order, with the installId it was given.
+  final registered = <({String installId, String platform, String appVersion})>[];
+
+  final setupIntents = <({String token, CardHostageConsent consent})>[];
+  final confirmed = <({String token, String setupIntentId})>[];
+  final cardReads = <String>[];
+  final removed = <String>[];
+
+  /// null until something is confirmed, which is what `GET /card` answers.
+  HostageCard? stored;
+  CardHostageConsent? storedConsent;
+
+  int _tokens = 0;
+  bool _refused = false;
+
+  @override
+  Future<String> register(
+    String installId, {
+    required String platform,
+    required String appVersion,
+  }) async {
+    registered.add((
+      installId: installId,
+      platform: platform,
+      appVersion: appVersion,
+    ));
+    return 'token-${++_tokens}';
+  }
+
+  @override
+  Future<SetupIntentSession> createSetupIntent(
+    String token,
+    CardHostageConsent consent,
+  ) async {
+    if (failSetupIntentWith != null) {
+      throw BillingApiException(failSetupIntentWith!, 500);
+    }
+    if (unauthorizedUntilReregister && !_refused) {
+      _refused = true;
+      throw const BillingApiException('unauthorized', 401);
+    }
+    setupIntents.add((token: token, consent: consent));
+    return const SetupIntentSession(
+      customerId: 'cus_test',
+      ephemeralKeySecret: 'ek_test_123',
+      setupIntentClientSecret: 'seti_test_1_secret_abc',
+      publishableKey: 'pk_test_worker',
+    );
+  }
+
+  @override
+  Future<HostageCard> confirmCard(String token, String setupIntentId) async {
+    confirmed.add((token: token, setupIntentId: setupIntentId));
+    stored = cardToReturn;
+    return cardToReturn;
+  }
+
+  @override
+  Future<({HostageCard? card, CardHostageConsent? consent})> card(
+    String token,
+  ) async {
+    cardReads.add(token);
+    return (card: stored, consent: storedConsent);
+  }
+
+  @override
+  Future<void> removeCard(String token) async {
+    removed.add(token);
+    stored = null;
+  }
+}
+
+/// A card sheet that shows nothing. Answers [result] and records what it was
+/// asked to present.
+class FakeCardSheet implements CardSheet {
+  FakeCardSheet({this.result});
+
+  /// null means 「completed with the id in the client secret」 — the ordinary
+  /// success, without the test having to spell the id out.
+  final CardSheetResult? result;
+
+  final presented = <SetupIntentSession>[];
+
+  @override
+  Future<CardSheetResult> present(SetupIntentSession session) async {
+    presented.add(session);
+    return result ??
+        CardSheetResult.completed(
+          setupIntentIdFromClientSecret(session.setupIntentClientSecret) ??
+              'seti_test_1',
+        );
+  }
+}
+
+/// Both halves of カード人質 wired to fakes, plus a secure store a test can look
+/// inside. Nothing here reaches the Worker or Stripe.
+List<Override> fakeCardHostageOverrides({
+  FakeBillingApi? api,
+  FakeCardSheet? sheet,
+  SecretStore? secrets,
+}) => [
+  billingApiProvider.overrideWithValue(api ?? FakeBillingApi()),
+  cardSheetProvider.overrideWithValue(sheet ?? FakeCardSheet()),
+  secretStoreProvider.overrideWithValue(secrets ?? InMemorySecretStore()),
+];
 
 /// An SMS sender that reaches no radio and remembers what it was asked to
 /// send. The provider's default is already a [RecordingSmsSender]; this reads

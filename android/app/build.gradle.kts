@@ -56,6 +56,12 @@ kotlin {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    // Theme.MaterialComponents.* — what LaunchTheme / NormalTheme now inherit
+    // from, because Stripe's PaymentSheet (カード人質) refuses to inflate under a
+    // plain android: theme. Declared here rather than leaned on transitively
+    // through stripe_android, so the themes do not break the day that
+    // dependency moves.
+    implementation("com.google.android.material:material:1.12.0")
 }
 
 flutter {

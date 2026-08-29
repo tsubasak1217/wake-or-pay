@@ -5,8 +5,10 @@ import '../../app/profile_controller.dart';
 import '../../domain/level.dart';
 import '../../domain/models.dart';
 import '../../domain/profile_catalog.dart';
+import '../../services/card_hostage.dart';
 import '../../services/mail_settings.dart';
 import '../alarms/widgets/settings_island.dart';
+import 'card_hostage_screen.dart';
 import 'discord_link_row.dart';
 import 'mail_settings_screen.dart';
 import 'user_name_screen.dart';
@@ -200,6 +202,7 @@ class _ProfileSettingsIsland extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mail = ref.watch(mailSettingsProvider);
+    final card = ref.watch(cardHostageProvider).card;
     return SettingsIsland(
       title: 'プロフィール設定',
       children: [
@@ -228,6 +231,18 @@ class _ProfileSettingsIsland extends ConsumerWidget {
               ? '${mail.fromAddress} から送ります'
               : 'あなたのアドレスから寝坊を知らせられるようにします。',
           onTap: () => pushMailSettingsScreen(context),
+        ),
+        // 罰としての請求（`docs/BILLING_API.md`）。機能を売る行ではない：
+        // 押しても何も解放されず、押さなくても全機能が使える。
+        SettingRow(
+          key: const ValueKey('profileCardHostageRow'),
+          leading: const Icon(Icons.credit_card),
+          label: 'クレジットカードを人質にする',
+          value: card == null ? 'なし' : card.label,
+          subtitle: card == null
+              ? '寝坊で確定した金額を、あなたのカードに請求できるようにします。'
+              : '有効期限 ${card.expiry}',
+          onTap: () => pushCardHostageScreen(context),
         ),
       ],
     );

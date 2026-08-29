@@ -50,6 +50,7 @@ dependencies:
   wop_platform:
     path: packages/wop_platform
   flutter_svg: ^2.3.0
+  flutter_stripe: 14.0.0
 
 dev_dependencies:
   flutter_test:

@@ -11,6 +11,9 @@ const ENV: Env = {
   DISCORD_CLIENT_SECRET: 'shhh-this-never-leaves-the-worker',
   ALLOWED_ORIGINS: '',
   ANDROID_CERT_SHA256: FINGERPRINT,
+  // The billing half's D1 binding. Nothing in this file reaches it — every
+  // path here is the Discord Worker, which still keeps nothing at all.
+  DB: null as unknown as D1Database,
 };
 
 /**

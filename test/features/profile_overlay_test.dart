@@ -12,10 +12,11 @@ import '../helpers.dart';
 Future<ProviderContainer> pumpApp(
   WidgetTester tester, {
   Map<String, Object> prefs = const {},
+  List<Override> extra = const [],
 }) async {
   final container = await testContainer(
     prefs: prefs,
-    extra: [fakeAlarmServiceOverride()],
+    extra: [fakeAlarmServiceOverride(), ...extra],
   );
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -30,8 +31,9 @@ Future<ProviderContainer> pumpApp(
 Future<ProviderContainer> openOverlay(
   WidgetTester tester, {
   Map<String, Object> prefs = const {},
+  List<Override> extra = const [],
 }) async {
-  final container = await pumpApp(tester, prefs: prefs);
+  final container = await pumpApp(tester, prefs: prefs, extra: extra);
   await tester.tap(find.byKey(const ValueKey('appHeaderAvatar')));
   await tester.pumpAndSettle();
   return container;

@@ -16,8 +16,9 @@ Discord 連携のための、**とても小さな中継**です。**両方の連
 認可画面の前に「Redirect URI … is not supported by client」で止まります。
 なのでリダイレクト先はこの Worker の https URL で、ここが着地点になります。
 
-- **ユーザーのデータは何も持ちません。** DB もセッションもログもありません。
-  1 リクエストにつき 1〜2 回 Discord に聞いて、答えを返して、忘れます。
+- **Discord のためのデータは何も持ちません。** `/discord/*` にはセッションもログも
+  ありません。1 リクエストにつき 1〜2 回 Discord に聞いて、答えを返して、忘れます。
+  （D1 は下の「課金（Phase 1）」の `/v1/*` だけが使います。Discord 側は触りません。）
 - **アクセストークンもリフレッシュトークンもアプリに返しません。**
   返すのは Webhook の URL とサーバー名、あるいはユーザーの公開 4 項目だけ。
   ユーザーの代わりに何かができる値は 1 つもアプリに渡りません。
@@ -177,6 +178,94 @@ https://wake-or-pay-discord.wakeorpay.workers.dev/discord/callback
 「Redirect URI 'wakeorpay://discord/callback' is not supported by client」で断ります。
 これが段階G でこのエンドポイントを増やした理由そのものです。
 
+## 課金（Phase 1）
+
+同じ Worker の `/v1/*` に、**カードを人質にする**ための API があります。契約は
+`docs/BILLING_API.md`（あちらが正で、ここは手順の説明です）。実装は
+`src/billing.ts` / `src/stripe.ts` / `src/store.ts` / `src/auth.ts` に分かれていて、
+上の Discord の 3 本は一切変わっていません。
+
+**Phase 1 では請求しません。** カードを Stripe に預けて、その状態を持って、
+ユーザーが解除できるところまでです。
+
+### エンドポイント
+
+| | すること |
+|---|---|
+| `POST /v1/devices/register` | `installId`(UUID) と引き換えに **端末トークン**を 1 回だけ返す。同じ `installId` で再登録すると新しいトークンになり、古いハッシュは置き換わる（Stripe Customer は引き継ぐ） |
+| `POST /v1/billing/setup-intent` | Stripe の Customer（初回のみ）・EphemeralKey・SetupIntent を作り、`customerId` / `ephemeralKeySecret` / `setupIntentClientSecret` / `publishableKey` を返す。同意（`consent`）を IP と User-Agent 付きで記録する |
+| `POST /v1/billing/card/confirm` | PaymentSheet のあとにアプリが呼ぶ。SetupIntent を Stripe から取り直して所有者と `succeeded` を確認し、既定の支払い方法にして brand/last4/期限を保存。前のカードは Stripe から detach |
+| `GET /v1/billing/card` | 保存しているカードと最新の同意を返す（どちらも無ければ `null`） |
+| `DELETE /v1/billing/card` | 人質の解除。detach して行を消す。カードが無くても 200。同意は履歴として残す |
+| `POST /v1/stripe/webhook` | Stripe からの通知。`setup_intent.succeeded`（アプリが confirm を呼べなかったときの保険）と `payment_method.detached` だけを扱い、他は 200 で無視 |
+
+`/v1/billing/*` は `Authorization: Bearer <deviceToken>` が必須で、無ければ
+`401 {"error":"unauthorized"}` です。エラーはすべて `{"error":"<コード>"}`。
+`/v1/devices/register` と `/v1/billing/setup-intent` には Discord 側と同じ
+IP ベースのレート制限（60 秒 10 回）が掛かります。
+
+**持たないもの：** カード番号（Stripe の PaymentMethod に留まります）、
+端末トークンそのもの（SHA-256 だけ）、Stripe のシークレットキー（レスポンスにも
+ログにも出ません）。
+
+### D1 を作る
+
+```bash
+cd worker
+wrangler d1 create wake-or-pay-billing
+```
+
+出力の `database_id = "…"` を `wrangler.toml` の
+`REPLACE_WITH_WRANGLER_D1_CREATE_OUTPUT` と差し替えてから、スキーマを流します。
+
+```bash
+wrangler d1 migrations apply wake-or-pay-billing --remote
+```
+
+（`--remote` なしはローカルの `wrangler dev` 用の DB です。両方必要なら 2 回。）
+
+### Stripe のシークレットを 2 つ入れる
+
+```bash
+wrangler secret put STRIPE_SECRET_KEY       # sk_test_… / sk_live_…
+wrangler secret put STRIPE_WEBHOOK_SECRET   # whsec_…（次の節で出てきます）
+```
+
+**`wrangler.toml` には絶対に書かないでください。** `wrangler.toml` に置いてよい
+Stripe の値は `STRIPE_PUBLISHABLE_KEY`（`pk_…`）だけで、これは APK にも入っている
+公開情報です。
+
+### Webhook を Stripe に登録する
+
+1. https://dashboard.stripe.com/test/webhooks →「**エンドポイントを追加**」
+2. URL に
+
+   ```
+   https://wake-or-pay-discord.wakeorpay.workers.dev/v1/stripe/webhook
+   ```
+
+   （自分の Worker を建てたなら、そのホスト名 + `/v1/stripe/webhook`）
+3. イベントは 2 つだけ選ぶ：
+
+   ```
+   setup_intent.succeeded
+   payment_method.detached
+   ```
+
+4. 作成後に出る **署名シークレット `whsec_…`** をコピーして
+
+   ```bash
+   wrangler secret put STRIPE_WEBHOOK_SECRET
+   ```
+
+   に貼る。
+5. `wrangler deploy`
+
+署名は HMAC-SHA256（`t=…,v1=…`、許容ずれ 5 分、比較は定数時間）で、
+**本文をパースする前に**検証します。検証に落ちたら `400`。
+`STRIPE_WEBHOOK_SECRET` が入っていない Worker は `500` を返します——ここで 200 を
+返すと Stripe は「届いた」と判断して再送しなくなるためです。
+
 ## 開発
 
 ```bash
@@ -190,6 +279,8 @@ npm run dev       # wrangler dev（ローカル。シークレットは .dev.var
 
 ```
 DISCORD_CLIENT_SECRET=…
+STRIPE_SECRET_KEY=…
+STRIPE_WEBHOOK_SECRET=…
 ```
 
 ## 守っていること
