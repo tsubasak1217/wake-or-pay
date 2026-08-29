@@ -44,11 +44,29 @@ class AppRoute {
 /// alarm starts ringing.
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final appRouterProvider = Provider<GoRouter>((ref) => createAppRouter());
+/// Where the app opens. Pure.
+///
+/// [ringingSessionId] is the ring the phone is already in the middle of, worked
+/// out *before* the first frame. Navigating there afterwards works, but the
+/// frame in between is the home tab flashing behind a lock screen on a morning
+/// nobody asked to see it — so a live ring is the initial route, not a jump.
+String initialLocationFor({String? ringingSessionId}) =>
+    ringingSessionId == null || ringingSessionId.isEmpty
+    ? AppRoute.home
+    : AppRoute.ringing(ringingSessionId);
 
-GoRouter createAppRouter() => GoRouter(
+/// The route the router is built on. `main()` overrides it once it has asked
+/// the plugin and the database what is happening; everything else — every test
+/// included — opens on the alarm tab.
+final initialLocationProvider = Provider<String>((ref) => AppRoute.home);
+
+final appRouterProvider = Provider<GoRouter>(
+  (ref) => createAppRouter(initialLocation: ref.watch(initialLocationProvider)),
+);
+
+GoRouter createAppRouter({String initialLocation = AppRoute.home}) => GoRouter(
   navigatorKey: rootNavigatorKey,
-  initialLocation: AppRoute.home,
+  initialLocation: initialLocation,
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>

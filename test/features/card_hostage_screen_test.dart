@@ -158,7 +158,7 @@ void main() {
     }
   });
 
-  testWidgets('the profile row reads なし, then the card after an enroll', (
+  testWidgets('the profile row reads 未連携, then 連携済み after an enroll', (
     tester,
   ) async {
     final api = FakeBillingApi();
@@ -172,7 +172,7 @@ void main() {
     // The row, not the screen: the screen it opens is still 「〜を人質にする」.
     expect(find.text('クレジットカード'), findsOneWidget);
     expect(
-      find.descendant(of: row, matching: find.text('なし')),
+      find.descendant(of: row, matching: find.text('未連携')),
       findsOneWidget,
     );
 
@@ -180,9 +180,16 @@ void main() {
     await tester.pumpAndSettle();
     await scrollTo(tester, row);
 
+    // 連携情報 says whether there is a card, never which one: the brand and the
+    // last four are a detail of the link, and they live on the screen behind
+    // the row.
+    expect(
+      find.descendant(of: row, matching: find.text('連携済み')),
+      findsOneWidget,
+    );
     expect(
       find.descendant(of: row, matching: find.text('VISA •••• 4242')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 

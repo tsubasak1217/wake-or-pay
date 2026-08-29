@@ -300,7 +300,7 @@ void main() {
     await openOverlay(tester);
 
     await scrollTo(tester, find.byKey(const ValueKey('profileLinksIsland')));
-    expect(find.byKey(const ValueKey('profileDiscordLinkRow')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profileDiscordRow')), findsOneWidget);
     await scrollTo(tester, find.byKey(const ValueKey('profileCardHostageRow')));
     expect(find.byKey(const ValueKey('profileCardHostageRow')), findsOneWidget);
     await scrollTo(tester, find.byKey(const ValueKey('profileMailRow')));
@@ -312,19 +312,63 @@ void main() {
     expect(find.text('あなたの名前'), findsNothing);
   });
 
-  testWidgets('メール送信設定 says 未設定 and opens the SMTP editor', (tester) async {
+  testWidgets('メール says 未連携 and opens the SMTP editor', (tester) async {
     await openOverlay(tester);
 
-    await scrollTo(tester, find.byKey(const ValueKey('profileMailRow')));
-    expect(find.text('メール送信設定'), findsOneWidget);
-    // Nothing has been entered, and a half-filled account is 未設定 to every
+    final row = find.byKey(const ValueKey('profileMailRow'));
+    await scrollTo(tester, row);
+    expect(find.descendant(of: row, matching: find.text('メール')), findsOneWidget);
+    // Nothing has been entered, and a half-filled account is 未連携 to every
     // other screen — this row must not be the one place that calls it done.
-    expect(find.text('未設定'), findsWidgets);
+    expect(find.descendant(of: row, matching: find.text('未連携')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('profileMailRow')));
+    await tester.tap(row);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('mailFromField')), findsOneWidget);
     expect(find.byKey(const ValueKey('mailPasswordField')), findsOneWidget);
+  });
+
+  testWidgets('連携情報 is three rows of one word each', (tester) async {
+    // A fully configured account and a registered card: the values flip, and
+    // neither the address nor the card number reaches the island.
+    await openOverlay(tester, prefs: configuredMailPrefs());
+    final island = find.byKey(const ValueKey('profileLinksIsland'));
+    await scrollTo(tester, island);
+
+    expect(
+      find.descendant(of: island, matching: find.text('連携済み')),
+      findsOneWidget,
+      reason: 'メール only: no card, no Discord',
+    );
+    expect(
+      find.descendant(of: island, matching: find.text('未連携')),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(
+        of: island,
+        matching: find.textContaining('@', findRichText: true),
+      ),
+      findsNothing,
+      reason: 'the address is a detail of the link, not its state',
+    );
+    // Reading a row's own subtitle would mean the island explains services.
+    for (final key in const [
+      'profileDiscordRow',
+      'profileCardHostageRow',
+      'profileMailRow',
+    ]) {
+      expect(
+        tester.widget<ListTile>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(ListTile),
+          ),
+        ).subtitle,
+        isNull,
+        reason: key,
+      );
+    }
   });
 
   testWidgets(

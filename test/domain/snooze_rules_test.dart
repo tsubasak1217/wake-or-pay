@@ -187,5 +187,36 @@ void main() {
         'スヌーズ',
       );
     });
+
+    test('a priced button explains that the price can be undone', () {
+      // The penalty is only ever *charged* on a failed morning: get up inside
+      // the grace and it is written off with the minutes.
+      expect(
+        snoozePenaltyRefundNote(
+          const Kakugo(ratePerMinute: 100, cap: 1000, snoozePenalty: 50),
+        ),
+        '猶予内に起きれば取り消されます',
+      );
+    });
+
+    test('a button with no price has nothing to explain', () {
+      expect(snoozePenaltyRefundNote(null), isNull);
+      expect(
+        snoozePenaltyRefundNote(const Kakugo(ratePerMinute: 100, cap: 1000)),
+        isNull,
+      );
+      expect(
+        snoozePenaltyRefundNote(
+          const Kakugo(
+            hostage: HostageType.none,
+            ratePerMinute: 100,
+            cap: 1000,
+            snoozePenalty: 50,
+          ),
+        ),
+        isNull,
+        reason: '人質なし charges nothing to take back',
+      );
+    });
   });
 }

@@ -94,7 +94,13 @@ class TopSheetOverlay extends StatelessWidget {
                   _GrabBar(handleKey: handleKey),
                   if (header != null)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      // The 14 at the bottom is not decoration: the list below
+                      // scrolls *under* the pinned header, so any gap that
+                      // lives in the list slides away with it and the first
+                      // island ends up flush against the head. This one is
+                      // outside the scroll, so the head keeps its air however
+                      // far the rows are pushed up.
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
                       child: header,
                     ),
                   Expanded(

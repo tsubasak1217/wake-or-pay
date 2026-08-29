@@ -30,8 +30,7 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
 
   late final ProviderContainer container;
-  container = ProviderContainer(
-    overrides: [
+  final overrides = <Override>[
       sharedPreferencesProvider.overrideWithValue(prefs),
       // Only the real app reaches the notification plugin; every test keeps
       // the recording default.
@@ -64,8 +63,8 @@ Future<void> main() async {
       pluginRoutePermissionsOverride(),
       // …or books a trigger with Android's own AlarmManager (spec 11.7).
       androidExactAlarmSchedulerOverride(),
-    ],
-  );
+  ];
+  container = ProviderContainer(overrides: overrides);
 
   // Must run before anything is booked. Cheap, and idempotent.
   await AndroidAlarmManager.initialize();
@@ -77,6 +76,24 @@ Future<void> main() async {
   // the Stripe platform channel, and a widget test that pumps the app has no
   // plugin underneath it. The card sheet sets it again for itself.
   Stripe.publishableKey = kStripePublishableKey;
+
+  // **Before the first frame, deliberately.** A full-screen intent launches
+  // this process onto the lock screen while the alarm is already sounding; if
+  // the ring screen is navigated to after `runApp`, the home tab paints first
+  // and the user watches their alarms flash past on the way to the ring. So the
+  // router is built already pointing at it. Bounded and swallowed inside
+  // [AlarmService.launchRingingSessionId]: a probe that cannot answer must
+  // never be the reason the app will not open.
+  container.updateOverrides([
+    ...overrides,
+    initialLocationProvider.overrideWithValue(
+      initialLocationFor(
+        ringingSessionId: await container
+            .read(alarmServiceProvider)
+            .launchRingingSessionId(),
+      ),
+    ),
+  ]);
 
   runApp(
     UncontrolledProviderScope(

@@ -121,6 +121,39 @@ void main() {
     },
   );
 
+  test(
+    'a snoozed morning cleared inside the grace is a free success',
+    () async {
+      // 改訂: a press is no longer a verdict, and a success is not charged for
+      // one either. Pressed at 7:00:10, back at 7:07, up at 7:07:30 — inside
+      // the window the re-ring opened, so the 500 the ring screen was showing
+      // is written off along with the minutes.
+      final s = await setUpService();
+      const pledge = Kakugo(
+        ratePerMinute: 100,
+        cap: 2000,
+        snoozePenalty: 500,
+        snoozeResetsClock: true,
+      );
+      const snoozy = Alarm(id: 'a4', hour: 7, minute: 0, kakugo: pledge);
+      final session = await s.service.start(alarm: snoozy, firedAt: firedAt);
+
+      final settled = await s.service.dismiss(
+        session.copyWith(
+          snoozes: [firedAt.add(const Duration(seconds: 10))],
+          currentRingAt: firedAt.add(const Duration(minutes: 7)),
+        ),
+        firedAt.add(const Duration(minutes: 7, seconds: 30)),
+      );
+
+      expect(settled.status, SessionStatus.success);
+      expect(settled.loss, 0, reason: 'the press is written off too');
+      // Not a coin moved, and the success rewards were paid as usual.
+      expect(await s.wallet.read(), const Wallet(coins: 5000, tokens: 20));
+      expect(await s.ojisan.read(), const OjisanState());
+    },
+  );
+
   test('a late dismissal burns coins and feeds the ojisan', () async {
     final s = await setUpService();
     final session = await s.service.start(alarm: alarm, firedAt: firedAt);
@@ -373,6 +406,24 @@ void main() {
         ojisan: container.read(ojisanRepositoryProvider),
       );
     }
+
+    test('a success writes nothing to the ledger', () async {
+      // The other half of 「成功は無料」: with a card registered, a morning
+      // cleared inside the grace must leave the billing ledger empty. settle()
+      // branches on `loss > 0`, and a success now has none.
+      final s = await setUpCard(registered: true);
+      final session = await s.service.start(alarm: cardAlarm, firedAt: firedAt);
+
+      final settled = await s.service.dismiss(
+        session.copyWith(snoozes: [firedAt]),
+        firedAt.add(const Duration(seconds: 59)),
+      );
+
+      expect(settled.status, SessionStatus.success);
+      expect(settled.loss, 0);
+      expect(await s.charges.getAll(), isEmpty);
+      expect((await s.wallet.read()).coins, 5000);
+    });
 
     test('a card pledge bills the card and leaves the coins alone', () async {
       final s = await setUpCard(registered: true);

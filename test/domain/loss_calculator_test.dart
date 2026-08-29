@@ -506,47 +506,135 @@ void main() {
       },
     );
 
+    // The rule the 改訂 replaced: a press used to fail the morning on its own.
+    // Now the only question is the grace window on the clock the pledge chose,
+    // so all four combinations of (reset|continuous) x (snoozed|not) are here.
     group('judgeStatus', () {
-      test('one press fails the morning however fast the check goes', () {
+      test('a press is no longer a verdict', () {
         expect(
-          judgeStatus(Duration.zero, graceMinutes: 5, snoozed: true),
-          SessionStatus.failed,
+          judgeStatus(Duration.zero, graceMinutes: 5),
+          SessionStatus.success,
         );
         expect(
-          judgeStatus(
-            const Duration(seconds: 1),
-            graceMinutes: 5,
-            snoozed: false,
-          ),
-          SessionStatus.success,
+          judgeStatus(const Duration(minutes: 5), graceMinutes: 5),
+          SessionStatus.failed,
         );
       });
 
-      test('snoozed but loss 0 is still failed', () {
-        // A plain alarm: nothing at stake, snoozed once, cleared in 30 seconds.
+      test('起点にし直す × snoozed: the fresh window is what counts', () {
+        // Pressed at 7:02, back at 7:07, up at 7:07:30 — inside the grace the
+        // re-ring opened, so the morning is a success and costs nothing. The
+        // press cost 50 while it was ringing; getting up cancelled it.
         final s = finalizeSession(
-          session(kakugo: null, snoozes: presses(1)),
-          at(seconds: 30),
-        );
-        expect(s.loss, 0);
-        expect(s.status, SessionStatus.failed);
-
-        // And a pledge whose snooze is free: same answer.
-        final free = finalizeSession(
           session(
-            kakugo: const Kakugo(
-              ratePerMinute: 100,
-              cap: 1000,
-              snoozePenalty: 0,
-              snoozeResetsClock: true,
-            ),
+            kakugo: resets,
             snoozes: presses(1),
             currentRingAt: at(minutes: 7),
           ),
           at(minutes: 7, seconds: 30),
         );
-        expect(free.loss, 0, reason: 'inside the fresh grace window');
-        expect(free.status, SessionStatus.failed);
+        expect(s.status, SessionStatus.success);
+        expect(s.loss, 0, reason: 'a success is free, presses included');
+
+        // A minute later the fresh window has closed: failed, and now the
+        // press is charged with the minute.
+        final late = finalizeSession(
+          session(
+            kakugo: resets,
+            snoozes: presses(1),
+            currentRingAt: at(minutes: 7),
+          ),
+          at(minutes: 8),
+        );
+        expect(late.status, SessionStatus.failed);
+        expect(late.loss, 150, reason: 'one billed minute plus the press');
+      });
+
+      test('起点にし直す × not snoozed: unchanged, the window is firedAt’s', () {
+        expect(
+          finalizeSession(session(kakugo: resets), at(seconds: 59)).status,
+          SessionStatus.success,
+        );
+        expect(
+          finalizeSession(session(kakugo: resets), at(minutes: 1)).status,
+          SessionStatus.failed,
+        );
+      });
+
+      test('加算し続ける × snoozed: no second window, so 7:07 is failed', () {
+        final s = finalizeSession(
+          session(
+            kakugo: continuous,
+            snoozes: presses(1),
+            currentRingAt: at(minutes: 7),
+          ),
+          at(minutes: 7, seconds: 30),
+        );
+        expect(s.status, SessionStatus.failed);
+        expect(s.loss, 750, reason: '7 billed minutes plus the press');
+
+        // …but a press inside the original window still leaves it winnable:
+        // pressed at 7:00:10 with a five minute grace, up at 7:04:59.
+        final inTime = finalizeSession(
+          session(
+            kakugo: continuous,
+            graceMinutes: 5,
+            snoozes: [at(seconds: 10)],
+            currentRingAt: at(minutes: 10),
+          ),
+          at(minutes: 4, seconds: 59),
+        );
+        expect(inTime.status, SessionStatus.success);
+        expect(inTime.loss, 0);
+      });
+
+      test('加算し続ける × not snoozed: unchanged', () {
+        expect(
+          finalizeSession(session(kakugo: continuous), at(seconds: 59)).status,
+          SessionStatus.success,
+        );
+        expect(
+          finalizeSession(session(kakugo: continuous), at(minutes: 1)).status,
+          SessionStatus.failed,
+        );
+      });
+
+      test('the boundary is the grace minute itself, on either clock', () {
+        for (final (kakugo, ringAt) in [
+          (resets, at(minutes: 7)),
+          (continuous, firedAt),
+        ]) {
+          final base = ringAt == firedAt ? 0 : 7;
+          final ok = finalizeSession(
+            session(
+              kakugo: kakugo,
+              graceMinutes: 5,
+              snoozes: presses(1),
+              currentRingAt: ringAt,
+            ),
+            at(minutes: base + 4, seconds: 59),
+          );
+          expect(ok.status, SessionStatus.success, reason: '$kakugo');
+          final out = finalizeSession(
+            session(
+              kakugo: kakugo,
+              graceMinutes: 5,
+              snoozes: presses(1),
+              currentRingAt: ringAt,
+            ),
+            at(minutes: base + 5),
+          );
+          expect(out.status, SessionStatus.failed, reason: '$kakugo');
+        }
+      });
+
+      test('a plain alarm snoozed and cleared in 30 seconds is a success', () {
+        final s = finalizeSession(
+          session(kakugo: null, snoozes: presses(1)),
+          at(seconds: 30),
+        );
+        expect(s.loss, 0);
+        expect(s.status, SessionStatus.success);
       });
 
       test('finalizing carries the presses into the settled session', () {

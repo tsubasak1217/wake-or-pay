@@ -47,6 +47,22 @@ Future<ProviderContainer> openOverlay(
   return container;
 }
 
+/// 連携情報 is an index now: the row says 未連携 or 連携済み and nothing else, and
+/// every button this file presses lives one tap further in, on
+/// [DiscordLinkScreen].
+Future<ProviderContainer> openDiscordScreen(
+  WidgetTester tester, {
+  Map<String, Object> prefs = const {},
+  List<Override> extra = const [],
+}) async {
+  final container = await openOverlay(tester, prefs: prefs, extra: extra);
+  final row = find.byKey(const ValueKey('profileDiscordRow'));
+  await scrollTo(tester, row);
+  await tester.tap(row);
+  await tester.pumpAndSettle();
+  return container;
+}
+
 void main() {
   testWidgets(
     '連携 waits in the browser, then fills in the name it belongs to',
@@ -58,7 +74,7 @@ void main() {
       // waiting state has been asserted on — a replyWith would race the
       // emit against that assertion inside the same pump().
       final launcher = FakeDiscordAuthLauncher(links);
-      final container = await openOverlay(
+      final container = await openDiscordScreen(
         tester,
         extra: [
           fakeHttpClientOverride(http),
@@ -66,10 +82,6 @@ void main() {
         ],
       );
 
-      await scrollTo(
-        tester,
-        find.byKey(const ValueKey('profileDiscordLinkRow')),
-      );
       await tester.tap(find.byKey(const ValueKey('profileDiscordLinkRow')));
       // One pump is enough to run the synchronous part of link() (which sets
       // 「開いています」) and let the fake launcher's open() resolve (which sets
@@ -118,7 +130,7 @@ void main() {
       replyWith: (_) => 'wakeorpay://discord/callback'
           '?code=CODE&state=not-the-one',
     );
-    final container = await openOverlay(
+    final container = await openDiscordScreen(
       tester,
       extra: [
         fakeHttpClientOverride(http),
@@ -126,10 +138,6 @@ void main() {
       ],
     );
 
-    await scrollTo(
-      tester,
-      find.byKey(const ValueKey('profileDiscordLinkRow')),
-    );
     await tester.tap(find.byKey(const ValueKey('profileDiscordLinkRow')));
     await tester.pumpAndSettle();
 
@@ -145,7 +153,7 @@ void main() {
     addTearDown(links.dispose);
     // No replyWith: the flow sits in 承認待ち until the test cancels it.
     final launcher = FakeDiscordAuthLauncher(links);
-    final container = await openOverlay(
+    final container = await openDiscordScreen(
       tester,
       extra: [
         fakeHttpClientOverride(FakeHttpClient()),
@@ -153,10 +161,6 @@ void main() {
       ],
     );
 
-    await scrollTo(
-      tester,
-      find.byKey(const ValueKey('profileDiscordLinkRow')),
-    );
     await tester.tap(find.byKey(const ValueKey('profileDiscordLinkRow')));
     await tester.pump();
 
@@ -173,7 +177,7 @@ void main() {
     final links = FakeDeepLinks();
     addTearDown(links.dispose);
     final launcher = FakeDiscordAuthLauncher.noApp(links);
-    final container = await openOverlay(
+    final container = await openDiscordScreen(
       tester,
       extra: [
         fakeHttpClientOverride(FakeHttpClient()),
@@ -181,10 +185,6 @@ void main() {
       ],
     );
 
-    await scrollTo(
-      tester,
-      find.byKey(const ValueKey('profileDiscordLinkRow')),
-    );
     await tester.tap(find.byKey(const ValueKey('profileDiscordLinkRow')));
     await tester.pumpAndSettle();
 
@@ -193,7 +193,7 @@ void main() {
   });
 
   testWidgets('連携を解除 clears the ID as well as the name', (tester) async {
-    final container = await openOverlay(
+    final container = await openDiscordScreen(
       tester,
       prefs: {
         'profile.discordUserId': '123456789012345678',
@@ -201,10 +201,6 @@ void main() {
       },
     );
 
-    await scrollTo(
-      tester,
-      find.byKey(const ValueKey('profileDiscordLinkedRow')),
-    );
     expect(find.text('連携済み：@花子'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('profileDiscordUnlink')));
@@ -217,14 +213,75 @@ void main() {
     expect(find.byKey(const ValueKey('profileDiscordLinkRow')), findsOneWidget);
   });
 
-  testWidgets('the Discord row is marked with the Discord mark', (tester) async {
+  testWidgets('both Discord rows are marked with the Discord mark', (
+    tester,
+  ) async {
     await openOverlay(tester);
 
-    final row = find.byKey(const ValueKey('profileDiscordLinkRow'));
+    // The index row in 連携情報…
+    final indexRow = find.byKey(const ValueKey('profileDiscordRow'));
+    await scrollTo(tester, indexRow);
+    expect(
+      find.descendant(of: indexRow, matching: find.byType(DiscordIcon)),
+      findsOneWidget,
+    );
+
+    // …and the row behind it, on the screen that does the linking.
+    await tester.tap(indexRow);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('profileDiscordLinkRow')),
+        matching: find.byType(DiscordIcon),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('連携情報 shows the state and nothing else', (tester) async {
+    await openOverlay(tester);
+    await scrollTo(tester, find.byKey(const ValueKey('profileLinksIsland')));
+
+    final island = find.byKey(const ValueKey('profileLinksIsland'));
+    expect(
+      find.descendant(of: island, matching: find.text('未連携')),
+      findsNWidgets(3),
+      reason: 'Discord, カード, メール — all three unlinked',
+    );
+    // The island is an index: none of the doing happens in it.
+    for (final gone in const [
+      '連携を解除',
+      'Discord で連携',
+      'メール送信設定',
+      '寝坊で確定した金額を、あなたのカードに請求できるようにします。',
+    ]) {
+      expect(
+        find.descendant(of: island, matching: find.text(gone)),
+        findsNothing,
+        reason: gone,
+      );
+    }
+  });
+
+  testWidgets('a linked account turns the index row 連携済み', (tester) async {
+    await openOverlay(
+      tester,
+      prefs: {
+        'profile.discordUserId': '123456789012345678',
+        'profile.discordUsername': '花子',
+      },
+    );
+
+    final row = find.byKey(const ValueKey('profileDiscordRow'));
     await scrollTo(tester, row);
     expect(
-      find.descendant(of: row, matching: find.byType(DiscordIcon)),
+      find.descendant(of: row, matching: find.text('連携済み')),
       findsOneWidget,
+    );
+    // The name belongs to the screen behind it, not to the index.
+    expect(
+      find.descendant(of: row, matching: find.text('連携済み：@花子')),
+      findsNothing,
     );
   });
 

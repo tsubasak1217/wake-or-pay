@@ -32,8 +32,17 @@
    - 最大寝坊時間
    - 所持コレクション数 n / 総数
    - （その他、後で増やす）
-6. **連携情報**（島）：Discord、クレジットカード、メール送信設定 など、外部との
-   つながりを一箇所に。（現在のプロフィール設定の行がここに移る）
+6. **連携情報**（島）：外部とのつながりを一箇所に。**3 行だけ**で、各行は `SettingRow`
+   （左に `leading` アイコン、ラベル、右に **未連携／連携済み** と `>`）。
+   **副題・説明文・インラインのボタンは置かない**——島は「何と繋がっているか」の索引で、
+   連携・解除・詳細はすべてタップした先のサブ画面で行う。カード番号（`****1234`）や
+   メールアドレスも状態ではなく詳細なので出さない。
+   - **Discord**（`profileDiscordRow`、`DiscordIcon`）→ `DiscordLinkScreen`
+     （`lib/features/profile/discord_link_screen.dart`、AppBar「Discord」）。
+     「Discord で連携」／連携済み＋「連携を解除」／`DiscordFlowStatusView` は
+     `DiscordLinkRow` ごとこの画面の中身になった。
+   - **クレジットカード**（`profileCardHostageRow`、`Icons.credit_card`）→ `CardHostageScreen`
+   - **メール**（`profileMailRow`、`Icons.mail_outline`）→ `MailSettingsScreen`
 
 オプション（アプリの更新、危険な設定など）は**プロフィールではなくオプション画面**
 （ヘッダー右端のボタン → 同じ要領で上から表示）に置く。

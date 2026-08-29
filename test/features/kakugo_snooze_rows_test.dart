@@ -289,6 +289,18 @@ void main() {
         // 改訂5: the pausing mode is the recommended default and reads 「（推奨）」.
         expect(find.text('次に鳴る時刻を起点にし直す（推奨）'), findsOneWidget);
 
+        // 改訂: the closing note used to say a press failed the morning on its
+        // own. It does not any more, and the note says what actually decides.
+        expect(
+          find.text(
+            '起床成功かどうかは、起点から起床猶予内に起きたかで決まります。'
+            'スヌーズそのものは失敗になりません。'
+            '猶予内に起きれば、分ごとの損失もスヌーズ罰も取り消しです。',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('スヌーズを1回でも'), findsNothing);
+
         // Two radios on the left, the recommended one selected to begin with.
         expect(find.byKey(resetTile), findsOneWidget);
         expect(find.byKey(continuousTile), findsOneWidget);

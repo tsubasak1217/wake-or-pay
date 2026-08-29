@@ -319,9 +319,15 @@ void main() {
       await r.service.snooze(r.id, now: at(minutes: 2));
 
       // At 4 minutes the re-ring is still in the future, so the minute clock
-      // has not started: only the one press is owed.
+      // has not started — and on the reset clock that is *inside* the grace
+      // window this morning is judged by. Getting up there is a success, and a
+      // success writes off the press with everything else.
       final settled = await r.service.dismissSnoozed(r.id, now: at(minutes: 4));
-      expect(settled!.loss, 50);
+      expect(settled!.status, SessionStatus.success);
+      expect(settled.loss, 0);
+      // The 50 was real while the alarm was live: it is what the ring screen
+      // showed as the cost of not getting up.
+      expect(lossAt(at(minutes: 4), settled), 50);
     });
 
     test('a plain snoozed alarm is failed but costs nothing', () async {

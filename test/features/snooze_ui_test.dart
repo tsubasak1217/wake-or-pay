@@ -97,6 +97,17 @@ void main() {
 
     expect(find.text('スヌーズ（−50 コイン）'), findsOneWidget);
     expect(find.text('スヌーズ'), findsNothing);
+    // …and that the price is only charged on a failed morning.
+    expect(
+      find.byKey(const ValueKey('snoozeRefundNote')),
+      findsOneWidget,
+    );
+    expect(find.text('猶予内に起きれば取り消されます'), findsOneWidget);
+  });
+
+  testWidgets('a free スヌーズ has no refund note to make', (tester) async {
+    await openRinging(tester, plain);
+    expect(find.byKey(const ValueKey('snoozeRefundNote')), findsNothing);
   });
 
   testWidgets('an alarm with snooze off never shows the button', (

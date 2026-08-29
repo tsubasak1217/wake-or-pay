@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The window behind the app while the process starts.
+
+     Dark in both the day and the night resources on purpose: the launch this
+     colour is actually seen on is an alarm going off, where the full screen
+     intent throws the app onto a lock screen at 7am. A white frame there is a
+     flash in a dark room, and the ring screen it precedes is near-black. -->
+<resources>
+    <color name="launchBackground">#FF101014</color>
+</resources>

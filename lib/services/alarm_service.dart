@@ -38,6 +38,11 @@ final sessionServiceProvider = Provider(
 
 final alarmServiceProvider = Provider((ref) => AlarmService(ref));
 
+/// How long `main()` is willing to hold the first frame while it asks whether
+/// the phone is already ringing. Past this the app opens normally and the ring
+/// arrives through [AlarmService.init] instead — late is bad, never is worse.
+const _launchProbeTimeout = Duration(seconds: 5);
+
 /// Wraps the `alarm` plugin: turns [domain.Alarm] models into scheduled
 /// platform alarms, and turns a ring into an [domain.AlarmSession] plus a jump
 /// to the ringing screen.
@@ -299,11 +304,24 @@ class AlarmService {
   }
 
   Future<void> _handleRing(pkg.AlarmSettings settings) async {
+    final session = await _sessionForRing(settings);
+    if (session != null) _goRinging(session.id);
+  }
+
+  /// Everything a ring needs *except* putting it on screen: find or open the
+  /// session, and book the background contact trigger for it.
+  ///
+  /// Split out so the pre-first-frame launch check ([launchRingingSessionId])
+  /// and the live [pkg.Alarm.ringing] stream cannot disagree about what a ring
+  /// means. Returns null when this ring is already handled or its alarm is gone.
+  Future<domain.AlarmSession?> _sessionForRing(
+    pkg.AlarmSettings settings,
+  ) async {
     final alarmId = settings.payload;
-    if (alarmId == null || !_handled.add(alarmId)) return;
+    if (alarmId == null || !_handled.add(alarmId)) return null;
 
     final alarm = await _ref.read(alarmRepositoryProvider).getById(alarmId);
-    if (alarm == null) return;
+    if (alarm == null) return null;
 
     // A ring we already opened a session for must not start a second one —
     // a relaunch mid-ring, and now also a snooze coming back. Asked per alarm,
@@ -330,7 +348,64 @@ class AlarmService {
         .read(oversleepBackgroundSchedulerProvider)
         .sync(alarm: alarm, session: session);
 
-    _goRinging(session.id);
+    return session;
+  }
+
+  /// The session the app must already be showing when its first frame is
+  /// painted, or null to open on the alarm tab as usual.
+  ///
+  /// Called from `main()` before `runApp`, which is the whole point: a
+  /// full-screen intent launch that navigates *after* the first frame paints
+  /// the home tab over the lock screen first. Two questions, cheapest first:
+  ///
+  /// * the database — a ring this app already opened a session for and was
+  ///   killed in the middle of. Snoozed sessions are silent and are left to
+  ///   [resumePendingSession]; so is anything the 60 minute valve has already
+  ///   written off.
+  /// * the plugin — a cold launch by the ring itself, where no Dart code has
+  ///   heard about it yet. The session is opened here, through the same path
+  ///   the live ring stream uses, and the id is remembered so the stream event
+  ///   that follows does not open a second one.
+  ///
+  /// Never throws and never hangs the launch: anything that goes wrong, or
+  /// takes longer than [_launchProbeTimeout], means the app opens where it
+  /// always did and [init] sorts the ring out a frame later.
+  Future<String?> launchRingingSessionId() async {
+    try {
+      return await _launchRingingSessionId().timeout(_launchProbeTimeout);
+    } on Object catch (e) {
+      debugPrint('launch ring probe failed: $e');
+      return null;
+    }
+  }
+
+  Future<String?> _launchRingingSessionId() async {
+    final now = DateTime.now();
+    final open =
+        [
+          for (final session in await _ref
+              .read(alarmSessionRepositoryProvider)
+              .getRingingAll())
+            if (!isSnoozePending(session, now) &&
+                recoverSession(session, now).isRinging)
+              session,
+        ]..sort((a, b) => b.firedAt.compareTo(a.firedAt));
+    if (open.isNotEmpty) {
+      _handled.add(open.first.alarmId);
+      return open.first.id;
+    }
+
+    // Idempotent, and [init] calls it again in a moment: it is what makes the
+    // plugin's storage readable at all.
+    await pkg.Alarm.init();
+    if (!await pkg.Alarm.isRinging()) return null;
+
+    for (final settings in await pkg.Alarm.getAlarms()) {
+      if (!await pkg.Alarm.isRinging(settings.id)) continue;
+      final session = await _sessionForRing(settings);
+      if (session != null) return session.id;
+    }
+    return null;
   }
 
   /// After a kill or a crash: put a still-live ring back on screen, or show the

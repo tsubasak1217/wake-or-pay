@@ -73,30 +73,36 @@ int lossAt(DateTime now, AlarmSession session) {
 /// success, later is oversleeping — even when it cost nothing because the
 /// wallet was empty, the cap was 0, or there was no pledge at all.
 ///
-/// [snoozed] settles it on its own. Pressing snooze is a decision not to get
-/// up, so the morning is failed however quickly the check is cleared
-/// afterwards, and however little it cost — a plain alarm with no pledge
-/// included. [elapsed] is always measured from `firedAt`, never from the
-/// re-ring: the clock modes decide what a snooze *costs*, not whether it counts.
-SessionStatus judgeStatus(
-  Duration elapsed, {
-  required int graceMinutes,
-  bool snoozed = false,
-}) => !snoozed && elapsed.inMinutes < normalizeGraceMinutes(graceMinutes)
+/// **Snoozing does not decide this.** [elapsed] is measured from
+/// [lossClockBase] — the same clock the money runs on — so a morning is a
+/// success exactly when the check was cleared before the burn would have
+/// started. Under 「次に鳴る時刻を起点にし直す」 that window comes back with the
+/// re-ring; under 「規定時刻から加算し続ける」 it is the one that opened at
+/// `firedAt` and never reopens. Presses still cost their penalty; they are no
+/// longer a verdict.
+SessionStatus judgeStatus(Duration elapsed, {required int graceMinutes}) =>
+    elapsed.inMinutes < normalizeGraceMinutes(graceMinutes)
     ? SessionStatus.success
     : SessionStatus.failed;
 
 /// Settles [session] because the user cleared the wake check at [dismissedAt].
-AlarmSession finalizeSession(AlarmSession session, DateTime dismissedAt) =>
-    session.copyWith(
-      dismissedAt: dismissedAt,
-      loss: lossAt(dismissedAt, session),
-      status: judgeStatus(
-        dismissedAt.difference(session.firedAt),
-        graceMinutes: session.graceMinutes,
-        snoozed: session.wasSnoozed,
-      ),
-    );
+///
+/// A success costs **nothing**: not the minutes, and not the snooze presses.
+/// The penalty shown while the alarm is ringing is what the morning is about to
+/// cost if it is not ended now — getting up inside the grace window is exactly
+/// the thing that cancels it. Only a failure is charged, and then for
+/// everything [lossAt] counts, presses included.
+AlarmSession finalizeSession(AlarmSession session, DateTime dismissedAt) {
+  final status = judgeStatus(
+    dismissedAt.difference(lossClockBase(session)),
+    graceMinutes: session.graceMinutes,
+  );
+  return session.copyWith(
+    dismissedAt: dismissedAt,
+    loss: status == SessionStatus.success ? 0 : lossAt(dismissedAt, session),
+    status: status,
+  );
+}
 
 /// Settles a session that was left ringing when the app died.
 ///
@@ -104,11 +110,19 @@ AlarmSession finalizeSession(AlarmSession session, DateTime dismissedAt) =>
 /// the ring screen simply resumes. Past the deadline the session is written off
 /// as failed with the loss frozen at `firedAt + 60min`, even when that loss is
 /// 0 (a plain alarm left ringing for an hour is still an overslept morning).
+///
+/// The status is forced rather than judged. Nobody cleared a wake check here:
+/// an hour of ringing — or of snoozing, whose re-ring may well sit inside its
+/// own fresh grace window at the deadline — is an overslept morning by
+/// definition, and [finalizeSession] would otherwise call that a success.
 AlarmSession recoverSession(AlarmSession session, DateTime now) {
   if (session.status != SessionStatus.ringing) return session;
 
   final deadline = session.firedAt.add(recoveryDeadline);
   if (now.isBefore(deadline)) return session;
 
-  return finalizeSession(session, deadline);
+  return finalizeSession(
+    session,
+    deadline,
+  ).copyWith(status: SessionStatus.failed, loss: lossAt(deadline, session));
 }

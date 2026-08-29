@@ -6,9 +6,10 @@ import '../../domain/journey_stats.dart';
 import '../../services/card_hostage.dart';
 import '../../services/mail_settings.dart';
 import '../alarms/widgets/settings_island.dart';
+import '../widgets/discord_icon.dart';
 import '../widgets/top_sheet.dart';
 import 'card_hostage_screen.dart';
-import 'discord_link_row.dart';
+import 'discord_link_screen.dart';
 import 'mail_settings_screen.dart';
 import 'profile_edit_screen.dart';
 import 'profile_head.dart';
@@ -47,8 +48,10 @@ class ProfileOverlay extends ConsumerWidget {
         keyPrefix: 'profile',
         onEdit: () => pushProfileEditScreen(context),
       ),
+      // No spacer row at the top: the air under the head is the header slot's
+      // own bottom padding now, so it survives scrolling instead of sliding
+      // under the head with the rest of the list.
       children: const [
-        SizedBox(height: 16),
         _JourneyIsland(),
         _LinksIsland(),
       ],
@@ -148,7 +151,18 @@ class _JourneyRow extends StatelessWidget {
   }
 }
 
+/// 未連携 / 連携済み — the only two things a 連携情報 row ever says. Pure.
+String _linkLabel({required bool linked}) => linked ? '連携済み' : '未連携';
+
 /// 連携情報 — everything that reaches outside this phone, in one place.
+///
+/// **Three rows, one word each.** Not a screen: an index of screens. Every row
+/// is an icon, a name, 未連携 or 連携済み, and a chevron — no subtitle explaining
+/// the service, no 「連携を解除」 button, and no card number or mail address. The
+/// island's job is to answer 「何と繋がっているか」 at a glance; what each link
+/// means, how it is made and how it is broken all live behind the tap, where
+/// there is room for them. `****1234` and 「山田 から送ります」 are details of a
+/// link, not the state of one, so neither is here.
 ///
 /// 「あなたの名前」 used to be the first row of this island back when it was
 /// 「プロフィール設定」. It is not a link to anything, and the name is now edited
@@ -158,6 +172,7 @@ class _LinksIsland extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final discordLinked = ref.watch(profileProvider).discordLinked;
     final mail = ref.watch(mailSettingsProvider);
     final card = ref.watch(cardHostageProvider).card;
 
@@ -165,30 +180,30 @@ class _LinksIsland extends ConsumerWidget {
       key: const ValueKey('profileLinksIsland'),
       title: '連携情報',
       children: [
-        const DiscordLinkRow(),
+        SettingRow(
+          key: const ValueKey('profileDiscordRow'),
+          leading: const DiscordIcon(),
+          label: 'Discord',
+          value: _linkLabel(linked: discordLinked),
+          onTap: () => pushDiscordLinkScreen(context),
+        ),
         // 罰としての請求（`docs/BILLING_API.md`）。機能を売る行ではない：
         // 押しても何も解放されず、押さなくても全機能が使える。
         SettingRow(
           key: const ValueKey('profileCardHostageRow'),
           leading: const Icon(Icons.credit_card),
           label: 'クレジットカード',
-          value: card == null ? 'なし' : card.label,
-          subtitle: card == null
-              ? '寝坊で確定した金額を、あなたのカードに請求できるようにします。'
-              : '有効期限 ${card.expiry}',
+          value: _linkLabel(linked: card != null),
           onTap: () => pushCardHostageScreen(context),
         ),
-        // 設定済み only when the app could actually send: a half-filled account
-        // is 未設定 as far as every other screen is concerned, so this row must
+        // 連携済み only when the app could actually send: a half-filled account
+        // is 未連携 as far as every other screen is concerned, so this row must
         // not be the one place that calls it done.
         SettingRow(
           key: const ValueKey('profileMailRow'),
           leading: const Icon(Icons.mail_outline),
-          label: 'メール送信設定',
-          value: mail.isConfigured ? '設定済み' : '未設定',
-          subtitle: mail.isConfigured
-              ? '${mail.fromAddress} から送ります'
-              : 'あなたのアドレスから寝坊を知らせられるようにします。',
+          label: 'メール',
+          value: _linkLabel(linked: mail.isConfigured),
           onTap: () => pushMailSettingsScreen(context),
         ),
         // 「アプリの更新」 used to sit here. It is not プロフィール — it is about

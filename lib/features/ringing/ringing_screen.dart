@@ -375,24 +375,45 @@ class _SnoozeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final refund = snoozePenaltyRefundNote(session.kakugoSnapshot);
     return Padding(
       // A little more room below than a plain SizedBox: the button is the last
       // thing on the screen, and it should not sit flush against the edge.
       padding: const EdgeInsets.only(top: 24, bottom: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
       // Spec 12.2: a *tonal fill*, so it reads unmistakably as a button rather
       // than vanishing into the near-black background as bare text — and as the
       // earlier outline-only treatment — did. A solid block of secondaryContainer
       // is a step below the primary 解除 (drawn in the brighter primaryContainer),
       // so snoozing still does not look like the main way out, but it is now
       // obviously tappable. ~48dp tall with generous horizontal padding.
-      child: FilledButton.tonal(
-        key: const ValueKey('snoozeButton'),
-        onPressed: onSnooze,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-        ),
-        child: Text(snoozeButtonLabel(session.kakugoSnapshot)),
+          FilledButton.tonal(
+            key: const ValueKey('snoozeButton'),
+            onPressed: onSnooze,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+            ),
+            child: Text(snoozeButtonLabel(session.kakugoSnapshot)),
+          ),
+          // The price above is what the press costs *if this morning is
+          // overslept*. Saying so here is the whole difference between a
+          // penalty and a fine.
+          if (refund != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              refund,
+              key: const ValueKey('snoozeRefundNote'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -85,3 +85,17 @@ String snoozeButtonLabel(Kakugo? kakugo) {
       ? 'スヌーズ（−${hostageAmount(penalty, kakugo!.hostage)}）'
       : 'スヌーズ';
 }
+
+/// The line under the snooze button, or null when there is no price to explain.
+/// Pure.
+///
+/// The button names a price, and the price is real the moment it is pressed —
+/// but it is only ever *charged* on a failed morning. Get up inside the grace
+/// window and the whole loss, presses included, is written off, so the button
+/// must not read as a bill that cannot be undone.
+String? snoozePenaltyRefundNote(Kakugo? kakugo) {
+  final penalty = kakugo == null || !kakugo.hostage.burns
+      ? 0
+      : normalizeSnoozePenalty(kakugo.snoozePenalty);
+  return penalty > 0 ? '猶予内に起きれば取り消されます' : null;
+}

@@ -967,7 +967,9 @@ class _SnoozeClockSelector extends ConsumerWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'どちらを選んでも、スヌーズを1回でも押した朝は起床失敗です。',
+                '起床成功かどうかは、起点から起床猶予内に起きたかで決まります。'
+                'スヌーズそのものは失敗になりません。'
+                '猶予内に起きれば、分ごとの損失もスヌーズ罰も取り消しです。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
