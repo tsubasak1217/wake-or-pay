@@ -62,6 +62,40 @@ List<String> islandRows(WidgetTester tester, String title) => tester
     .map((row) => row.label)
     .toList();
 
+/// One person in the 連絡帳, so a test can give an alarm somebody to tell.
+Future<void> seedBook(ProviderContainer container) =>
+    container
+        .read(contactBookRepositoryProvider)
+        .save(
+          ContactEntry(
+            id: 'c1',
+            name: '田中太郎',
+            reading: 'たなかたろう',
+            phone: '090-1234-5678',
+            email: 'taro@example.com',
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+
+/// 覚悟の設定 → 寝坊時連絡・共有 → 寝坊時連絡先 → 連絡帳 → [name], and all the way
+/// back out. Picking is enough to make the pledge notify somebody:
+/// `OversleepContact.isUsable` is a name that is not empty.
+Future<void> setContact(WidgetTester tester, String name) async {
+  await scrollTo(tester, find.byKey(const ValueKey('contactShareRow')));
+  await tester.tap(find.byKey(const ValueKey('contactShareRow')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('contactRow')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('contactPickRow')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(name));
+  await tester.pumpAndSettle();
+  await tester.pageBack();
+  await tester.pumpAndSettle();
+  await tester.pageBack();
+  await tester.pumpAndSettle();
+}
+
 Future<ProviderContainer> pumpEditor(
   WidgetTester tester, {
   Map<String, Object> prefs = const {},
@@ -74,6 +108,7 @@ Future<ProviderContainer> pumpEditor(
   await container
       .read(walletRepositoryProvider)
       .write(const Wallet(coins: 100000));
+  await seedBook(container);
   if (existing != null) {
     await container.read(alarmRepositoryProvider).save(existing);
   }
@@ -122,6 +157,7 @@ void main() {
     await toggle(tester, '覚悟');
 
     expect(islandRows(tester, '覚悟の設定').first, '人質');
+    expect(islandRows(tester, '覚悟の設定'), ['人質', '寝坊時連絡・共有']);
     expect(rowOf(tester, 'hostageRow').value, 'なし');
     expect(rowOf(tester, 'hostageRow').valueColor, isNull);
   });
@@ -237,9 +273,9 @@ void main() {
     await pumpEditor(tester);
     await toggle(tester, '覚悟');
 
-    // 起床猶予 takes the place the money rows would have had: with nothing at
-    // stake it is still the moment the morning is failed and the 連絡 goes out.
-    expect(islandRows(tester, '覚悟の設定'), ['人質', '寝坊時連絡・共有', '起床猶予']);
+    // Nothing at stake and nobody to tell: even 起床猶予 has nothing to be the
+    // start of, so the island is down to the two rows that decide those.
+    expect(islandRows(tester, '覚悟の設定'), ['人質', '寝坊時連絡・共有']);
     expect(find.text('寝坊で失う最大金額'), findsNothing);
 
     await inHostageScreen(tester, () async {
@@ -250,6 +286,7 @@ void main() {
     expect(islandRows(tester, '覚悟の設定'), [
       '人質',
       '寝坊時連絡・共有',
+      '起床猶予',
       '寝坊ペナルティ',
       'スヌーズペナルティ',
       '上限金額',
@@ -257,9 +294,20 @@ void main() {
     expect(find.text('寝坊で失う最大金額'), findsOneWidget);
   });
 
-  testWidgets('人質なし でも起床猶予は設定できる', (tester) async {
+  testWidgets('人質なし・連絡なし では起床猶予の行も出ない', (tester) async {
+    await pumpEditor(tester);
+    await toggle(tester, '覚悟');
+
+    // The window is the moment the burn starts and the 連絡・共有 goes out.
+    // With neither, it decides nothing, and is not asked about.
+    expect(find.byKey(const ValueKey('graceRow')), findsNothing);
+    expect(find.text('起床猶予'), findsNothing);
+  });
+
+  testWidgets('人質なし でも連絡先があれば起床猶予は設定できる', (tester) async {
     final container = await pumpEditor(tester);
     await toggle(tester, '覚悟');
+    await setContact(tester, '田中太郎');
 
     await scrollTo(tester, find.byKey(const ValueKey('graceRow')));
     expect(rowOf(tester, 'graceRow').label, '起床猶予');
@@ -288,27 +336,30 @@ void main() {
     expect(saved.kakugo!.hostage, HostageType.none);
   });
 
-  testWidgets('起床猶予 has exactly one home, and the 人質 says which', (
-    tester,
-  ) async {
+  testWidgets('起床猶予 の編集口は島の行だけ', (tester) async {
     await pumpEditor(tester);
     await toggle(tester, '覚悟');
-    expect(find.byKey(const ValueKey('graceRow')), findsOneWidget);
-
     await inHostageScreen(tester, () async {
       await tester.tap(find.text('コイン'));
       await tester.pumpAndSettle();
     });
 
-    // Gone from the island: under a burning pledge it belongs next to the rate
-    // it qualifies, inside the 寝坊ペナルティ sub-screen.
-    expect(find.byKey(const ValueKey('graceRow')), findsNothing);
+    // A burning pledge has one too, in the same place.
+    await scrollTo(tester, find.byKey(const ValueKey('graceRow')));
+    expect(rowOf(tester, 'graceRow').value, '1分');
 
+    // And it is not also inside the 寝坊ペナルティ sub-screen, where it used to
+    // live: one number, one editor.
     await scrollTo(tester, find.text('寝坊ペナルティ'));
     await tester.tap(find.text('寝坊ペナルティ'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('graceSelector')), findsOneWidget);
-    expect(find.text('起床猶予'), findsOneWidget);
+    expect(find.byKey(const ValueKey('graceSelector')), findsNothing);
+    expect(find.text('起床猶予'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('kakugoGauge')),
+      findsOneWidget,
+      reason: 'the gauge and the clock mode stay',
+    );
     await tester.pageBack();
     await tester.pumpAndSettle();
   });

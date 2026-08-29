@@ -202,7 +202,7 @@ void main() {
     });
   });
 
-  testWidgets('覚悟の設定 lists its five rows, 人質 first', (tester) async {
+  testWidgets('覚悟の設定 lists its six rows, 人質 first', (tester) async {
     await openNewAlarm(tester);
     // スヌーズ is on by default now, so the スヌーズペナルティ row is there already.
     // The 人質 has to be named too: a new pledge starts at 「なし」, which hides
@@ -214,6 +214,7 @@ void main() {
     expect(islandRows(tester, '覚悟の設定'), [
       '人質',
       '寝坊時連絡・共有',
+      '起床猶予',
       '寝坊ペナルティ',
       'スヌーズペナルティ',
       '上限金額',
@@ -238,6 +239,7 @@ void main() {
     expect(islandRows(tester, '覚悟の設定'), [
       '人質',
       '寝坊時連絡・共有',
+      '起床猶予',
       '寝坊ペナルティ',
       '上限金額',
     ]);

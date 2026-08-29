@@ -17,7 +17,6 @@ import 'contact_share_screen.dart';
 import 'edit_sub_screens.dart';
 import 'sound_screen.dart';
 import 'widgets/settings_island.dart';
-import 'widgets/slider_number_field.dart';
 
 class AlarmEditScreen extends ConsumerStatefulWidget {
   const AlarmEditScreen({super.key, this.alarmId, this.duplicate = false});
@@ -587,6 +586,14 @@ class _KakugoIsland extends ConsumerWidget {
       alarmDraftProvider(seed)
           .select((a) => a.kakugo?.hostage.burns ?? false),
     );
+    // The same bool [_ContactShareRow] draws 「設定済み」 from, read here for the
+    // same reason the two above are: a row that returned an empty box would
+    // leave its divider behind.
+    final notifies = ref.watch(
+      alarmDraftProvider(seed).select(
+        (a) => (a.contact?.isUsable ?? false) || (a.share?.isUsable ?? false),
+      ),
+    );
 
     final theme = Theme.of(context);
     // ListTile paints from the ambient colour scheme, so the whole island gets
@@ -614,16 +621,12 @@ class _KakugoIsland extends ConsumerWidget {
           // and whether there are any numbers below at all.
           _HostageRow(seed: seed),
           _ContactShareRow(seed: seed),
-          // 起床猶予 has exactly one home, and which one depends on the 人質.
-          // Under a burning pledge it belongs *inside* the 寝坊ペナルティ
-          // sub-screen, because the rate above it is only charged for the
-          // minutes this window does not cover — the two numbers are one
-          // decision, and reading them apart would be reading half of it.
-          // Under 人質なし there is no rate and no such sub-screen, but the
-          // window still decides when the morning counts as overslept and the
-          // 連絡・共有 goes out, so it gets a row of its own here. Never both:
-          // two ways to set one number is two places for it to disagree.
-          if (!burns) _GraceRow(seed: seed),
+          // 起床猶予 is the moment two things happen: the burn begins, and the
+          // 連絡・共有 goes out. Shown whenever either of those exists — and
+          // only then, because a pledge with 人質なし and nobody to tell has
+          // neither, so the number would decide nothing, and a row that
+          // decides nothing is a question the user should not be asked.
+          if (burns || notifies) _GraceRow(seed: seed),
           if (burns) _RateRow(seed: seed),
           // Only means anything when the alarm can be snoozed at all, so it
           // follows the スヌーズ toggle in the island above. Neither 「スヌーズ中
@@ -695,14 +698,15 @@ class _HostageRow extends ConsumerWidget {
   }
 }
 
-/// 起床猶予 as a row of the island — the 人質なし half of the rule stated in
-/// [_KakugoIsland]'s children.
+/// 起床猶予: how long the alarm may ring before the morning counts as overslept.
 ///
-/// The same number [_GraceSelector] edits inside the 寝坊ペナルティ sub-screen,
-/// and deliberately never on screen at the same time as it: a pledge that
-/// burns nothing has no rate to read this window against, but still has a
-/// moment at which the morning is failed and the 連絡・共有 goes out, and that
-/// moment has to be settable.
+/// A row of the island, and the **only** place this number is edited. It used
+/// to sit inside the 寝坊ペナルティ sub-screen, next to the rate it qualifies;
+/// that put it out of reach of a pledge with no rate at all, and one number
+/// with two editors is one number with two places to disagree.
+///
+/// Hidden only when the window would decide nothing — see the rule in
+/// [_KakugoIsland]'s children.
 class _GraceRow extends ConsumerWidget {
   const _GraceRow({required this.seed});
 
@@ -724,7 +728,8 @@ class _GraceRow extends ConsumerWidget {
           min: minGraceMinutes,
           max: maxGraceMinutes,
           suffix: '分',
-          description: '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。過ぎると寝坊として連絡・共有が動きます。',
+          description: '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
+              '過ぎるとその瞬間から寝坊で、ペナルティと連絡・共有が動き始めます。',
           onCommit: (v) => ref
               .read(draft.notifier)
               .update((a) => a.copyWith(graceMinutes: v)),
@@ -972,65 +977,6 @@ class _SnoozeClockSelector extends ConsumerWidget {
   }
 }
 
-/// 起床猶予: how long the alarm may ring before the burn starts.
-///
-/// It lives inside the 寝坊ペナルティ sub-screen rather than in 基本設定 because
-/// the rate above it is only charged for the minutes this window does not
-/// cover — the two numbers are one decision.
-///
-/// Like [_SnoozeClockSelector], it writes the draft on every change rather than
-/// on the way out: it is already inside a sub-screen that commits its own value
-/// on pop, and a second deferred commit would race with it.
-class _GraceSelector extends ConsumerWidget {
-  const _GraceSelector({required this.seed});
-
-  final Alarm seed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final draft = alarmDraftProvider(seed);
-    final grace = ref.watch(draft.select((a) => a.graceMinutes));
-    final theme = Theme.of(context);
-    return Column(
-      key: const ValueKey('graceSelector'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Divider(height: 32),
-        Text(
-          '起床猶予',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        // No separate value line: the field below shows the number.
-        SliderNumberField(
-          value: grace,
-          min: minGraceMinutes,
-          max: maxGraceMinutes,
-          suffix: '分',
-          semanticLabel: '起床猶予',
-          onChanged: (v) => ref
-              .read(draft.notifier)
-              .update((a) => a.copyWith(graceMinutes: v)),
-        ),
-        Text(
-          '$minGraceMinutes〜$maxGraceMinutes分',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
-          '過ぎるとその瞬間から燃え始めます。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            height: 1.4,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _MaxLossHeader extends ConsumerWidget {
   const _MaxLossHeader({required this.seed});
 
@@ -1131,7 +1077,8 @@ class _RateRow extends ConsumerWidget {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
-              _GraceSelector(seed: seed),
+              // 起床猶予 is not here any more: it is a row of the island, the
+              // one place it is edited from.
               _SnoozeClockSelector(seed: seed),
             ],
           ),

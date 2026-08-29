@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
+import 'package:wake_or_pay/features/alarms/widgets/settings_island.dart';
 import 'package:wake_or_pay/main.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 
@@ -93,8 +94,8 @@ Future<void> toggleKakugoWithCoins(WidgetTester tester) async {
 
 /// Types [value] into the numeric field a number sub-screen owns.
 ///
-/// `.first` because the 寝坊ペナルティ screen carries a second one in its footer —
-/// the 起床猶予 slider — and the screen's own field is always the one above it.
+/// `.first` is belt and braces: every number sub-screen has exactly one field
+/// now that 起床猶予 has a screen of its own.
 Future<void> enterNumber(WidgetTester tester, String value) async {
   await tester.enterText(
     find.byKey(const ValueKey('sliderNumberInput')).first,
@@ -230,7 +231,7 @@ void main() {
     expect(
       find.text('起床猶予'),
       findsNothing,
-      reason: 'it lives in the 寝坊ペナルティ sub-screen, not 基本設定',
+      reason: 'it is a row of 覚悟の設定, which is off here, not of 基本設定',
     );
 
     // Snooze is the opposite of kakugo: on by default, at the default interval
@@ -315,7 +316,7 @@ void main() {
   });
 
   testWidgets(
-    'the grace window defaults to one minute and is editable in 寝坊ペナルティ',
+    'the grace window defaults to one minute and is its own row of 覚悟の設定',
     (tester) async {
       final container = await pumpHome(tester, coins: 5000);
       await tester.tap(find.byType(FloatingActionButton));
@@ -323,26 +324,21 @@ void main() {
 
       await toggleKakugoWithCoins(tester);
 
-      // Two numeric fields share this screen — the rate's and the grace's — so
-      // the grace one is addressed through the section that owns it. Its field
-      // is also where the value is read: there is no separate display any more.
-      final graceField = find.descendant(
-        of: find.byKey(const ValueKey('graceSelector')),
-        matching: find.byKey(const ValueKey('sliderNumberInput')),
+      // Its own row now, not a section inside 寝坊ペナルティ: one number, one
+      // place to set it, reachable whatever the 人質 is.
+      await scrollToInEditor(tester, find.byKey(const ValueKey('graceRow')));
+      expect(
+        tester
+            .widget<SettingRow>(find.byKey(const ValueKey('graceRow')))
+            .value,
+        '1分',
+        reason: 'today\'s rule, unchanged',
       );
 
-      await inSubScreen(tester, '寝坊ペナルティ', () async {
-        expect(find.text('起床猶予'), findsOneWidget);
-        expect(
-          tester.widget<TextField>(graceField).controller!.text,
-          '1',
-          reason: 'today\'s rule, unchanged',
-        );
+      await inSubScreen(tester, '起床猶予', () async {
+        expect(find.text('1〜5分'), findsOneWidget);
         expect(find.textContaining('鳴り始めからこの時間以内'), findsOneWidget);
-
-        await tester.enterText(graceField, '5');
-        await tester.pumpAndSettle();
-        expect(tester.widget<TextField>(graceField).controller!.text, '5');
+        await enterNumber(tester, '5');
       });
 
       await tester.tap(find.byType(FloatingActionButton));

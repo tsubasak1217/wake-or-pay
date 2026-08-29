@@ -33,8 +33,8 @@ String textOf(WidgetTester tester, Key key) =>
 String numberIn(WidgetTester tester, Finder finder) =>
     tester.widget<TextField>(finder).controller!.text;
 
-/// The sub-screen's own numeric field. `.first` because the 寝坊ペナルティ screen
-/// carries a second one in its footer — 起床猶予 — below it.
+/// The sub-screen's own numeric field. `.first` is belt and braces: every
+/// number sub-screen has exactly one field now that 起床猶予 has its own.
 Finder get subScreenNumber =>
     find.byKey(const ValueKey('sliderNumberInput')).first;
 
@@ -177,8 +177,6 @@ void main() {
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       expect(find.text('0〜1000コイン'), findsOneWidget);
       await tester.enterText(
-        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
-        // its footer — 起床猶予 — and the screen's own field is the one above it.
         find.byKey(const ValueKey('sliderNumberInput')).first,
         '250',
       );
@@ -255,8 +253,6 @@ void main() {
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
-        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
-        // its footer — 起床猶予 — and the screen's own field is the one above it.
         find.byKey(const ValueKey('sliderNumberInput')).first,
         '99999',
       );
@@ -273,8 +269,6 @@ void main() {
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
-        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
-        // its footer — 起床猶予 — and the screen's own field is the one above it.
         find.byKey(const ValueKey('sliderNumberInput')).first,
         '0',
       );
@@ -329,7 +323,7 @@ void main() {
     });
   });
 
-  testWidgets('起床猶予 sits in the 寝坊ペナルティ sub-screen even with スヌーズ off', (
+  testWidgets('起床猶予 is a row of the island, reachable with スヌーズ off', (
     tester,
   ) async {
     await openNewAlarm(tester);
@@ -337,20 +331,18 @@ void main() {
     // Off: the point of this test is that 起床猶予 is there without スヌーズ.
     await toggle(tester, 'スヌーズ');
 
-    await inSubScreen(tester, '寝坊ペナルティ', () async {
-      expect(find.text('起床猶予'), findsOneWidget);
-      expect(find.byKey(const ValueKey('graceSelector')), findsOneWidget);
-      expect(
-        numberIn(
-          tester,
-          find.descendant(
-            of: find.byKey(const ValueKey('graceSelector')),
-            matching: find.byKey(const ValueKey('sliderNumberInput')),
-          ),
-        ),
-        '1',
-      );
+    await scrollTo(tester, find.byKey(const ValueKey('graceRow')));
+    expect(rowValue(tester, 'graceRow'), '1分');
+
+    await inSubScreen(tester, '起床猶予', () async {
+      expect(numberIn(tester, subScreenNumber), '1');
       expect(find.text('1〜5分'), findsOneWidget);
+    });
+
+    // And it is gone from where it used to live: one number, one editor.
+    await inSubScreen(tester, '寝坊ペナルティ', () async {
+      expect(find.byKey(const ValueKey('graceSelector')), findsNothing);
+      expect(find.text('起床猶予'), findsNothing);
     });
   });
 
@@ -370,8 +362,6 @@ void main() {
 
     await inSubScreen(tester, 'スヌーズペナルティ', () async {
       await tester.enterText(
-        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
-        // its footer — 起床猶予 — and the screen's own field is the one above it.
         find.byKey(const ValueKey('sliderNumberInput')).first,
         '1000',
       );
@@ -441,8 +431,6 @@ void main() {
 
     await inSubScreen(tester, '寝坊ペナルティ', () async {
       await tester.enterText(
-        // `.first`: the 寝坊ペナルティ screen carries a second numeric field in
-        // its footer — 起床猶予 — and the screen's own field is the one above it.
         find.byKey(const ValueKey('sliderNumberInput')).first,
         '10',
       );
