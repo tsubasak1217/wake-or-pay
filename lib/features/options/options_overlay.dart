@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/format.dart';
@@ -119,52 +120,116 @@ class _DangerIsland extends ConsumerWidget {
 /// 「10,000 コイン」. Pure.
 String capCeilingLabel(int ceiling) => '${thousands(ceiling)} コイン';
 
-/// The four ceilings, as a radio list.
+/// The ceiling, as one free numeric field.
 ///
-/// Not a [ChoiceSubScreen]: that one commits on pop, and raising this needs an
-/// answer *before* anything is stored. Lowering is committed on the spot —
-/// nothing gets more dangerous by going down.
-class CapCeilingScreen extends ConsumerWidget {
+/// Not a list of amounts: a menu of prices reads as a shop, and this is not a
+/// shop — it is the user stating, in their own number, how far they are willing
+/// to let a morning cost them. So no presets, and **no range on screen**: the
+/// clamp exists (`normalizeCapCeiling`) but announcing a maximum would be the
+/// same suggestion in smaller print.
+///
+/// Not a [ChoiceSubScreen] either: that one commits on pop, and raising this
+/// needs an answer *before* anything is stored. Lowering is committed on the
+/// spot — nothing gets more dangerous by going down.
+class CapCeilingScreen extends ConsumerStatefulWidget {
   const CapCeilingScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CapCeilingScreen> createState() => _CapCeilingScreenState();
+}
+
+class _CapCeilingScreenState extends ConsumerState<CapCeilingScreen> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: '${ref.read(capCeilingProvider)}',
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// What the field currently says, or null when it says nothing usable — which
+  /// is the whole of the 決定 button's enabled/disabled rule.
+  int? get _typed => int.tryParse(_controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final ceiling = ref.watch(capCeilingProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('上限金額の最大値')),
       body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          for (final choice in capCeilingChoices)
-            ListTile(
-              key: ValueKey('capCeilingOption-$choice'),
-              title: Text(capCeilingLabel(choice)),
-              trailing: choice == ceiling ? const Icon(Icons.check) : null,
-              onTap: () => _choose(context, ref, choice, ceiling),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              '覚悟の設定の「上限金額」は、ここで選んだ金額までしか設定できません。'
-              'すでに保存したアラームは、この値を下げても勝手には下がりません。',
-              style: theme.textTheme.bodyMedium,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 160,
+                child: TextField(
+                  key: const ValueKey('capCeilingInput'),
+                  controller: _controller,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  // Only to re-run the 決定 button's enabled test; the value
+                  // itself is read when 決定 is pressed.
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('コイン', style: theme.textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            '覚悟の設定で選べる上限金額の天井です。'
+            'クレジットカードを人質にしたアラームでは、この金額までが実際に請求されます。'
+            'いくらにするかはあなた次第です。',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 20),
+          FilledButton(
+            key: const ValueKey('capCeilingSave'),
+            onPressed: _typed == null ? null : () => _save(ceiling),
+            child: const Text('決定'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _choose(
-    BuildContext context,
-    WidgetRef ref,
-    int choice,
-    int current,
-  ) async {
-    if (choice > current && !await _confirm(context, choice)) return;
-    await ref.read(optionsProvider.notifier).setCapCeiling(choice);
-    if (context.mounted) Navigator.of(context).maybePop();
+  Future<void> _save(int current) async {
+    final typed = _typed;
+    if (typed == null) return;
+    // Silent: an out-of-range number is not an error the user has to argue
+    // with, it is a number the app quietly brings inside its own bounds and
+    // then shows back, which is the only place the bound is ever stated.
+    final value = normalizeCapCeiling(typed);
+    if (value > current && !await _confirm(context, value)) return;
+    await ref.read(optionsProvider.notifier).setCapCeiling(value);
+    if (mounted) _controller.text = '$value';
   }
 
   Future<bool> _confirm(BuildContext context, int choice) async =>

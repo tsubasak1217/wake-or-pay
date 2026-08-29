@@ -30,9 +30,24 @@ void main() {
       expect(reread.read().capCeiling, 100000);
     });
 
-    test('a value that is not one of the choices reads as the default', () async {
+    test('any stored number reads back as itself — it is free input', () async {
       final repo = await repository({OptionsRepository.capCeilingKey: 12345});
-      expect(repo.read().capCeiling, maxKakugoCap);
+      expect(repo.read().capCeiling, 12345);
+
+      final round = await repository({
+        OptionsRepository.capCeilingKey: 100000,
+      });
+      expect(round.read().capCeiling, 100000);
+    });
+
+    test('a stored value outside the bounds reads clamped', () async {
+      final huge = await repository({
+        OptionsRepository.capCeilingKey: 5000000,
+      });
+      expect(huge.read().capCeiling, absoluteMaxKakugoCap);
+
+      final zero = await repository({OptionsRepository.capCeilingKey: 0});
+      expect(zero.read().capCeiling, 1);
     });
   });
 

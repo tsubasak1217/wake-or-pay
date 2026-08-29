@@ -11,15 +11,14 @@ class OptionsRepository {
 
   final SharedPreferences _prefs;
 
-  /// An unknown or out-of-range stored value reads as the default rather than
-  /// as itself: the choices are a fixed list, and a number that is not on it
-  /// is data this build does not understand.
+  /// The setting is free numeric input, so any integer is a value this build
+  /// understands: a stored number reads back as itself, brought inside
+  /// `[1, absoluteMaxKakugoCap]`. Only a *missing* value falls back to the
+  /// out-of-the-box ceiling.
   Options read() {
     final stored = _prefs.getInt(capCeilingKey);
     return Options(
-      capCeiling: stored != null && capCeilingChoices.contains(stored)
-          ? stored
-          : maxKakugoCap,
+      capCeiling: stored == null ? maxKakugoCap : normalizeCapCeiling(stored),
     );
   }
 

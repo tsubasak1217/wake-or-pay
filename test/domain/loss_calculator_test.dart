@@ -463,15 +463,15 @@ void main() {
         final s = session(
           kakugo: const Kakugo(
             ratePerMinute: 1,
-            cap: 9999999,
-            snoozePenalty: 999999,
+            cap: 99999999,
+            snoozePenalty: 9999999,
           ),
           // Above the ceiling too, so the balance is not what does the cutting.
-          coinsAtFire: 9999999,
+          coinsAtFire: 99999999,
           snoozes: presses(1),
         );
         expect(lossAt(firedAt, s), maxSnoozePenalty);
-        expect(maxSnoozePenalty, lessThan(999999), reason: 'it really was cut');
+        expect(maxSnoozePenalty, lessThan(9999999), reason: 'it really was cut');
 
         // And with a real cap and a real balance, those bite first.
         expect(

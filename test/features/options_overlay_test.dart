@@ -5,6 +5,7 @@ import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/data/repositories/options_repository.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/features/alarms/widgets/settings_island.dart';
+import 'package:wake_or_pay/features/options/options_overlay.dart';
 import 'package:wake_or_pay/main.dart';
 import 'package:wake_or_pay/services/options.dart';
 
@@ -51,11 +52,28 @@ Future<ProviderContainer> openOptions(
 String rowValue(WidgetTester tester, String key) =>
     tester.widget<SettingRow>(find.byKey(ValueKey(key))).value;
 
-/// Opens 上限金額の最大値 and taps [ceiling]'s tile.
-Future<void> chooseCeiling(WidgetTester tester, int ceiling) async {
+/// [inner], but only where it sits inside 上限金額の最大値 — the routes below an
+/// opaque page route are still in the tree and still findable.
+Finder onCeilingScreen(Finder inner) =>
+    find.descendant(of: find.byType(CapCeilingScreen), matching: inner);
+
+Future<void> openCeilingScreen(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('optionsCapCeilingRow')));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(ValueKey('capCeilingOption-$ceiling')));
+}
+
+/// What 上限金額の最大値's field currently says.
+String ceilingFieldText(WidgetTester tester) => tester
+    .widget<TextField>(find.byKey(const ValueKey('capCeilingInput')))
+    .controller!
+    .text;
+
+/// Opens 上限金額の最大値, types [text] into the field and presses 決定.
+Future<void> typeCeiling(WidgetTester tester, String text) async {
+  await openCeilingScreen(tester);
+  await tester.enterText(find.byKey(const ValueKey('capCeilingInput')), text);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('capCeilingSave')));
   await tester.pumpAndSettle();
 }
 
@@ -168,12 +186,53 @@ void main() {
     );
   });
 
+  testWidgets('the ceiling is typed, not picked off a list of prices', (
+    tester,
+  ) async {
+    await openOptions(tester);
+    await openCeilingScreen(tester);
+
+    // One field, prefilled with what is stored, and no menu of amounts.
+    expect(find.byKey(const ValueKey('capCeilingInput')), findsOneWidget);
+    expect(ceilingFieldText(tester), '10000');
+    expect(onCeilingScreen(find.text('コイン')), findsOneWidget);
+    expect(find.text('決定'), findsOneWidget);
+    expect(find.byType(Slider), findsNothing);
+    expect(find.textContaining('いくらにするかはあなた次第です'), findsOneWidget);
+
+    // And no range is stated anywhere: the clamp is silent by design.
+    expect(onCeilingScreen(find.textContaining('〜')), findsNothing);
+    for (final banned in ['1,000,000', '1000000', '300,000', '30,000']) {
+      expect(
+        onCeilingScreen(find.textContaining(banned)),
+        findsNothing,
+        reason: banned,
+      );
+    }
+  });
+
+  testWidgets('決定 is dead until the field says a number', (tester) async {
+    await openOptions(tester);
+    await openCeilingScreen(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('capCeilingInput')),
+      '',
+    );
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('capCeilingSave')),
+    );
+    expect(button.onPressed, isNull);
+  });
+
   testWidgets('raising it asks first, and やめる changes nothing', (
     tester,
   ) async {
     final container = await openOptions(tester);
 
-    await chooseCeiling(tester, 100000);
+    await typeCeiling(tester, '100000');
 
     expect(find.byKey(const ValueKey('capCeilingConfirm')), findsOneWidget);
     expect(find.text('本当に上げますか？'), findsOneWidget);
@@ -200,7 +259,7 @@ void main() {
   ) async {
     final container = await openOptions(tester);
 
-    await chooseCeiling(tester, 100000);
+    await typeCeiling(tester, '100000');
     await tester.tap(find.text('上げる'));
     await tester.pumpAndSettle();
 
@@ -213,7 +272,12 @@ void main() {
       reason: 'the next launch has to find the same answer',
     );
 
+    // The screen stays open, showing what was actually accepted.
+    expect(ceilingFieldText(tester), '100000');
+
     // Back on the sheet, showing the number it now holds.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     expect(rowValue(tester, 'optionsCapCeilingRow'), '100,000 コイン');
 
     // And the editor's 上限金額 is bounded by it.
@@ -234,11 +298,68 @@ void main() {
     );
     expect(rowValue(tester, 'optionsCapCeilingRow'), '100,000 コイン');
 
-    await chooseCeiling(tester, 10000);
+    await typeCeiling(tester, '10000');
 
     expect(find.byKey(const ValueKey('capCeilingConfirm')), findsNothing);
     expect(container.read(capCeilingProvider), 10000);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     expect(rowValue(tester, 'optionsCapCeilingRow'), '10,000 コイン');
+  });
+
+  testWidgets('a number over the bound is clamped in silence, not refused', (
+    tester,
+  ) async {
+    final container = await openOptions(tester);
+
+    await typeCeiling(tester, '5000000');
+    // Higher than what is stored, so the confirmation still applies — the
+    // clamp is not a rejection, it is the number the app agreed to.
+    expect(find.byKey(const ValueKey('capCeilingConfirm')), findsOneWidget);
+    await tester.tap(find.text('上げる'));
+    await tester.pumpAndSettle();
+
+    expect(container.read(capCeilingProvider), absoluteMaxKakugoCap);
+    expect(
+      OptionsRepository(container.read(sharedPreferencesProvider))
+          .read()
+          .capCeiling,
+      absoluteMaxKakugoCap,
+    );
+    // No error anywhere — the field simply says what was accepted.
+    expect(ceilingFieldText(tester), '$absoluteMaxKakugoCap');
+    expect(onCeilingScreen(find.textContaining('エラー')), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('capCeilingInput')))
+          .decoration!
+          .errorText,
+      isNull,
+    );
+  });
+
+  testWidgets('a tiny ceiling still leaves the editor a usable slider', (
+    tester,
+  ) async {
+    await openOptions(tester);
+    await typeCeiling(tester, '50');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Lower than the default, so nothing was confirmed and 50 is stored.
+    expect(find.byKey(const ValueKey('capCeilingConfirm')), findsNothing);
+    expect(rowValue(tester, 'optionsCapCeilingRow'), '50 コイン');
+
+    await tester.tap(find.byKey(const ValueKey('optionsOverlayClose')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await toggle(tester, '覚悟');
+    await chooseHostage(tester, 'コイン');
+
+    // effectiveCapCeiling floors at minKakugoCap, so max is never under min.
+    expect(await capRangeLabel(tester), '100〜1000コイン');
   });
 
   testWidgets('an alarm saved above the ceiling still opens at its own cap', (

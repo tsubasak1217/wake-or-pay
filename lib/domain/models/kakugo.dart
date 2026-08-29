@@ -61,19 +61,29 @@ const maxKakugoCap = 10000;
 /// alarm saved under a higher ceiling the moment the ceiling came back down.
 /// The setting bounds what the editor lets you *choose*; this bounds what the
 /// app will ever *believe*.
-const absoluteMaxKakugoCap = 300000;
+const absoluteMaxKakugoCap = 1000000;
 
-/// What 上限金額の最大値 may be set to. 円 and コイン are the same integer.
-const capCeilingChoices = <int>[10000, 30000, 100000, 300000];
+/// 上限金額の最大値 as the store and the screen agree to hold it: any integer the
+/// user types, brought inside `[1, absoluteMaxKakugoCap]`.
+///
+/// The floor is 1, not [minKakugoCap]: the field is free input, and a typed 1 is
+/// a legible answer that must not be silently inflated. Keeping the editor's
+/// slider sane is [effectiveCapCeiling]'s job, not this one's.
+int normalizeCapCeiling(int v) => v.clamp(1, absoluteMaxKakugoCap);
 
 /// The ceiling one alarm's 上限金額 may be edited up to: the user's [setting],
-/// or the cap the alarm already carries when that is higher.
+/// the editor's own floor, or the cap the alarm already carries — whichever is
+/// largest.
 ///
 /// Pure. An alarm saved when the ceiling was 100,000 keeps showing and editing
 /// its 50,000 cap after the ceiling is lowered back to 10,000 — the editor
-/// never drags a saved pledge down on its own.
-int effectiveCapCeiling(int setting, int currentCap) =>
-    math.max(setting, currentCap);
+/// never drags a saved pledge down on its own. [minKakugoCap] is in the max()
+/// because the setting is free input: a user who types 1 must not hand the
+/// slider a max below its own min.
+int effectiveCapCeiling(int setting, int currentCap) => math.max(
+  math.max(normalizeCapCeiling(setting), minKakugoCap),
+  currentCap,
+);
 
 /// What one press of snooze costs in kakugo mode. 0 = snoozing is free even
 /// under a pledge, which is the rule every row written before stage B was

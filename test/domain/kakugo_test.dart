@@ -36,7 +36,7 @@ void main() {
         expect(low.ratePerMinute, minKakugoCap);
         expect(low.snoozePenalty, minKakugoCap);
 
-        final high = withCap(base, 999999);
+        final high = withCap(base, 9999999);
         expect(high.cap, absoluteMaxKakugoCap);
         expect(high.ratePerMinute, 800, reason: 'nothing to cut');
       },
@@ -62,20 +62,24 @@ void main() {
 
   group('the cap ceiling', () {
     test('normalizeKakugoCap clamps to the hard ceiling, not to the default', () {
-      expect(absoluteMaxKakugoCap, 300000);
+      expect(absoluteMaxKakugoCap, 1000000);
       expect(maxKakugoCap, 10000, reason: 'still the out-of-the-box ceiling');
 
       // A cap saved while オプション allowed 100,000 survives a read.
       expect(normalizeKakugoCap(50000), 50000);
       expect(normalizeKakugoCap(300000), 300000);
-      expect(normalizeKakugoCap(999999), absoluteMaxKakugoCap);
+      expect(normalizeKakugoCap(9999999), absoluteMaxKakugoCap);
       expect(normalizeKakugoCap(0), minKakugoCap);
     });
 
-    test('the choices start at the default and end at the hard ceiling', () {
-      expect(capCeilingChoices, [10000, 30000, 100000, 300000]);
-      expect(capCeilingChoices.first, maxKakugoCap);
-      expect(capCeilingChoices.last, absoluteMaxKakugoCap);
+    test('normalizeCapCeiling takes any typed number and bounds it', () {
+      // Free input: whatever is typed stands, unless it is outside the bounds.
+      expect(normalizeCapCeiling(12345), 12345);
+      expect(normalizeCapCeiling(1), 1, reason: 'the floor is 1, not 100');
+      expect(normalizeCapCeiling(0), 1);
+      expect(normalizeCapCeiling(-5), 1);
+      expect(normalizeCapCeiling(absoluteMaxKakugoCap), absoluteMaxKakugoCap);
+      expect(normalizeCapCeiling(5000000), absoluteMaxKakugoCap);
     });
 
     test('effectiveCapCeiling never drags a saved cap down', () {
@@ -85,6 +89,14 @@ void main() {
       expect(effectiveCapCeiling(10000, 50000), 50000);
       // Equal is equal.
       expect(effectiveCapCeiling(30000, 30000), 30000);
+    });
+
+    test('effectiveCapCeiling never hands the slider a max under its min', () {
+      // The setting is free input now, so 1 is a thing a user can type.
+      expect(effectiveCapCeiling(1, 0), minKakugoCap);
+      expect(effectiveCapCeiling(50, 100), minKakugoCap);
+      // And an absurd setting is bounded before it is compared.
+      expect(effectiveCapCeiling(5000000, 1000), absoluteMaxKakugoCap);
     });
   });
 
