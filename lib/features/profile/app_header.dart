@@ -85,14 +85,26 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = ProfileCatalog.iconById(profile.iconId);
+    final frame = ProfileCatalog.frameById(profile.frameId);
     return InkWell(
       key: const ValueKey('appHeaderAvatar'),
       customBorder: const CircleBorder(),
       onTap: () => showProfileOverlay(context),
-      child: CircleAvatar(
-        radius: 22,
-        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: Text(icon.emoji, style: const TextStyle(fontSize: 22)),
+      // The frame rings the icon here as well as in the profile — but drawn
+      // *inside* the 22px radius rather than around it, because the bar's
+      // height is fixed and a thick frame must not push it taller.
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: frame.width > 0
+              ? Border.all(color: frame.color, width: frame.width)
+              : null,
+        ),
+        child: CircleAvatar(
+          radius: 22 - (frame.width > 0 ? frame.width : 0),
+          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Text(icon.emoji, style: const TextStyle(fontSize: 20)),
+        ),
       ),
     );
   }
@@ -108,7 +120,6 @@ class _NamePlate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final plate = ProfileCatalog.plateBackgroundById(profile.plateBackgroundId);
-    final frame = ProfileCatalog.frameById(profile.frameId);
     final level = levelForXp(profile.xp);
 
     return Container(
@@ -119,9 +130,9 @@ class _NamePlate extends StatelessWidget {
         gradient: plate.colors.length > 1
             ? LinearGradient(colors: plate.colors)
             : null,
-        border: frame.width > 0
-            ? Border.all(color: frame.color, width: frame.width)
-            : null,
+        // No frame here any more: `frameId` is the **アイコン**フレーム
+        // (`PROFILE_TABS_SPEC` §1), and drawing it twice would make one
+        // collectable mean two things.
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/providers.dart';
+import '../domain/journey_stats.dart';
 import '../domain/models.dart';
+import 'usage_controller.dart';
 
 /// The persisted profile, kept in memory so the header can paint the name,
 /// the level and the cosmetics without waiting on a future.
@@ -65,6 +67,45 @@ class ProfileController extends Notifier<Profile> {
   Future<void> selectFrame(String id) =>
       _update((p) => p.copyWith(frameId: id));
 
+  /// 称号. All three slots at once, because a title is one thing: writing them
+  /// separately would put 「早起きの」 on the screen for a frame.
+  Future<void> selectTitle(
+    String prefixId,
+    String connectorId,
+    String suffixId,
+  ) => _update(
+    (p) => p.copyWith(
+      titlePrefixId: prefixId,
+      titleConnectorId: connectorId,
+      titleSuffixId: suffixId,
+    ),
+  );
+
+  /// Everything the プロフィール編集画面 can change, in one write.
+  ///
+  /// One write and not five: the editor commits on the way out, and five
+  /// separate read-modify-writes against prefs would repaint the header four
+  /// times on a screen that is already gone. Null means 「leave it as it is」.
+  Future<void> updateCosmetics({
+    String? userName,
+    String? iconId,
+    String? frameId,
+    String? plateBackgroundId,
+    String? titlePrefixId,
+    String? titleConnectorId,
+    String? titleSuffixId,
+  }) => _update(
+    (p) => p.copyWith(
+      userName: userName?.trim(),
+      iconId: iconId,
+      frameId: frameId,
+      plateBackgroundId: plateBackgroundId,
+      titlePrefixId: titlePrefixId,
+      titleConnectorId: titleConnectorId,
+      titleSuffixId: titleSuffixId,
+    ),
+  );
+
   /// Read-modify-write against storage rather than against [state]: the
   /// settle path grants XP from outside the widget tree, so this cannot assume
   /// it holds the newest value.
@@ -75,3 +116,16 @@ class ProfileController extends Notifier<Profile> {
     state = await ref.read(profileRepositoryProvider).update(change);
   }
 }
+
+/// 「これまでの歩み」, recomputed whenever any of its three inputs move.
+///
+/// An empty history while the stream is still loading is the same answer as an
+/// empty history, so the island paints 「—」 for one frame rather than a spinner.
+final journeyStatsProvider = Provider<JourneyStats>(
+  (ref) => computeJourneyStats(
+    sessions:
+        ref.watch(allSessionsProvider).valueOrNull ?? const <AlarmSession>[],
+    usage: ref.watch(usageProvider),
+    profile: ref.watch(profileProvider),
+  ),
+);

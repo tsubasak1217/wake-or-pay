@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/profile_catalog.dart';
+import 'package:wake_or_pay/domain/title_catalog.dart';
 
 import '../helpers.dart';
 
@@ -75,6 +76,33 @@ void main() {
 
       expect(p.discordUserId, '123');
       expect(repo.read().discordUserId, '123');
+    });
+
+    test('an install from before 称号 existed reads back the default', () async {
+      // None of the four title keys was ever written by that build, so every
+      // one of them is missing and every one of them has to fall back.
+      final repo = (await testContainer(
+        prefs: {'profile.userName': '山田花子', 'profile.iconId': 'sun'},
+      )).read(profileRepositoryProvider);
+
+      expect(repo.read().title, '寝坊の常習犯');
+      expect(repo.read().ownedTitleWordIds, TitleCatalog.allTitleWordIds);
+    });
+
+    test('a chosen 称号 survives a round trip', () async {
+      final repo = (await testContainer()).read(profileRepositoryProvider);
+      final written = await repo.update(
+        (p) => p.copyWith(
+          titlePrefixId: 'p_asahi',
+          titleConnectorId: 'c_taru',
+          titleSuffixId: 's_ou',
+          ownedTitleWordIds: {'p_asahi', 'c_taru', 's_ou'},
+        ),
+      );
+
+      expect(written.title, '朝日たる王');
+      expect(repo.read(), written);
+      expect(repo.read().ownedTitleWordIds, {'p_asahi', 'c_taru', 's_ou'});
     });
 
     test('an unknown cosmetic id survives the read and falls back', () async {

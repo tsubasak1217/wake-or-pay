@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../profile_catalog.dart';
+import '../title_catalog.dart';
 
 /// Who the app's user is, and how their name plate is dressed.
 ///
@@ -18,9 +19,13 @@ class Profile {
     this.iconId = ProfileCatalog.defaultIconId,
     this.plateBackgroundId = ProfileCatalog.defaultPlateBackgroundId,
     this.frameId = ProfileCatalog.defaultFrameId,
+    this.titlePrefixId = TitleCatalog.defaultPrefixId,
+    this.titleConnectorId = TitleCatalog.defaultConnectorId,
+    this.titleSuffixId = TitleCatalog.defaultSuffixId,
     this.ownedIconIds = ProfileCatalog.allIconIds,
     this.ownedPlateBackgroundIds = ProfileCatalog.allPlateBackgroundIds,
     this.ownedFrameIds = ProfileCatalog.allFrameIds,
+    this.ownedTitleWordIds = TitleCatalog.allTitleWordIds,
   });
 
   /// The person using the app — the one who oversleeps.
@@ -61,12 +66,25 @@ class Profile {
   final String plateBackgroundId;
   final String frameId;
 
+  /// The three words the 称号 is built from — 「寝坊」「の」「常習犯」 by default.
+  final String titlePrefixId;
+  final String titleConnectorId;
+  final String titleSuffixId;
+
+  /// 「寝坊の常習犯」. Derived, never stored: the words are the state.
+  String get title =>
+      composeTitle(titlePrefixId, titleConnectorId, titleSuffixId);
+
   /// Everything currently held. There is no way to earn a cosmetic yet, so
   /// these default to the whole catalogue — but the pickers read them, so a
   /// grant mechanism only has to start writing narrower sets.
   final Set<String> ownedIconIds;
   final Set<String> ownedPlateBackgroundIds;
   final Set<String> ownedFrameIds;
+
+  /// One set for all three title slots. The ids are namespaced (`p_`/`c_`/`s_`)
+  /// so a single set can never confuse a prefix with a suffix.
+  final Set<String> ownedTitleWordIds;
 
   Profile copyWith({
     String? userName,
@@ -77,9 +95,13 @@ class Profile {
     String? iconId,
     String? plateBackgroundId,
     String? frameId,
+    String? titlePrefixId,
+    String? titleConnectorId,
+    String? titleSuffixId,
     Set<String>? ownedIconIds,
     Set<String>? ownedPlateBackgroundIds,
     Set<String>? ownedFrameIds,
+    Set<String>? ownedTitleWordIds,
   }) => Profile(
     userName: userName ?? this.userName,
     discordUserId: discordUserId ?? this.discordUserId,
@@ -89,10 +111,14 @@ class Profile {
     iconId: iconId ?? this.iconId,
     plateBackgroundId: plateBackgroundId ?? this.plateBackgroundId,
     frameId: frameId ?? this.frameId,
+    titlePrefixId: titlePrefixId ?? this.titlePrefixId,
+    titleConnectorId: titleConnectorId ?? this.titleConnectorId,
+    titleSuffixId: titleSuffixId ?? this.titleSuffixId,
     ownedIconIds: ownedIconIds ?? this.ownedIconIds,
     ownedPlateBackgroundIds:
         ownedPlateBackgroundIds ?? this.ownedPlateBackgroundIds,
     ownedFrameIds: ownedFrameIds ?? this.ownedFrameIds,
+    ownedTitleWordIds: ownedTitleWordIds ?? this.ownedTitleWordIds,
   );
 
   @override
@@ -106,9 +132,13 @@ class Profile {
       other.iconId == iconId &&
       other.plateBackgroundId == plateBackgroundId &&
       other.frameId == frameId &&
+      other.titlePrefixId == titlePrefixId &&
+      other.titleConnectorId == titleConnectorId &&
+      other.titleSuffixId == titleSuffixId &&
       setEquals(other.ownedIconIds, ownedIconIds) &&
       setEquals(other.ownedPlateBackgroundIds, ownedPlateBackgroundIds) &&
-      setEquals(other.ownedFrameIds, ownedFrameIds);
+      setEquals(other.ownedFrameIds, ownedFrameIds) &&
+      setEquals(other.ownedTitleWordIds, ownedTitleWordIds);
 
   @override
   int get hashCode => Object.hash(
@@ -120,15 +150,19 @@ class Profile {
     iconId,
     plateBackgroundId,
     frameId,
+    titlePrefixId,
+    titleConnectorId,
+    titleSuffixId,
     Object.hashAllUnordered(ownedIconIds),
     Object.hashAllUnordered(ownedPlateBackgroundIds),
     Object.hashAllUnordered(ownedFrameIds),
+    Object.hashAllUnordered(ownedTitleWordIds),
   );
 
   @override
   String toString() =>
       'Profile("$userName", discord "$discordUserId", xp $xp, '
-      '$iconId/$plateBackgroundId/$frameId)';
+      '$iconId/$plateBackgroundId/$frameId, 「$title」)';
 }
 
 /// Keeps only the digits of a pasted Discord user ID. Pure.

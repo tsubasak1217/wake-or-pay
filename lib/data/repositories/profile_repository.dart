@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/models.dart';
 import '../../domain/profile_catalog.dart';
+import '../../domain/title_catalog.dart';
 
 /// The profile lives beside the settings in shared_preferences, for the same
 /// reason: the header paints it on the first frame, so the read has to be
@@ -20,6 +21,10 @@ class ProfileRepository {
   static const _ownedIconsKey = 'profile.ownedIconIds';
   static const _ownedPlatesKey = 'profile.ownedPlateBackgroundIds';
   static const _ownedFramesKey = 'profile.ownedFrameIds';
+  static const _titlePrefixKey = 'profile.titlePrefixId';
+  static const _titleConnectorKey = 'profile.titleConnectorId';
+  static const _titleSuffixKey = 'profile.titleSuffixId';
+  static const _ownedTitleWordsKey = 'profile.ownedTitleWordIds';
 
   /// Where the name lived when it was a setting. Read as a fallback and never
   /// written or deleted: the read-through is non-destructive, so an install
@@ -42,6 +47,14 @@ class ProfileRepository {
     plateBackgroundId:
         _prefs.getString(_plateKey) ?? ProfileCatalog.defaultPlateBackgroundId,
     frameId: _prefs.getString(_frameKey) ?? ProfileCatalog.defaultFrameId,
+    // Written by no build before 称号 existed, so every one of these is missing
+    // on an upgrade and every one of them falls back to 「寝坊の常習犯」.
+    titlePrefixId:
+        _prefs.getString(_titlePrefixKey) ?? TitleCatalog.defaultPrefixId,
+    titleConnectorId:
+        _prefs.getString(_titleConnectorKey) ?? TitleCatalog.defaultConnectorId,
+    titleSuffixId:
+        _prefs.getString(_titleSuffixKey) ?? TitleCatalog.defaultSuffixId,
     // No stored set means nothing has ever been granted or taken away, which
     // today is "owns everything".
     ownedIconIds:
@@ -53,6 +66,9 @@ class ProfileRepository {
     ownedFrameIds:
         _prefs.getStringList(_ownedFramesKey)?.toSet() ??
         ProfileCatalog.allFrameIds,
+    ownedTitleWordIds:
+        _prefs.getStringList(_ownedTitleWordsKey)?.toSet() ??
+        TitleCatalog.allTitleWordIds,
   );
 
   Future<void> write(Profile profile) async {
@@ -83,6 +99,13 @@ class ProfileRepository {
     await _prefs.setStringList(
       _ownedFramesKey,
       profile.ownedFrameIds.toList()..sort(),
+    );
+    await _prefs.setString(_titlePrefixKey, profile.titlePrefixId);
+    await _prefs.setString(_titleConnectorKey, profile.titleConnectorId);
+    await _prefs.setString(_titleSuffixKey, profile.titleSuffixId);
+    await _prefs.setStringList(
+      _ownedTitleWordsKey,
+      profile.ownedTitleWordIds.toList()..sort(),
     );
   }
 

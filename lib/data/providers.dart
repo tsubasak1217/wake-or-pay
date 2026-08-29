@@ -15,6 +15,7 @@ import 'repositories/options_repository.dart';
 import 'repositories/pending_charge_repository.dart';
 import 'repositories/profile_repository.dart';
 import 'repositories/settings_repository.dart';
+import 'repositories/usage_repository.dart';
 import 'repositories/wallet_repository.dart';
 import '../services/secret_store.dart';
 
@@ -86,6 +87,11 @@ final profileRepositoryProvider = Provider(
   (ref) => ProfileRepository(ref.watch(sharedPreferencesProvider)),
 );
 
+/// 開始日 and ログイン日数 — see [UsageRepository].
+final usageRepositoryProvider = Provider(
+  (ref) => UsageRepository(ref.watch(sharedPreferencesProvider)),
+);
+
 /// メール送信設定. Two stores behind one object — prefs for the server fields,
 /// the secure store for the app password. See [MailSettingsRepository].
 final mailSettingsRepositoryProvider = Provider(
@@ -118,6 +124,12 @@ final gardenProvider = StreamProvider<GardenState>((ref) {
 
 final sessionHistoryProvider = StreamProvider<List<AlarmSession>>(
   (ref) => ref.watch(alarmSessionRepositoryProvider).watchRecent(),
+);
+
+/// The whole history, uncapped. Only 「これまでの歩み」 reads this — the wallet
+/// list stays on [sessionHistoryProvider], which is a list and wants a ceiling.
+final allSessionsProvider = StreamProvider<List<AlarmSession>>(
+  (ref) => ref.watch(alarmSessionRepositoryProvider).watchAll(),
 );
 
 /// Live ringing sessions, snoozed ones included. The alarm list reads this to

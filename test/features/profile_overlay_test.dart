@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/app/profile_controller.dart';
+import 'package:wake_or_pay/app/usage_controller.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/data/repositories/profile_repository.dart';
+import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/profile_catalog.dart';
+import 'package:wake_or_pay/domain/title_catalog.dart';
+import 'package:wake_or_pay/features/profile/profile_edit_screen.dart';
 import 'package:wake_or_pay/main.dart';
 
 import '../helpers.dart';
@@ -42,8 +46,11 @@ Future<ProviderContainer> openOverlay(
 String headerName(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const ValueKey('appHeaderName'))).data!;
 
+String textOf(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+
 /// The overlay is taller than a test viewport, so anything below the fold has
-/// to be scrolled into the list before it can be tapped.
+/// to be scrolled into the list before it can be seen.
 Future<void> scrollTo(WidgetTester tester, Finder target) async {
   final list = find
       .descendant(
@@ -57,24 +64,99 @@ Future<void> scrollTo(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
+/// The same, for the editor's own list. Its first Scrollable is the body; the
+/// horizontal picker rows inside it are Scrollables too.
+Finder get _editorList => find
+    .descendant(
+      of: find.byType(ProfileEditScreen),
+      matching: find.byType(Scrollable),
+    )
+    .first;
+
+Future<void> scrollEditorTo(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(target, 100, scrollable: _editorList);
+  await tester.pumpAndSettle();
+}
+
+Future<void> scrollEditorToTop(WidgetTester tester) async {
+  tester.state<ScrollableState>(_editorList).position.jumpTo(0);
+  await tester.pumpAndSettle();
+}
+
+/// Scrolls one 「これまでの歩み」 row into view and checks what it says.
+Future<void> expectJourney(
+  WidgetTester tester,
+  String rowKey,
+  String value,
+) async {
+  final row = find.byKey(ValueKey(rowKey));
+  await scrollTo(tester, row);
+  expect(
+    find.descendant(of: row, matching: find.text(value)),
+    findsOneWidget,
+    reason: rowKey,
+  );
+}
+
+AlarmSession ring({
+  required String id,
+  required DateTime firedAt,
+  DateTime? dismissedAt,
+  SessionStatus status = SessionStatus.success,
+  int loss = 0,
+}) => AlarmSession(
+  id: id,
+  alarmId: 'a1',
+  firedAt: firedAt,
+  dismissedAt: dismissedAt,
+  status: status,
+  loss: loss,
+);
+
 void main() {
+  testWidgets('the launch itself is what counts a login day', (tester) async {
+    // Recorded by the root widget, before anything is tapped and without the
+    // profile ever being opened — see [UsageTracker].
+    final container = await pumpApp(tester);
+
+    expect(container.read(usageProvider).loginDays, 1);
+    expect(container.read(usageProvider).firstOpenedAt, testNow);
+
+    // And only once: `initState` does not run again on a rebuild.
+    await tester.tap(find.byKey(const ValueKey('appHeaderAvatar')));
+    await tester.pumpAndSettle();
+    expect(container.read(usageProvider).loginDays, 1);
+    expect(
+      container.read(usageRepositoryProvider).read().loginDays,
+      1,
+      reason: 'the next launch has to find it',
+    );
+  });
+
   testWidgets('the avatar opens the overlay and 閉じる closes it', (
     tester,
   ) async {
     await openOverlay(tester);
 
     expect(find.byKey(const ValueKey('profileOverlay')), findsOneWidget);
-    expect(find.text('プロフィール設定'), findsOneWidget);
+    // アイコン → 称号 → ネームプレート → ゲージ, top to bottom.
+    expect(find.byKey(const ValueKey('profileAvatar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profileTitle')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profileNamePlate')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profileGauge')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profileEditButton')), findsOneWidget);
 
-    await scrollTo(tester, find.text('コレクション'));
-    expect(find.text('コレクション'), findsOneWidget);
-    await scrollTo(
-      tester,
-      find.byKey(const ValueKey('profileActivityPlaceholder')),
-    );
+    await scrollTo(tester, find.byKey(const ValueKey('profileJourneyIsland')));
+    expect(find.text('これまでの歩み'), findsOneWidget);
+    await scrollTo(tester, find.byKey(const ValueKey('profileLinksIsland')));
+    expect(find.text('連携情報'), findsOneWidget);
+
+    // The islands this batch retired.
+    expect(find.text('コレクション'), findsNothing);
+    expect(find.text('プロフィール設定'), findsNothing);
     expect(
       find.byKey(const ValueKey('profileActivityPlaceholder')),
-      findsOneWidget,
+      findsNothing,
     );
 
     // The way out is outside the list, so it never needs scrolling to.
@@ -99,42 +181,126 @@ void main() {
     expect(find.byKey(const ValueKey('profileOverlay')), findsNothing);
   });
 
-  testWidgets('the header block counts the XP owed to the next level', (
-    tester,
-  ) async {
+  testWidgets('the 称号 defaults to 寝坊の常習犯', (tester) async {
+    await openOverlay(tester);
+    expect(textOf(tester, 'profileTitle'), '寝坊の常習犯');
+  });
+
+  testWidgets('the rank is drawn inside the XP gauge', (tester) async {
     final container = await pumpApp(tester);
     await container.read(profileProvider.notifier).addXp(60);
     await tester.tap(find.byKey(const ValueKey('appHeaderAvatar')));
     await tester.pumpAndSettle();
 
     // 60 XP is level 2 (50) with 90 still owed on the 150 boundary.
+    final gauge = find.byKey(const ValueKey('profileGauge'));
+    expect(
+      find.descendant(of: gauge, matching: find.text('Lv 2')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: gauge, matching: find.byType(LinearProgressIndicator)),
+      findsOneWidget,
+    );
     expect(find.text('経験値 60 / 次のLvまで 90'), findsOneWidget);
   });
 
-  testWidgets('editing the name updates the header behind it', (tester) async {
-    final container = await openOverlay(tester);
-    expect(find.text('未設定'), findsWidgets);
-
-    await tester.tap(find.byKey(const ValueKey('profileUserNameRow')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('userNameField')),
-      ' 山田花子 ',
+  testWidgets('これまでの歩み counts the whole history', (tester) async {
+    final container = await pumpApp(tester);
+    final sessions = container.read(alarmSessionRepositoryProvider);
+    // Two 起床成功 and two 寝坊 — 90 min / 1200 and 20 min / 300 — plus one
+    // still ringing, which has no outcome and must count towards nothing.
+    await sessions.save(
+      ring(
+        id: 's1',
+        firedAt: DateTime(2026, 8, 1, 7),
+        dismissedAt: DateTime(2026, 8, 1, 7, 1),
+      ),
     );
-    await tester.pageBack();
+    await sessions.save(
+      ring(
+        id: 's2',
+        firedAt: DateTime(2026, 8, 2, 7),
+        dismissedAt: DateTime(2026, 8, 2, 7, 1),
+      ),
+    );
+    await sessions.save(
+      ring(
+        id: 's3',
+        firedAt: DateTime(2026, 8, 4, 7),
+        dismissedAt: DateTime(2026, 8, 4, 8, 30),
+        status: SessionStatus.failed,
+        loss: 1200,
+      ),
+    );
+    await sessions.save(
+      ring(
+        id: 's4',
+        firedAt: DateTime(2026, 8, 5, 7),
+        dismissedAt: DateTime(2026, 8, 5, 7, 20),
+        status: SessionStatus.failed,
+        loss: 300,
+      ),
+    );
+    await sessions.save(
+      ring(
+        id: 's5',
+        firedAt: DateTime(2026, 8, 6, 7),
+        status: SessionStatus.ringing,
+        loss: 9999,
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('appHeaderAvatar')));
     await tester.pumpAndSettle();
 
-    expect(container.read(profileProvider).userName, '山田花子');
+    // 開始日 is the launch this container recorded, not the oldest ring.
+    await expectJourney(tester, 'journeyStartedAt', '2026/8/29');
+    await expectJourney(tester, 'journeyLoginDays', '1日');
+    await expectJourney(tester, 'journeyTotalPenalty', '1,500 コイン');
+    await expectJourney(tester, 'journeyMaxPenalty', '1,200 コイン');
+    await expectJourney(tester, 'journeySuccessRate', '50%');
+    await expectJourney(tester, 'journeyOversleepCount', '2回');
+    await expectJourney(tester, 'journeyTotalOversleep', '1h 50分');
+    await expectJourney(tester, 'journeyMaxOversleep', '1h 30分');
 
-    await tester.tap(find.byKey(const ValueKey('profileOverlayClose')));
-    await tester.pumpAndSettle();
-    expect(headerName(tester), 'Lv1 山田花子');
+    final total =
+        ProfileCatalog.icons.length +
+        ProfileCatalog.plateBackgrounds.length +
+        ProfileCatalog.frames.length +
+        TitleCatalog.wordCount;
+    await expectJourney(tester, 'journeyCollections', '$total / $total');
   });
 
-  // 「the Discord ID keeps only digits and is stored」 used to live here. It
-  // exercised profileDiscordIdRow / discordUserIdField — the hand-typed
-  // 「Discord ユーザーID」 row — which is gone (段階F): the only way in now is
-  // 「Discord で連携」, covered in test/features/discord_link_test.dart.
+  testWidgets('これまでの歩み says 「—」 before anything has happened', (
+    tester,
+  ) async {
+    await openOverlay(tester);
+
+    // A rate over no rings is 「—」, not 0%.
+    await expectJourney(tester, 'journeySuccessRate', '—');
+    await expectJourney(tester, 'journeyOversleepCount', '0回');
+    await expectJourney(tester, 'journeyTotalOversleep', '0分');
+    await expectJourney(tester, 'journeyTotalPenalty', '0 コイン');
+  });
+
+  testWidgets('連携情報 holds Discord, the card and mail — and no name row', (
+    tester,
+  ) async {
+    await openOverlay(tester);
+
+    await scrollTo(tester, find.byKey(const ValueKey('profileLinksIsland')));
+    expect(find.byKey(const ValueKey('profileDiscordLinkRow')), findsOneWidget);
+    await scrollTo(tester, find.byKey(const ValueKey('profileCardHostageRow')));
+    expect(find.byKey(const ValueKey('profileCardHostageRow')), findsOneWidget);
+    await scrollTo(tester, find.byKey(const ValueKey('profileMailRow')));
+    expect(find.byKey(const ValueKey('profileMailRow')), findsOneWidget);
+
+    // The name is edited where it is previewed, so the row that used to open a
+    // screen of its own is gone.
+    expect(find.byKey(const ValueKey('profileUserNameRow')), findsNothing);
+    expect(find.text('あなたの名前'), findsNothing);
+  });
 
   testWidgets('メール送信設定 says 未設定 and opens the SMTP editor', (tester) async {
     await openOverlay(tester);
@@ -151,76 +317,140 @@ void main() {
     expect(find.byKey(const ValueKey('mailPasswordField')), findsOneWidget);
   });
 
-  testWidgets('picking an icon persists and repaints the header', (
-    tester,
-  ) async {
-    final container = await openOverlay(tester);
-    final sun = ProfileCatalog.icons[1];
-    expect(sun.id, 'sun');
+  testWidgets(
+    'the pencil opens the editor; what is picked there is previewed, then '
+    'kept and persisted',
+    (tester) async {
+      final container = await openOverlay(tester);
 
-    await scrollTo(tester, find.byKey(ValueKey('collectionIcon-${sun.id}')));
-    await tester.tap(find.byKey(ValueKey('collectionIcon-${sun.id}')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profileEditButton')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profileEditName')), findsOneWidget);
 
-    expect(container.read(profileProvider).iconId, sun.id);
-    // Read back off storage through a repository of its own: what the header
-    // shows has to be what the next launch would find.
-    final reread = ProfileRepository(
-      container.read(sharedPreferencesProvider),
-    ).read();
-    expect(reread.iconId, sun.id);
+      await tester.enterText(
+        find.byKey(const ValueKey('profileEditName')),
+        ' 山田花子 ',
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('profileOverlayClose')));
-    await tester.pumpAndSettle();
+      for (final key in const [
+        'collectionIcon-sun',
+        'collectionFrame-frame_thick',
+        'collectionPlate-plate_dawn',
+        'titlePrefix-p_hayaoki',
+        'titleConnector-c_taru',
+        'titleSuffix-s_ou',
+      ]) {
+        await scrollEditorTo(tester, find.byKey(ValueKey(key)));
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pumpAndSettle();
+      }
 
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('appHeaderAvatar')),
-        matching: find.text(sun.emoji),
-      ),
-      findsOneWidget,
-    );
-  });
+      // Nothing is committed yet: the draft lives in the screen, and only the
+      // preview at the top of it has moved.
+      expect(
+        container.read(profileProvider).iconId,
+        ProfileCatalog.defaultIconId,
+      );
+      await scrollEditorToTop(tester);
+      expect(textOf(tester, 'profileEditTitle'), '早起きたる王');
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('profileEditNamePlate')),
+          matching: find.text('山田花子'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('profileEditAvatar')),
+          matching: find.text('🌞'),
+        ),
+        findsOneWidget,
+      );
 
-  testWidgets('picking a plate and a frame persists too', (tester) async {
-    final container = await openOverlay(tester);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
 
-    await scrollTo(
-      tester,
-      find.byKey(const ValueKey('collectionPlate-plate_dawn')),
-    );
-    await tester.tap(find.byKey(const ValueKey('collectionPlate-plate_dawn')));
-    await tester.pumpAndSettle();
+      final profile = container.read(profileProvider);
+      expect(profile.userName, '山田花子', reason: 'stored trimmed');
+      expect(profile.iconId, 'sun');
+      expect(profile.frameId, 'frame_thick');
+      expect(profile.plateBackgroundId, 'plate_dawn');
+      expect(profile.title, '早起きたる王');
 
-    await scrollTo(
-      tester,
-      find.byKey(const ValueKey('collectionFrame-frame_thick')),
-    );
-    await tester.tap(find.byKey(const ValueKey('collectionFrame-frame_thick')));
-    await tester.pumpAndSettle();
+      // Back on the overlay, painted from the stored profile.
+      expect(textOf(tester, 'profileTitle'), '早起きたる王');
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('profileNamePlate')),
+          matching: find.text('山田花子'),
+        ),
+        findsOneWidget,
+      );
 
-    final profile = container.read(profileProvider);
-    expect(profile.plateBackgroundId, 'plate_dawn');
-    expect(profile.frameId, 'frame_thick');
-  });
+      // Read back off storage through a repository of its own: what the header
+      // shows has to be what the next launch would find.
+      final reread = ProfileRepository(
+        container.read(sharedPreferencesProvider),
+      ).read();
+      expect(reread.userName, '山田花子');
+      expect(reread.iconId, 'sun');
+      expect(reread.frameId, 'frame_thick');
+      expect(reread.plateBackgroundId, 'plate_dawn');
+      expect(reread.title, '早起きたる王');
+
+      await tester.tap(find.byKey(const ValueKey('profileOverlayClose')));
+      await tester.pumpAndSettle();
+      expect(headerName(tester), 'Lv1 山田花子');
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('appHeaderAvatar')),
+          matching: find.text('🌞'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('an unowned cosmetic cannot be picked', (tester) async {
-    // Only the default icon granted: the pickers read the owned set, so the
-    // day something has to be earned this is already the behaviour.
+    // Only the default icon and the three default title words granted: the
+    // pickers read the owned sets, so the day something has to be earned this
+    // is already the behaviour.
     final container = await openOverlay(
       tester,
       prefs: {
         'profile.ownedIconIds': [ProfileCatalog.defaultIconId],
+        'profile.ownedTitleWordIds': [
+          TitleCatalog.defaultPrefixId,
+          TitleCatalog.defaultConnectorId,
+          TitleCatalog.defaultSuffixId,
+        ],
       },
     );
 
-    await scrollTo(tester, find.byKey(const ValueKey('collectionIcon-sun')));
+    await tester.tap(find.byKey(const ValueKey('profileEditButton')));
+    await tester.pumpAndSettle();
+
+    await scrollEditorTo(
+      tester,
+      find.byKey(const ValueKey('collectionIcon-sun')),
+    );
     await tester.tap(find.byKey(const ValueKey('collectionIcon-sun')));
     await tester.pumpAndSettle();
 
-    expect(
-      container.read(profileProvider).iconId,
-      ProfileCatalog.defaultIconId,
+    await scrollEditorTo(
+      tester,
+      find.byKey(const ValueKey('titlePrefix-p_hayaoki')),
     );
+    await tester.tap(find.byKey(const ValueKey('titlePrefix-p_hayaoki')));
+    await tester.pumpAndSettle();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    final profile = container.read(profileProvider);
+    expect(profile.iconId, ProfileCatalog.defaultIconId);
+    expect(profile.title, '寝坊の常習犯');
   });
 }

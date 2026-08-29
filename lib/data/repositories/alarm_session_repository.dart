@@ -104,6 +104,22 @@ class AlarmSessionRepository {
           .watch()
           .map((rows) => rows.map((r) => r.toModel()).toList());
 
+  /// Every session there has ever been, newest first — **no limit**.
+  ///
+  /// 「これまでの歩み」 is a lifetime total, and reading it off [watchRecent] would
+  /// quietly stop counting at the hundredth ring: the numbers would go down as
+  /// the user kept using the app, which is the one thing a lifetime total must
+  /// never do.
+  Stream<List<AlarmSession>> watchAll() =>
+      (_db.select(_db.alarmSessionRows)..orderBy([
+            (s) => OrderingTerm(
+              expression: s.firedAtMs,
+              mode: OrderingMode.desc,
+            ),
+          ]))
+          .watch()
+          .map((rows) => rows.map((r) => r.toModel()).toList());
+
   Future<void> delete(String id) =>
       (_db.delete(_db.alarmSessionRows)..where((s) => s.id.equals(id))).go();
 }

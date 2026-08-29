@@ -549,10 +549,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('profileOverlay')), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('profileUserNameRow')));
+      // The name moved into プロフィール編集, behind the pencil: it is edited
+      // where it is previewed now, not on a row of its own.
+      await tester.tap(find.byKey(const ValueKey('profileEditButton')));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.byKey(const ValueKey('userNameField')),
+        find.byKey(const ValueKey('profileEditName')),
         ' 山田花子 ',
       );
       await tester.pageBack();

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/router.dart';
 import 'app/theme_controller.dart';
+import 'app/usage_controller.dart';
 import 'data/providers.dart';
 import 'domain/loss_calculator.dart';
 import 'domain/snooze_rules.dart';
@@ -111,11 +112,33 @@ Future<void> main() async {
   );
 }
 
-class WakeOrPayApp extends ConsumerWidget {
+class WakeOrPayApp extends ConsumerStatefulWidget {
   const WakeOrPayApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WakeOrPayApp> createState() => _WakeOrPayAppState();
+}
+
+class _WakeOrPayAppState extends ConsumerState<WakeOrPayApp> {
+  @override
+  void initState() {
+    super.initState();
+    // ログイン日数 (`PROFILE_TABS_SPEC` §1). **Once per app start**, and here
+    // rather than on any one screen: an alarm that fires while the phone is
+    // locked opens straight into the ringing screen, which wears no header and
+    // no profile — and that morning is still a day the user opened the app.
+    //
+    // Not in `main()` above, because a widget test pumps this widget without
+    // running it, and 「起動した」 has to mean the same thing in both.
+    // Unawaited: it is one preference write, and the first frame must not wait
+    // on it. Wrapped, because a statistic is never a reason not to open.
+    unawaited(
+      ref.read(usageProvider.notifier).recordOpen().catchError((Object _) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = ref.watch(currentThemeProvider);
     return MaterialApp.router(
       title: '覚悟の目覚まし',

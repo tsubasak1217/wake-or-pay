@@ -14,4 +14,5 @@ export 'models/pending_charge.dart';
 export 'models/profile.dart';
 export 'models/settings.dart';
 export 'models/snooze.dart';
+export 'models/usage_stats.dart';
 export 'models/wallet.dart';
