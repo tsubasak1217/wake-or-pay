@@ -47,9 +47,33 @@ enum HostageType {
 /// set above the most that alarm can ever cost — so [maxKakugoRate] is only the
 /// ceiling of that bound, reached when the cap itself is at its maximum.
 const minKakugoRate = 10;
-const maxKakugoRate = maxKakugoCap;
+const maxKakugoRate = absoluteMaxKakugoCap;
 const minKakugoCap = 100;
+
+/// The ceiling the editor offers **out of the box**, and the default of
+/// `Options.capCeiling` — オプション › 危険な設定 › 上限金額の最大値 can raise it.
 const maxKakugoCap = 10000;
+
+/// The hard ceiling no stored cap may ever exceed, whatever the setting says.
+///
+/// Deliberately *not* the user's setting: [normalizeKakugoCap] is what every
+/// read goes through, so clamping to the setting would silently rewrite an
+/// alarm saved under a higher ceiling the moment the ceiling came back down.
+/// The setting bounds what the editor lets you *choose*; this bounds what the
+/// app will ever *believe*.
+const absoluteMaxKakugoCap = 300000;
+
+/// What 上限金額の最大値 may be set to. 円 and コイン are the same integer.
+const capCeilingChoices = <int>[10000, 30000, 100000, 300000];
+
+/// The ceiling one alarm's 上限金額 may be edited up to: the user's [setting],
+/// or the cap the alarm already carries when that is higher.
+///
+/// Pure. An alarm saved when the ceiling was 100,000 keeps showing and editing
+/// its 50,000 cap after the ceiling is lowered back to 10,000 — the editor
+/// never drags a saved pledge down on its own.
+int effectiveCapCeiling(int setting, int currentCap) =>
+    math.max(setting, currentCap);
 
 /// What one press of snooze costs in kakugo mode. 0 = snoozing is free even
 /// under a pledge, which is the rule every row written before stage B was
@@ -59,7 +83,7 @@ const maxKakugoCap = 10000;
 /// [maxSnoozePenalty] is the ceiling of that bound and the absolute clamp every
 /// stored value is read through.
 const minSnoozePenalty = 0;
-const maxSnoozePenalty = maxKakugoCap;
+const maxSnoozePenalty = absoluteMaxKakugoCap;
 
 int normalizeKakugoRate(int rate) => rate.clamp(minKakugoRate, maxKakugoRate);
 
@@ -80,7 +104,9 @@ HostageType hostageFor(String? name, int ratePerMinute) {
     orElse: () => HostageType.coin,
   );
 }
-int normalizeKakugoCap(int cap) => cap.clamp(minKakugoCap, maxKakugoCap);
+/// Clamped to [absoluteMaxKakugoCap], never to the user's ceiling setting —
+/// see the note on that constant.
+int normalizeKakugoCap(int cap) => cap.clamp(minKakugoCap, absoluteMaxKakugoCap);
 int normalizeSnoozePenalty(int penalty) =>
     penalty.clamp(minSnoozePenalty, maxSnoozePenalty);
 

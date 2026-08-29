@@ -37,7 +37,7 @@ void main() {
         expect(low.snoozePenalty, minKakugoCap);
 
         final high = withCap(base, 999999);
-        expect(high.cap, maxKakugoCap);
+        expect(high.cap, absoluteMaxKakugoCap);
         expect(high.ratePerMinute, 800, reason: 'nothing to cut');
       },
     );
@@ -55,9 +55,37 @@ void main() {
     });
   });
 
-  test('the penalty bounds are the cap ceiling', () {
-    expect(maxKakugoRate, maxKakugoCap);
-    expect(maxSnoozePenalty, maxKakugoCap);
+  test('the penalty bounds are the hard cap ceiling', () {
+    expect(maxKakugoRate, absoluteMaxKakugoCap);
+    expect(maxSnoozePenalty, absoluteMaxKakugoCap);
+  });
+
+  group('the cap ceiling', () {
+    test('normalizeKakugoCap clamps to the hard ceiling, not to the default', () {
+      expect(absoluteMaxKakugoCap, 300000);
+      expect(maxKakugoCap, 10000, reason: 'still the out-of-the-box ceiling');
+
+      // A cap saved while オプション allowed 100,000 survives a read.
+      expect(normalizeKakugoCap(50000), 50000);
+      expect(normalizeKakugoCap(300000), 300000);
+      expect(normalizeKakugoCap(999999), absoluteMaxKakugoCap);
+      expect(normalizeKakugoCap(0), minKakugoCap);
+    });
+
+    test('the choices start at the default and end at the hard ceiling', () {
+      expect(capCeilingChoices, [10000, 30000, 100000, 300000]);
+      expect(capCeilingChoices.first, maxKakugoCap);
+      expect(capCeilingChoices.last, absoluteMaxKakugoCap);
+    });
+
+    test('effectiveCapCeiling never drags a saved cap down', () {
+      // The ordinary case: the setting is the bound.
+      expect(effectiveCapCeiling(10000, 1000), 10000);
+      // An alarm saved under a higher ceiling keeps its own room.
+      expect(effectiveCapCeiling(10000, 50000), 50000);
+      // Equal is equal.
+      expect(effectiveCapCeiling(30000, 30000), 30000);
+    });
   });
 
   group('HostageType', () {

@@ -11,6 +11,7 @@ import 'repositories/discord_webhook_repository.dart';
 import 'repositories/garden_repository.dart';
 import 'repositories/mail_settings_repository.dart';
 import 'repositories/ojisan_repository.dart';
+import 'repositories/options_repository.dart';
 import 'repositories/pending_charge_repository.dart';
 import 'repositories/profile_repository.dart';
 import 'repositories/settings_repository.dart';
@@ -75,6 +76,10 @@ final gardenRepositoryProvider = Provider(
 
 final settingsRepositoryProvider = Provider(
   (ref) => SettingsRepository(ref.watch(sharedPreferencesProvider)),
+);
+
+final optionsRepositoryProvider = Provider(
+  (ref) => OptionsRepository(ref.watch(sharedPreferencesProvider)),
 );
 
 final profileRepositoryProvider = Provider(

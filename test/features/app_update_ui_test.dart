@@ -50,12 +50,12 @@ Future<ProviderContainer> pumpHomeWithUpdate(
   return container;
 }
 
-/// The overlay is taller than a test viewport; the update row is at the bottom
-/// of プロフィール設定.
+/// The overlay can be taller than a test viewport, so the row is scrolled into
+/// the オプション list before it is read.
 Future<void> scrollTo(WidgetTester tester, Finder target) async {
   final list = find
       .descendant(
-        of: find.byKey(const ValueKey('profileOverlay')),
+        of: find.byKey(const ValueKey('optionsOverlay')),
         matching: find.byType(Scrollable),
       )
       .first;
@@ -150,7 +150,8 @@ void main() {
     });
   });
 
-  group('profile row', () {
+  // The row lives in オプション › アプリ now, not in プロフィール.
+  group('options row', () {
     Future<ProviderContainer> openOverlay(
       WidgetTester tester, {
       UpdateSource? source,
@@ -161,9 +162,9 @@ void main() {
         source: source,
         version: version ?? FakeAppVersionInfo(build: 10, versionName: '1.0.0'),
       );
-      await tester.tap(find.byKey(const ValueKey('appHeaderAvatar')));
+      await tester.tap(find.byKey(const ValueKey('appHeaderOptions')));
       await tester.pumpAndSettle();
-      await scrollTo(tester, find.byKey(const ValueKey('profileUpdateRow')));
+      await scrollTo(tester, find.byKey(const ValueKey('optionsUpdateRow')));
       return container;
     }
 
@@ -172,7 +173,7 @@ void main() {
     ) async {
       await openOverlay(tester);
 
-      expect(find.byKey(const ValueKey('profileUpdateRow')), findsOneWidget);
+      expect(find.byKey(const ValueKey('optionsUpdateRow')), findsOneWidget);
       expect(find.text('アプリの更新'), findsOneWidget);
       expect(find.text('1.0.0 (build 10)'), findsOneWidget);
       expect(find.text('未確認'), findsOneWidget);
@@ -183,7 +184,7 @@ void main() {
     ) async {
       await openOverlay(tester, source: FakeUpdateSource());
 
-      await tester.tap(find.byKey(const ValueKey('profileUpdateRow')));
+      await tester.tap(find.byKey(const ValueKey('optionsUpdateRow')));
       await tester.pumpAndSettle();
 
       // The dialog opened and says so, and the row behind it agrees.
@@ -199,7 +200,7 @@ void main() {
         source: FakeUpdateSource(manifest: updateManifest(build: 42)),
       );
 
-      await tester.tap(find.byKey(const ValueKey('profileUpdateRow')));
+      await tester.tap(find.byKey(const ValueKey('optionsUpdateRow')));
       await tester.pumpAndSettle();
 
       expect(find.text('build 42 が利用できます'), findsOneWidget);
@@ -217,7 +218,7 @@ void main() {
         tester,
         source: FakeUpdateSource(manifest: updateManifest(build: 42)),
       );
-      await tester.tap(find.byKey(const ValueKey('profileUpdateRow')));
+      await tester.tap(find.byKey(const ValueKey('optionsUpdateRow')));
       await tester.pumpAndSettle();
 
       for (final word in ['課金', '購入', '広告']) {

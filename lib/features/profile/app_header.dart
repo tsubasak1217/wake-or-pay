@@ -8,6 +8,7 @@ import '../../data/providers.dart';
 import '../../domain/level.dart';
 import '../../domain/models.dart';
 import '../../domain/profile_catalog.dart';
+import '../options/options_overlay.dart';
 import 'profile_overlay.dart';
 
 /// The bar every tab wears: who you are on the left, what you own on the right.
@@ -60,6 +61,15 @@ class AppHeaderBar extends ConsumerWidget implements PreferredSizeWidget {
             visualDensity: VisualDensity.compact,
             onPressed: () => context.go(AppRoute.wallet),
             icon: Icon(Icons.add_circle_outline, color: theme.hintColor),
+          ),
+          // オプション: the app's own settings, opposite the avatar that opens
+          // the user's.
+          IconButton(
+            key: const ValueKey('appHeaderOptions'),
+            tooltip: 'オプション',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => showOptionsOverlay(context),
+            icon: Icon(Icons.settings_outlined, color: theme.hintColor),
           ),
         ],
       ),

@@ -5,11 +5,10 @@ import '../../app/profile_controller.dart';
 import '../../domain/level.dart';
 import '../../domain/models.dart';
 import '../../domain/profile_catalog.dart';
-import '../../services/app_update.dart';
 import '../../services/card_hostage.dart';
 import '../../services/mail_settings.dart';
 import '../alarms/widgets/settings_island.dart';
-import '../update/update_banner.dart';
+import '../widgets/top_sheet.dart';
 import 'card_hostage_screen.dart';
 import 'discord_link_row.dart';
 import 'mail_settings_screen.dart';
@@ -17,33 +16,13 @@ import 'user_name_screen.dart';
 
 /// Drops the profile over whatever is on screen, from the top.
 ///
-/// On the root navigator and non-opaque, so the tab underneath keeps painting
-/// and the bottom bar stays where it was — this covers the app, it does not
-/// navigate away from it.
-Future<void> showProfileOverlay(BuildContext context) =>
-    Navigator.of(context, rootNavigator: true).push<void>(
-      PageRouteBuilder<void>(
-        opaque: false,
-        barrierColor: Colors.black54,
-        barrierDismissible: true,
-        barrierLabel: 'プロフィールを閉じる',
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const ProfileOverlay(),
-        transitionsBuilder:
-            (context, animation, secondaryAnimation, child) => SlideTransition(
-          position: Tween(
-            begin: const Offset(0, -1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
-          child: child,
-        ),
-      ),
-    );
-
-/// How fast a downward flick has to be before it counts as "put it away".
-/// Below this the sheet stays: scrolling the collection rows must not dismiss.
-const _dismissVelocity = 300.0;
+/// The route, the grab bar and the 閉じる button are [TopSheetOverlay]'s, shared
+/// with オプション so the two sheets cannot behave differently.
+Future<void> showProfileOverlay(BuildContext context) => showTopSheet(
+  context,
+  barrierLabel: 'プロフィールを閉じる',
+  builder: (_) => const ProfileOverlay(),
+);
 
 class ProfileOverlay extends ConsumerWidget {
   const ProfileOverlay({super.key});
@@ -53,97 +32,31 @@ class ProfileOverlay extends ConsumerWidget {
     final theme = Theme.of(context);
     final profile = ref.watch(profileProvider);
 
-    return Scaffold(
-      key: const ValueKey('profileOverlay'),
-      backgroundColor: Colors.transparent,
-      body: GestureDetector(
-        // Only vertical: a horizontal drag belongs to the pickers inside.
-        // The list below wins the arena wherever it can actually scroll, so
-        // this catches the drag on the parts of the sheet that do not — the
-        // grab bar above all.
-        onVerticalDragEnd: (details) {
-          if ((details.primaryVelocity ?? 0) > _dismissVelocity) {
-            Navigator.of(context).maybePop();
-          }
-        },
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            child: Material(
-              color: theme.colorScheme.surface,
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  const _GrabBar(),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      children: [
-                        _HeaderBlock(profile: profile),
-                        const SizedBox(height: 20),
-                        _ProfileSettingsIsland(profile: profile),
-                        _CollectionIsland(profile: profile),
-                        SettingsIsland(
-                          title: 'アクティビティ',
-                          children: [
-                            ListTile(
-                              key: const ValueKey('profileActivityPlaceholder'),
-                              title: const Text('近日追加：寝坊や起床までの時間をグラフで表示します'),
-                              subtitle: Text(
-                                'いまは記録だけを貯めています。',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Outside the list on purpose: the way out must not be
-                  // something you have to scroll to find.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                    child: FilledButton.tonal(
-                      key: const ValueKey('profileOverlayClose'),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      child: const Text('閉じる'),
-                    ),
-                  ),
-                ],
+    return TopSheetOverlay(
+      scaffoldKey: const ValueKey('profileOverlay'),
+      handleKey: const ValueKey('profileOverlayHandle'),
+      closeKey: const ValueKey('profileOverlayClose'),
+      children: [
+        _HeaderBlock(profile: profile),
+        const SizedBox(height: 20),
+        _ProfileSettingsIsland(profile: profile),
+        _CollectionIsland(profile: profile),
+        SettingsIsland(
+          title: 'アクティビティ',
+          children: [
+            ListTile(
+              key: const ValueKey('profileActivityPlaceholder'),
+              title: const Text('近日追加：寝坊や起床までの時間をグラフで表示します'),
+              subtitle: Text(
+                'いまは記録だけを貯めています。',
+                style: theme.textTheme.bodySmall,
               ),
             ),
-          ),
+          ],
         ),
-      ),
+      ],
     );
   }
-}
-
-/// The bar you pull down on. It scrolls nothing, so the drag reaches the
-/// detector above instead of the list.
-class _GrabBar extends StatelessWidget {
-  const _GrabBar();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    key: const ValueKey('profileOverlayHandle'),
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(vertical: 10),
-    color: Colors.transparent,
-    child: Center(
-      child: Container(
-        width: 40,
-        height: 4,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          borderRadius: BorderRadius.circular(2),
-        ),
-      ),
-    ),
-  );
 }
 
 class _HeaderBlock extends StatelessWidget {
@@ -246,51 +159,10 @@ class _ProfileSettingsIsland extends ConsumerWidget {
               : '有効期限 ${card.expiry}',
           onTap: () => pushCardHostageScreen(context),
         ),
-        const _UpdateRow(),
+        // 「アプリの更新」 used to sit here. It is not プロフィール — it is about
+        // the app, not about who you are — so it moved to オプション › アプリ
+        // (`optionsUpdateRow`).
       ],
-    );
-  }
-}
-
-/// 「アプリの更新」 — the manual half of the sideloaded build's update check.
-///
-/// The value is the build that is *running*, because that is the only number
-/// a user can compare against a release page. The subtitle is the answer to
-/// 「押したらどうなる？」: 最新です, 「build N が利用できます」, or 未確認 before
-/// anything has ever come back.
-class _UpdateRow extends ConsumerWidget {
-  const _UpdateRow();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final update = ref.watch(appUpdateProvider);
-
-    final String subtitle;
-    if (update.checking) {
-      subtitle = '確認しています…';
-    } else if (update.available != null) {
-      subtitle = 'build ${update.available!.build} が利用できます';
-    } else if (update.lastCheckedAt == null) {
-      subtitle = '未確認';
-    } else {
-      subtitle = '最新です';
-    }
-
-    return SettingRow(
-      key: const ValueKey('profileUpdateRow'),
-      leading: const Icon(Icons.system_update),
-      label: 'アプリの更新',
-      value: update.currentLabel,
-      subtitle: subtitle,
-      // A tap is a request for a fresh answer, so the throttle is skipped.
-      // The dialog opens either way — 「最新です」 is an answer worth showing,
-      // and a tap that appears to do nothing reads as a broken row.
-      onTap: update.checking
-          ? null
-          : () async {
-              await ref.read(appUpdateProvider.notifier).check(force: true);
-              if (context.mounted) await showUpdateDialog(context);
-            },
     );
   }
 }

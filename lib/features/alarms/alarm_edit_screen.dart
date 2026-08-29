@@ -11,6 +11,7 @@ import '../../domain/format.dart';
 import '../../domain/models.dart';
 import '../../domain/sound_library.dart';
 import '../../services/card_hostage.dart';
+import '../../services/options.dart';
 import 'alarm_controller.dart';
 import 'alarm_draft.dart';
 import 'contact_share_screen.dart';
@@ -1127,7 +1128,10 @@ class _CapRow extends ConsumerWidget {
           title: '上限金額',
           initial: cap,
           min: minKakugoCap,
-          max: maxKakugoCap,
+          // The オプション ceiling, or the cap this alarm already carries when
+          // that is higher: an alarm saved under a higher ceiling must still
+          // open at its own number instead of being clamped down on sight.
+          max: effectiveCapCeiling(ref.watch(capCeilingProvider), cap),
           suffix: hostage.unit,
           description: switch (hostage) {
             // none never reaches here: the row is not built for it.
