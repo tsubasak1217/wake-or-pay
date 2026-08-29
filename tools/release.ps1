@@ -24,7 +24,9 @@ Set-Location $repoRoot
 $owner = 'tsubasak1217'
 $repo = 'wake-or-pay'
 $asset = 'WakeOrPay.apk'
+$manifest = 'version.json'
 $dlUrl = "https://github.com/$owner/$repo/releases/latest/download/$asset"
+$manifestUrl = "https://github.com/$owner/$repo/releases/latest/download/$manifest"
 
 # versionCode = commit count (monotonic, so every commit is a clean update).
 # versionName = pubspec's x.y.z.
@@ -41,6 +43,29 @@ Copy-Item build/app/outputs/flutter-apk/app-release.apk $asset -Force
 Copy-Item $asset "$env:USERPROFILE\OneDrive\Desktop\WakeOrPay.apk" -Force -ErrorAction SilentlyContinue
 Copy-Item $asset "$env:USERPROFILE\OneDrive\$([char]0x30C7)$([char]0x30B9)$([char]0x30AF)$([char]0x30C8)$([char]0x30C3)$([char]0x30D7)\WakeOrPay.apk" -Force -ErrorAction SilentlyContinue
 
+# The manifest the installed app polls to find out that this build exists.
+# It goes to the same fixed "latest" URL the APK does, so an app three builds
+# old still knows where to look. Keep the field names in step with
+# lib/domain/app_update.dart (newerThan) - "build" is the only one compared.
+#
+# WriteAllText with a UTF8Encoding($false), not Out-File: Windows PowerShell 5.1
+# writes a BOM for every -Encoding utf8, and a BOM in front of a JSON body makes
+# jsonDecode on the phone throw before it reaches the first brace.
+$published = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$manifestJson = [ordered]@{
+  build       = [int]$build
+  versionName = $verName
+  apkUrl      = $dlUrl
+  publishedAt = $published
+  notes       = ''
+} | ConvertTo-Json -Compress
+[System.IO.File]::WriteAllText(
+  (Join-Path $repoRoot $manifest),
+  $manifestJson,
+  (New-Object System.Text.UTF8Encoding($false))
+)
+Write-Host "Manifest: $manifestJson"
+
 # One release, kept at the fixed "latest" URL; its asset is clobbered each build.
 $title = "latest v$verName (build $build)"
 $notes = "Automated build v$verName (build $build)"
@@ -48,14 +73,15 @@ $notes = "Automated build v$verName (build $build)"
 # "release not found" to stderr - that is expected, not a failure.
 & $gh release view latest *> $null
 if ($LASTEXITCODE -eq 0) {
-  & $gh release upload latest $asset --clobber
+  & $gh release upload latest $asset $manifest --clobber
   & $gh release edit latest --title $title --notes $notes --latest
 } else {
-  & $gh release create latest $asset --title $title --notes $notes --latest
+  & $gh release create latest $asset $manifest --title $title --notes $notes --latest
 }
 if ($LASTEXITCODE -ne 0) { Write-Error "gh release publish failed (exit $LASTEXITCODE)"; exit 1 }
 
 Remove-Item $asset -Force -ErrorAction SilentlyContinue
+Remove-Item $manifest -Force -ErrorAction SilentlyContinue
 
 # Notify Discord that a new build is ready (skips quietly if the webhook file is absent).
 $hookRaw = Get-Content "$PSScriptRoot\notify_webhook.txt" -Raw -ErrorAction SilentlyContinue
@@ -74,3 +100,4 @@ if ($hookRaw) {
 }
 
 Write-Host "Published: $dlUrl"
+Write-Host "Manifest:  $manifestUrl"

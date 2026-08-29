@@ -106,10 +106,19 @@ class SettingRow extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            value,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: valueColor ?? theme.colorScheme.onSurfaceVariant,
+          // Flexible, not a bare Text: a long value — 「1.0.0 (build 123)」 on
+          // the 更新 row — otherwise makes the trailing widget wider than the
+          // whole tile, which ListTile does not shrink but *asserts* on. The
+          // value gives way; the chevron never does, because a row without one
+          // stops looking tappable.
+          Flexible(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: valueColor ?? theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(width: 4),

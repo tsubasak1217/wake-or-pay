@@ -51,6 +51,9 @@ dependencies:
     path: packages/wop_platform
   flutter_svg: ^2.3.0
   flutter_stripe: 14.0.0
+  # サイドロード版（GitHub Releases）のアプリ内更新。
+  package_info_plus: ^10.2.1
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:

@@ -32,6 +32,20 @@
          README の「既知の制約」に書いてある。 -->
     <uses-permission android:name="android.permission.SEND_SMS"/>
 
+    <!-- アプリ内更新（サイドロード版）。GitHub Releases から APK を落として、
+         Android のインストーラに渡すため。**ここで宣言する必要がある**：
+         open_filex は open_file から「Google Play のポリシーに合わせて
+         REQUEST_INSTALL_PACKAGES を外す」ために分岐したパッケージなので、
+         プラグイン側のマニフェストにはこの権限が入っていない。
+
+         この権限だけではインストールは始まらない。ユーザーが端末の設定 →
+         「不明なアプリのインストール」でこのアプリを許可して初めて、
+         インストーラ画面が開く。アプリが勝手に入れることはない。
+
+         Play 配布に切り替えるときは、この行と kDistributedViaGitHub を
+         一緒に落とす（Play 版は Play の in-app update を使う）。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
     <application
         android:label="覚悟の目覚まし"
         android:name="${applicationName}"

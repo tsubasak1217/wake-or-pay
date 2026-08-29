@@ -12,6 +12,7 @@ import '../../domain/models.dart';
 import '../../domain/oversleep_contact_rules.dart';
 import '../../domain/snooze_rules.dart';
 import '../profile/app_header.dart';
+import '../update/update_banner.dart';
 import 'alarm_controller.dart';
 import 'widgets/swipe_to_delete.dart';
 
@@ -26,10 +27,20 @@ class HomeScreen extends ConsumerWidget {
       // The shared header replaces both the title bar and the old balance bar:
       // the balance is in it, and 設定 keeps its row on the wallet tab.
       appBar: const AppHeaderBar(),
-      body: alarms.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
-        data: (list) => _AlarmList(initial: list),
+      // The update notice sits above the list, not over it: it draws nothing
+      // when there is no newer build, so the alarms keep the whole screen on
+      // every ordinary launch.
+      body: Column(
+        children: [
+          const UpdateBanner(),
+          Expanded(
+            child: alarms.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('$e')),
+              data: (list) => _AlarmList(initial: list),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push(AppRoute.alarmNew),

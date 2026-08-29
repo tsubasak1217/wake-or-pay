@@ -5,9 +5,11 @@ import '../../app/profile_controller.dart';
 import '../../domain/level.dart';
 import '../../domain/models.dart';
 import '../../domain/profile_catalog.dart';
+import '../../services/app_update.dart';
 import '../../services/card_hostage.dart';
 import '../../services/mail_settings.dart';
 import '../alarms/widgets/settings_island.dart';
+import '../update/update_banner.dart';
 import 'card_hostage_screen.dart';
 import 'discord_link_row.dart';
 import 'mail_settings_screen.dart';
@@ -244,7 +246,51 @@ class _ProfileSettingsIsland extends ConsumerWidget {
               : '有効期限 ${card.expiry}',
           onTap: () => pushCardHostageScreen(context),
         ),
+        const _UpdateRow(),
       ],
+    );
+  }
+}
+
+/// 「アプリの更新」 — the manual half of the sideloaded build's update check.
+///
+/// The value is the build that is *running*, because that is the only number
+/// a user can compare against a release page. The subtitle is the answer to
+/// 「押したらどうなる？」: 最新です, 「build N が利用できます」, or 未確認 before
+/// anything has ever come back.
+class _UpdateRow extends ConsumerWidget {
+  const _UpdateRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final update = ref.watch(appUpdateProvider);
+
+    final String subtitle;
+    if (update.checking) {
+      subtitle = '確認しています…';
+    } else if (update.available != null) {
+      subtitle = 'build ${update.available!.build} が利用できます';
+    } else if (update.lastCheckedAt == null) {
+      subtitle = '未確認';
+    } else {
+      subtitle = '最新です';
+    }
+
+    return SettingRow(
+      key: const ValueKey('profileUpdateRow'),
+      leading: const Icon(Icons.system_update),
+      label: 'アプリの更新',
+      value: update.currentLabel,
+      subtitle: subtitle,
+      // A tap is a request for a fresh answer, so the throttle is skipped.
+      // The dialog opens either way — 「最新です」 is an answer worth showing,
+      // and a tap that appears to do nothing reads as a broken row.
+      onTap: update.checking
+          ? null
+          : () async {
+              await ref.read(appUpdateProvider.notifier).check(force: true);
+              if (context.mounted) await showUpdateDialog(context);
+            },
     );
   }
 }

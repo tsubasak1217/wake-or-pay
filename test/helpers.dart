@@ -14,6 +14,7 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/send_result.dart';
 import 'package:wake_or_pay/services/alarm_service.dart';
 import 'package:wake_or_pay/services/app_notifier.dart';
+import 'package:wake_or_pay/services/app_update.dart';
 import 'package:wake_or_pay/services/billing_api.dart';
 import 'package:wake_or_pay/services/card_sheet.dart';
 import 'package:wake_or_pay/services/discord_auth_launcher.dart';
@@ -36,6 +37,10 @@ final testNow = DateTime(2026, 8, 29, 13, 45);
 Future<List<Override>> testOverrides({
   Map<String, Object> prefs = const {},
   List<Override> extra = const [],
+  UpdateSource? updateSource,
+  ApkDownloader? updateDownloader,
+  ApkInstaller? updateInstaller,
+  AppVersionInfo? updateVersion,
 }) async {
   SharedPreferences.setMockInitialValues({...prefs});
   final preferences = await SharedPreferences.getInstance();
@@ -48,6 +53,17 @@ Future<List<Override>> testOverrides({
       ref.onDispose(db.close);
       return db;
     }),
+    // アプリ内更新. Every one of these reaches outside the process in the real
+    // app — GitHub, the filesystem, the package installer — so all four are
+    // faked by default and a test that wants an update hands its own in
+    // through `extra`. Without this, any widget test that happened to trigger
+    // a check would GET the release page for real.
+    ...fakeUpdateOverrides(
+      source: updateSource,
+      downloader: updateDownloader,
+      installer: updateInstaller,
+      version: updateVersion,
+    ),
     ...extra,
   ];
 }
@@ -55,9 +71,20 @@ Future<List<Override>> testOverrides({
 Future<ProviderContainer> testContainer({
   Map<String, Object> prefs = const {},
   List<Override> extra = const [],
+  UpdateSource? updateSource,
+  ApkDownloader? updateDownloader,
+  ApkInstaller? updateInstaller,
+  AppVersionInfo? updateVersion,
 }) async {
   final container = ProviderContainer(
-    overrides: await testOverrides(prefs: prefs, extra: extra),
+    overrides: await testOverrides(
+      prefs: prefs,
+      extra: extra,
+      updateSource: updateSource,
+      updateDownloader: updateDownloader,
+      updateInstaller: updateInstaller,
+      updateVersion: updateVersion,
+    ),
   );
   addTearDown(container.dispose);
   return container;
@@ -609,3 +636,144 @@ List<Override> fakeDiscordFlowOverrides(
   discordDeepLinkStreamProvider.overrideWithValue(links.stream),
   discordAuthLauncherProvider.overrideWithValue(launcher),
 ];
+
+// ---------------------------------------------------------------------------
+// アプリ内更新. Nothing here reaches GitHub, the disk, or Android's installer.
+// ---------------------------------------------------------------------------
+
+/// The release manifest, answered from memory. [manifest] null is every
+/// failure the real source collapses into one — offline, 404, bad JSON.
+class FakeUpdateSource implements UpdateSource {
+  FakeUpdateSource({this.manifest});
+
+  /// What `version.json` says. Writable so a test can publish a build midway
+  /// through, the way a release does.
+  Map<String, dynamic>? manifest;
+
+  /// How many times the source was actually asked. The throttle is only
+  /// checkable here: 「did not hit the source」 is not visible in the state.
+  int fetches = 0;
+
+  @override
+  Future<Map<String, dynamic>?> fetchManifest() async {
+    fetches++;
+    return manifest;
+  }
+}
+
+/// A download that writes no file. Reports [steps] as progress, in order, then
+/// answers [path] — or null, which is what a dropped connection looks like.
+class FakeApkDownloader implements ApkDownloader {
+  FakeApkDownloader({
+    this.path = '/updates/WakeOrPay-42.apk',
+    this.steps = const [0.25, 0.5, 1.0],
+  });
+
+  final String? path;
+  final List<double> steps;
+
+  /// Every download, with the URL and build it was given.
+  final requested = <({String url, int build})>[];
+
+  @override
+  Future<String?> download(
+    String url,
+    int build,
+    void Function(double progress) onProgress,
+  ) async {
+    requested.add((url: url, build: build));
+    for (final step in steps) {
+      onProgress(step);
+    }
+    return path;
+  }
+}
+
+/// A download that stops partway and waits, so a test can look at the screen
+/// while the bar is on it. [finish] lets it complete.
+class PausingApkDownloader implements ApkDownloader {
+  PausingApkDownloader({this.path = '/updates/WakeOrPay-42.apk'});
+
+  final String? path;
+  final _gate = Completer<void>();
+
+  final requested = <({String url, int build})>[];
+
+  /// Releases the download, which then reports 100% and answers [path].
+  void finish() => _gate.complete();
+
+  @override
+  Future<String?> download(
+    String url,
+    int build,
+    void Function(double progress) onProgress,
+  ) async {
+    requested.add((url: url, build: build));
+    onProgress(0.4);
+    await _gate.future;
+    onProgress(1);
+    return path;
+  }
+}
+
+/// Android's installer, which opens or does not. [succeeds] false is the
+/// 「不明なアプリのインストール」 refusal — the only failure with a message.
+class FakeApkInstaller implements ApkInstaller {
+  FakeApkInstaller({this.succeeds = true});
+
+  final bool succeeds;
+
+  /// Every path handed to the installer, in order.
+  final opened = <String>[];
+
+  @override
+  Future<bool> open(String path) async {
+    opened.add(path);
+    return succeeds;
+  }
+}
+
+/// The running build, without `package_info_plus` underneath.
+class FakeAppVersionInfo implements AppVersionInfo {
+  FakeAppVersionInfo({this.build = 10, this.versionName = '1.0.0'});
+
+  final int build;
+  final String versionName;
+  int reads = 0;
+
+  @override
+  Future<({int build, String versionName})> read() async {
+    reads++;
+    return (build: build, versionName: versionName);
+  }
+}
+
+/// All four sides of the update feature, faked. Applied to every test
+/// container by [testOverrides]; a test that wants a published build hands its
+/// own [source] to `testContainer(updateSource: …)`.
+List<Override> fakeUpdateOverrides({
+  UpdateSource? source,
+  ApkDownloader? downloader,
+  ApkInstaller? installer,
+  AppVersionInfo? version,
+}) => [
+  updateSourceProvider.overrideWithValue(source ?? FakeUpdateSource()),
+  apkDownloaderProvider.overrideWithValue(downloader ?? FakeApkDownloader()),
+  apkInstallerProvider.overrideWithValue(installer ?? FakeApkInstaller()),
+  appVersionInfoProvider.overrideWithValue(version ?? FakeAppVersionInfo()),
+];
+
+/// A `version.json` body, in the shape `tools/release.ps1` writes one.
+Map<String, dynamic> updateManifest({
+  required int build,
+  String versionName = '1.1.0',
+  String apkUrl =
+      'https://github.com/tsubasak1217/wake-or-pay/releases/latest/download/WakeOrPay.apk',
+  String notes = '',
+}) => {
+  'build': build,
+  'versionName': versionName,
+  'apkUrl': apkUrl,
+  'publishedAt': '2026-08-29T00:00:00Z',
+  'notes': notes,
+};

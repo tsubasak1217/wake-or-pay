@@ -12,6 +12,7 @@ import 'data/providers.dart';
 import 'domain/loss_calculator.dart';
 import 'domain/snooze_rules.dart';
 import 'services/alarm_service.dart';
+import 'services/app_update.dart';
 import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
 import 'services/background_dispatch.dart';
@@ -82,6 +83,18 @@ Future<void> main() async {
   // Permission dialogs and the ring-screen jump both want a live UI, so this
   // starts after the first frame is on its way.
   unawaited(container.read(alarmServiceProvider).init());
+
+  // Is there a newer APK on the release page? **Once per app start**, and no
+  // more often than every 12 hours — not on every resume, which on a phone
+  // that never gets closed would be a request every time the screen comes on.
+  // Wrapped and unawaited for the same reason as the sweep below: the update
+  // check is worth nothing to a user who is opening their alarms, and must
+  // never be why the first frame is late.
+  unawaited(
+    container.read(appUpdateProvider.notifier).checkOnStart().catchError(
+      (Object _) {},
+    ),
+  );
 
   // The one-off sweep for the recordings 改訂4 retired. Fire and forget, and
   // wrapped: it touches the filesystem, it is worth nothing to the user, and
