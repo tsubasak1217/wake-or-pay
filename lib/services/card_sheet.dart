@@ -105,6 +105,13 @@ class StripeCardSheet implements CardSheet {
             currencyCode: 'JPY',
             testEnv: isStripeTestKey(publishableKey),
           ),
+          // No Stripe Link. It is Stripe's own cross-merchant wallet — an
+          // email + SMS sign-in the user never asked for, on top of a screen
+          // whose whole job is "this card, this app". Google Pay covers the
+          // pick-a-saved-card case; everything else is typed by hand.
+          linkDisplayParams: const LinkDisplayParams(
+            linkDisplay: LinkDisplay.never,
+          ),
         ),
       );
       await Stripe.instance.presentPaymentSheet();
