@@ -44,7 +44,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       (await container.read(alarmRepositoryProvider).getAll()).single.hour,
-      9,
+      15,
     );
   });
 }

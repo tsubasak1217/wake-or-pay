@@ -49,11 +49,15 @@ class _AlarmEditScreenState extends ConsumerState<AlarmEditScreen> {
       // on, at the default interval and count, because that is what was asked
       // for: an alarm you can hit snooze on is the ordinary case, and having
       // to switch it on before the first use was the surprise.
+      // Seeded at the current time rather than a fixed 07:00: the wheel opens
+      // where the user already is, which is the shortest distance to the time
+      // they actually mean.
+      final now = ref.read(clockProvider)();
       return _AlarmEditForm(
         seed: _seed ??= Alarm(
           id: AlarmController.newId(),
-          hour: 7,
-          minute: 0,
+          hour: now.hour,
+          minute: now.minute,
           snooze: const Snooze(),
         ),
       );
@@ -104,8 +108,8 @@ class _AlarmEditForm extends ConsumerStatefulWidget {
 
   final Alarm? existing;
 
-  /// Copying an existing alarm. Changes the wording, and adds the one rule the
-  /// other two modes do not have: no two alarms may share a clock time.
+  /// Copying an existing alarm. Wording only: the rule that no two alarms may
+  /// share a clock time holds in all three modes.
   final bool duplicate;
 
   @override
@@ -113,6 +117,10 @@ class _AlarmEditForm extends ConsumerStatefulWidget {
 }
 
 class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
+  /// The form's own scroll position, so a refused save can carry the user back
+  /// to the wheel — the only control that can clear the clash.
+  final _scroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -122,10 +130,32 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     ref.listenManual(alarmDraftProvider(widget.seed), (_, _) {});
   }
 
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   Alarm get _draft => ref.read(alarmDraftProvider(widget.seed));
 
   Future<void> _save() async {
     final alarm = _draft;
+
+    // The one rule the save can refuse on, in every mode. The button stays
+    // pressable — a dead FAB explains nothing — and the press answers by
+    // taking the user to the wheel, with the warning already under it.
+    final all = ref.read(alarmsProvider).valueOrNull ?? const <Alarm>[];
+    if (hasTimeClash(all, alarm)) {
+      if (_scroll.hasClients) {
+        await _scroll.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+
     final coins = (await ref.read(walletRepositoryProvider).read()).coins;
     if (!mounted) return;
 
@@ -172,20 +202,10 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     debugAlarmEditBuildCount++;
     final seed = widget.seed;
 
-    // Only in duplicate mode is the time itself watched here: everywhere else
-    // the wheel must be able to write the draft on every frame of a drag
-    // without rebuilding the form around it.
-    var clash = false;
-    if (widget.duplicate) {
-      final (hour, minute) = ref.watch(
-        alarmDraftProvider(seed).select((a) => (a.hour, a.minute)),
-      );
-      clash = hasTimeClash(
-        ref.watch(alarmsProvider).valueOrNull ?? const <Alarm>[],
-        seed.copyWith(hour: hour, minute: minute),
-      );
-    }
-
+    // The draft's time is deliberately *not* watched here: the wheel must be
+    // able to write it on every frame of a drag without rebuilding the form
+    // around it. The one widget that does depend on it — the warning under the
+    // wheel — watches it itself.
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -205,35 +225,57 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
         ],
       ),
       body: ListView(
+        controller: _scroll,
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
           TimeWheel(seed: seed),
-          if (widget.duplicate) _DuplicateTimeWarning(seed: seed),
+          _TimeClashWarning(seed: seed),
           const SizedBox(height: 24),
           _BasicIsland(seed: seed),
           _SnoozeIsland(seed: seed),
           _KakugoIsland(seed: seed),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        key: const ValueKey('alarmSaveFab'),
-        // Disabled, not hidden: the warning above the fold explains why, and a
-        // button that vanishes reads as a bug.
-        onPressed: clash ? null : _save,
-        icon: const Icon(Icons.check),
-        label: Text(widget.duplicate ? '複製' : '保存'),
+      floatingActionButton: _SaveFab(
+        label: widget.duplicate ? '複製' : '保存',
+        onPressed: _save,
       ),
     );
   }
 }
 
+/// The save button. Always pressable: a clash is answered by [_save], which
+/// refuses and scrolls back to the wheel, rather than by a dead button that
+/// says nothing about why.
+///
+/// Its own widget so it never has to watch the draft — nothing in the form
+/// above the wheel may rebuild while the wheel is being spun.
+class _SaveFab extends StatelessWidget {
+  const _SaveFab({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => FloatingActionButton.extended(
+    key: const ValueKey('alarmSaveFab'),
+    onPressed: onPressed,
+    icon: const Icon(Icons.check),
+    label: Text(label),
+  );
+}
+
 /// 「同じ時刻のアラームがすでにあります」 — shown right under the wheel, because the
 /// wheel is the only thing that can clear it.
 ///
+/// In every mode, not only when copying: two alarms on the same minute are the
+/// same confusing pair of rows however they got there. Editing an alarm without
+/// moving it never trips this — [hasTimeClash] excludes the draft's own id.
+///
 /// Its own widget so that the time changing repaints this line and nothing
-/// else; the form above it rebuilds too, but only in duplicate mode.
-class _DuplicateTimeWarning extends ConsumerWidget {
-  const _DuplicateTimeWarning({required this.seed});
+/// else.
+class _TimeClashWarning extends ConsumerWidget {
+  const _TimeClashWarning({required this.seed});
 
   final Alarm seed;
 

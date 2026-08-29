@@ -24,6 +24,11 @@ import 'package:wake_or_pay/services/sms_sender.dart';
 import 'package:wake_or_pay/services/snooze_service.dart';
 import 'package:wake_or_pay/services/voice_recorder.dart';
 
+/// The wall clock every test container reads, unless it overrides
+/// [clockProvider] itself through `extra`. Pinned so that anything seeded from
+/// "now" — a new alarm's time, above all — is the same on every run.
+final testNow = DateTime(2026, 8, 29, 13, 45);
+
 /// Overrides backing the app with an in-memory database and in-memory
 /// preferences. The database is closed when the owning container is disposed.
 Future<List<Override>> testOverrides({
@@ -34,6 +39,7 @@ Future<List<Override>> testOverrides({
   final preferences = await SharedPreferences.getInstance();
 
   return [
+    clockProvider.overrideWithValue(() => testNow),
     sharedPreferencesProvider.overrideWithValue(preferences),
     appDatabaseProvider.overrideWith((ref) {
       final db = AppDatabase.memory();

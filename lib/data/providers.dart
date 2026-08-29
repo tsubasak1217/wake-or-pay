@@ -22,6 +22,9 @@ final sharedPreferencesProvider = Provider<SharedPreferences>(
   (ref) => throw UnimplementedError('sharedPreferencesProvider not overridden'),
 );
 
+/// The wall clock, injectable so tests can pin "now" instead of racing it.
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase.file();
   ref.onDispose(db.close);

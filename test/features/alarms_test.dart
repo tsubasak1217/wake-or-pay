@@ -91,7 +91,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('アラームを追加'), findsOneWidget);
 
-    // Default 07:00. Monday and Friday, the maths check, kakugo at 500/min.
+    // Default = now (the pinned test clock, 13:45). Monday and Friday, the
+    // maths check, kakugo at 500/min.
     await inSubScreen(tester, '曜日', () async {
       await tester.tap(find.widgetWithText(FilterChip, '月'));
       await tester.tap(find.widgetWithText(FilterChip, '金'));
@@ -114,7 +115,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Back on Home, showing the new alarm.
-    expect(find.text('07:00'), findsOneWidget);
+    expect(find.text('13:45'), findsOneWidget);
     expect(find.text('月・金'), findsOneWidget);
     // The 覚悟 row is the same row in different colours: the badge beside the
     // time, and one line saying there is a pledge and what it costs. The wake
@@ -163,11 +164,12 @@ void main() {
     );
     expect(picker.mode, CupertinoDatePickerMode.time);
     expect(picker.use24hFormat, isTrue);
-    expect(picker.initialDateTime.hour, 7);
-    expect(picker.initialDateTime.minute, 0);
+    // A new alarm opens on the current time, not a fixed 07:00.
+    expect(picker.initialDateTime.hour, 13);
+    expect(picker.initialDateTime.minute, 45);
     expect(find.byType(TimePickerDialog), findsNothing, reason: 'inline');
 
-    // Spinning the hour wheel up two rows moves 07:00 to 09:00.
+    // Spinning the hour wheel up two rows moves 13:45 to 15:45.
     final wheel = tester.getRect(find.byKey(const ValueKey('timeWheel')));
     await tester.dragFrom(
       Offset(wheel.center.dx - 60, wheel.center.dy),
@@ -180,9 +182,9 @@ void main() {
 
     final saved =
         (await container.read(alarmRepositoryProvider).getAll()).single;
-    expect(saved.hour, 9);
-    expect(saved.minute, 0);
-    expect(find.text('09:00'), findsOneWidget, reason: 'shown on Home');
+    expect(saved.hour, 15);
+    expect(saved.minute, 45);
+    expect(find.text('15:45'), findsOneWidget, reason: 'shown on Home');
   });
 
   testWidgets('a new alarm has no kakugo but does have a snooze island', (

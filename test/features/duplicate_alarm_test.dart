@@ -5,7 +5,36 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/features/alarms/alarm_draft.dart';
 import 'package:wake_or_pay/features/alarms/alarm_edit_screen.dart';
 
-import 'alarms_test.dart' show pumpHome;
+import 'alarms_test.dart' show editorScrollable, pumpHome, scrollToInEditor;
+
+/// The editor's own scroll offset — how the refusal is observed: a save blocked
+/// by a clash carries the form back to the wheel at the top.
+double editorOffset(WidgetTester tester) =>
+    tester.state<ScrollableState>(editorScrollable).position.pixels;
+
+/// Shrinks the window so the editor is taller than its viewport — the default
+/// 1000x2400 of this file fits the whole form, and a form that cannot scroll
+/// cannot show that a refused save scrolled back.
+void shrinkView(WidgetTester tester) {
+  TestWidgetsFlutterBinding.ensureInitialized()
+      .platformDispatcher
+      .views
+      .first
+      .physicalSize = const Size(800, 700);
+}
+
+/// Pushes the form well down, so a later `0` means the save actually scrolled.
+Future<void> scrollEditorDown(WidgetTester tester) async {
+  final position = tester.state<ScrollableState>(editorScrollable).position;
+  position.jumpTo(position.maxScrollExtent);
+  await tester.pumpAndSettle();
+  expect(editorOffset(tester), greaterThan(0), reason: 'scrolled off the wheel');
+}
+
+Future<void> tapSave(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('alarmSaveFab')));
+  await tester.pumpAndSettle();
+}
 
 /// Something worth copying: a pledge, a non-default grace window, and days.
 const sourceAlarm = Alarm(
@@ -84,6 +113,7 @@ void main() {
   testWidgets('複製 opens a copy that cannot be saved on the same minute', (
     tester,
   ) async {
+    shrinkView(tester);
     final container = await pumpHome(tester, coins: 5000);
     await container.read(alarmRepositoryProvider).save(sourceAlarm);
     await tester.pumpAndSettle();
@@ -101,16 +131,23 @@ void main() {
       reason: 'a copy has nothing to delete yet',
     );
 
-    // Same minute as the alarm it came from: warned about, and not saveable.
+    // Same minute as the alarm it came from: warned about, and refused — the
+    // press scrolls back to the wheel instead of saving.
     expect(find.byKey(const ValueKey('duplicateTimeWarning')), findsOneWidget);
-    final fab = tester.widget<FloatingActionButton>(
-      find.byKey(const ValueKey('alarmSaveFab')),
+    await scrollEditorDown(tester);
+    await tapSave(tester);
+    expect(editorOffset(tester), 0, reason: 'carried back to the wheel');
+    expect(find.text('アラームを複製'), findsOneWidget, reason: 'no pop');
+    expect(
+      await container.read(alarmRepositoryProvider).getAll(),
+      hasLength(1),
+      reason: 'nothing was saved',
     );
-    expect(fab.onPressed, isNull);
 
-    // Everything came across, not just the time.
-    expect(find.text('覚悟の設定'), findsOneWidget);
+    // Everything came across, not just the time. Read the seed first: the
+    // scroll below takes the wheel — and with it [seedOf] — off the tree.
     final draft = container.read(alarmDraftProvider(seedOf(tester)));
+    await scrollToInEditor(tester, find.text('覚悟の設定'));
     expect(draft.id, isNot(sourceAlarm.id));
     expect(draft.graceMinutes, 4);
     expect(draft.kakugo, sourceAlarm.kakugo);
@@ -136,17 +173,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('duplicateTimeWarning')), findsNothing);
-    expect(
-      tester
-          .widget<FloatingActionButton>(
-            find.byKey(const ValueKey('alarmSaveFab')),
-          )
-          .onPressed,
-      isNotNull,
-    );
 
-    await tester.tap(find.byKey(const ValueKey('alarmSaveFab')));
-    await tester.pumpAndSettle();
+    await tapSave(tester);
 
     final all = await container.read(alarmRepositoryProvider).getAll();
     expect(all, hasLength(2));
@@ -159,5 +187,76 @@ void main() {
     // Both rows are on Home.
     expect(find.text('06:30'), findsOneWidget);
     expect(find.text('08:30'), findsOneWidget);
+  });
+
+  testWidgets('新規: the same rule applies to an alarm that is not a copy', (
+    tester,
+  ) async {
+    shrinkView(tester);
+    final container = await pumpHome(tester, coins: 5000);
+    await container
+        .read(alarmRepositoryProvider)
+        .save(const Alarm(id: 'a1', hour: 7, minute: 30));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    expect(find.text('アラームを追加'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('duplicateTimeWarning')),
+      findsNothing,
+      reason: 'seeded at the test clock, 13:45, which is free',
+    );
+
+    container.read(alarmDraftProvider(seedOf(tester)).notifier).setTime(7, 30);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('duplicateTimeWarning')), findsOneWidget);
+
+    await scrollEditorDown(tester);
+    await tapSave(tester);
+    expect(editorOffset(tester), 0);
+    expect(find.text('アラームを追加'), findsOneWidget, reason: 'no pop');
+    expect(await container.read(alarmRepositoryProvider).getAll(), hasLength(1));
+
+    // One minute off is enough.
+    container.read(alarmDraftProvider(seedOf(tester)).notifier).setTime(7, 31);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('duplicateTimeWarning')), findsNothing);
+
+    await tapSave(tester);
+    final all = await container.read(alarmRepositoryProvider).getAll();
+    expect(all, hasLength(2));
+    expect(all.firstWhere((a) => a.id != 'a1').minute, 31);
+  });
+
+  testWidgets('編集: an alarm never clashes with itself, but with another', (
+    tester,
+  ) async {
+    shrinkView(tester);
+    final container = await pumpHome(tester, coins: 5000);
+    final repository = container.read(alarmRepositoryProvider);
+    await repository.save(const Alarm(id: 'a1', hour: 7, minute: 30));
+    await repository.save(const Alarm(id: 'a2', hour: 9, minute: 0));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('07:30'));
+    await tester.pumpAndSettle();
+    expect(find.text('アラームを編集'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('duplicateTimeWarning')),
+      findsNothing,
+      reason: 'its own time is not a clash',
+    );
+
+    // Onto the other alarm's minute: warned, and refused.
+    container.read(alarmDraftProvider(seedOf(tester)).notifier).setTime(9, 0);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('duplicateTimeWarning')), findsOneWidget);
+
+    await scrollEditorDown(tester);
+    await tapSave(tester);
+    expect(editorOffset(tester), 0);
+    expect(find.text('アラームを編集'), findsOneWidget, reason: 'no pop');
+    expect((await repository.getById('a1'))!.hour, 7, reason: 'not saved');
   });
 }
