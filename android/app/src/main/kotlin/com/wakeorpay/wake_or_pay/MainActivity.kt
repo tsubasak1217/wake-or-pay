@@ -1,6 +1,13 @@
 package com.wakeorpay.wake_or_pay
 
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -24,6 +31,75 @@ class MainActivity : FlutterFragmentActivity() {
 
     /** A cold-launch 解除 session id, held until Dart asks for it. */
     private var pendingDismiss: String? = null
+
+    /**
+     * Wakes the screen and puts this activity **over** the lock screen.
+     *
+     * This is the whole point of the app: the alarm plugin rings by starting a
+     * foreground service and firing a full-screen intent at this activity
+     * (`getLaunchIntentForPackage`). Without these two flags the intent lands
+     * on an activity the keyguard is entitled to keep behind it, and on a
+     * sleeping phone the alarm sounds with the screen still dark — exactly the
+     * bug reported against build 106.
+     *
+     * **Set here in code as well as in the manifest, on purpose.** The manifest
+     * attributes (`android:showWhenLocked` / `android:turnScreenOn`) are the
+     * documented setup for the alarm package (its help/INSTALL-ANDROID.md), and
+     * they are easy to lose to a merge or a manifest rewrite. Doing it in
+     * [onCreate] too means the behaviour survives that, and survives an
+     * activity migration like the FlutterActivity → FlutterFragmentActivity
+     * one Stripe's PaymentSheet forced. Both paths are idempotent.
+     *
+     * Note what this does *not* do: it never dismisses the keyguard. The
+     * ringing screen shows on top of the lock screen; the phone stays locked
+     * and nothing behind the ring screen is reachable without unlocking.
+     */
+    private fun showOverLockScreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            // minSdk is 26, one below the API that replaced these.
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        showOverLockScreen()
+    }
+
+    /**
+     * Whether Android will actually let a full-screen intent take over the
+     * screen — the permission that decides whether the alarm can wake anybody.
+     *
+     * Since Android 14 `USE_FULL_SCREEN_INTENT` is **not** granted on install
+     * to an app the store has not classified as a clock or a calling app, and
+     * a sideloaded build is never classified. Declaring it in the manifest is
+     * not enough. When it is denied the system silently strips the intent off
+     * the notification: the alarm still sounds, and the screen never comes on.
+     * Below 34 the permission is granted at install and this is always true.
+     */
+    private fun canUseFullScreenIntent(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return true
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return manager.canUseFullScreenIntent()
+    }
+
+    /** Opens the single system toggle that grants the permission above. */
+    private fun openFullScreenIntentSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                Uri.parse("package:$packageName"),
+            )
+        )
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -65,6 +141,20 @@ class MainActivity : FlutterFragmentActivity() {
         }
         // The intent that launched this engine may itself be the 解除 tap.
         intent?.getStringExtra(SnoozeService.EXTRA_SESSION)?.let { pendingDismiss = it }
+
+        // Its own channel, not the snooze one: this is about whether the ring
+        // can reach the screen at all, which is upstream of every feature.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "wake_or_pay/full_screen_intent")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isGranted" -> result.success(canUseFullScreenIntent())
+                    "openSettings" -> {
+                        openFullScreenIntentSettings()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     override fun onNewIntent(intent: Intent) {

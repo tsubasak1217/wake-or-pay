@@ -16,6 +16,7 @@ import '../domain/snooze_rules.dart';
 import 'alarm_settings_builder.dart';
 import 'background_dispatch.dart';
 import 'card_hostage.dart';
+import 'full_screen_intent.dart';
 import 'oversleep_notifier.dart';
 import 'session_service.dart';
 import 'snooze_service.dart';
@@ -91,8 +92,12 @@ class AlarmService {
     _ref.read(appRouterProvider).go(AppRoute.result(sessionId));
   }
 
-  /// Notifications and exact alarms. Without the latter Android 12+ may delay
-  /// the ring, which for this app means silently failing to wake anyone.
+  /// Notifications, exact alarms, and the full-screen intent.
+  ///
+  /// Without exact alarms Android 12+ may delay the ring, which for this app
+  /// means silently failing to wake anyone. Without the full-screen intent
+  /// (Android 14+, and denied by default for a sideloaded build) the ring
+  /// sounds with the screen still off — see [ensureFullScreenIntent].
   Future<void> requestPermissions() async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
 
@@ -102,6 +107,10 @@ class AlarmService {
     if (await Permission.scheduleExactAlarm.isDenied) {
       await Permission.scheduleExactAlarm.request();
     }
+    await ensureFullScreenIntent(
+      _ref.read(fullScreenIntentPermissionProvider),
+      ringing: await pkg.Alarm.isRinging(),
+    );
   }
 
   /// Schedules [alarm] for its next occurrence, or cancels it when disabled.

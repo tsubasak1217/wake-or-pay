@@ -16,6 +16,7 @@ import 'services/app_update.dart';
 import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
 import 'services/background_dispatch.dart';
+import 'services/full_screen_intent.dart';
 import 'services/route_permissions.dart';
 import 'services/secret_store.dart';
 import 'services/sms_sender.dart';
@@ -48,6 +49,9 @@ Future<void> main() async {
           loss: lossAt(now, session),
         ).body;
       }),
+      // Only the real app can ask Android whether a full-screen intent is
+      // still allowed to take over the screen (Android 14+).
+      platformFullScreenIntentOverride(),
       ttsSpeakerOverride(),
       // The SMTP app password. Only the real app reaches the platform
       // keystore; every test keeps the in-memory store.

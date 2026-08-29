@@ -55,13 +55,24 @@
              **この Activity 自身**に来て、既にあるインスタンスが載っている
              タスクごと前面に出る必要がある。singleTop だと、ブラウザの
              タスクから来た intent が MainActivity を**新しく**作り、
-             Custom Tab の上に別のアプリの画面が生えることになる。 -->
+             Custom Tab の上に別のアプリの画面が生えることになる。
+
+             showWhenLocked / turnScreenOn は目覚ましの本体（alarm パッケージの
+             help/INSTALL-ANDROID.md が要求する 2 属性）。これが無いと全画面
+             インテントは「キーガードの後ろにある Activity」を開くだけになり、
+             眠っている端末では音だけ鳴って画面が点かない（build 106 の不具合）。
+             MainActivity.onCreate でも同じことをしている：**両方**に置くのは、
+             片方が移行や書き換えで消えても鳴らし損ねないため。
+             キーガードを解除はしない。鳴動画面がロック画面の上に出るだけで、
+             その奥はロックされたまま。 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
