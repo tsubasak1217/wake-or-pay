@@ -36,6 +36,18 @@ String kakugoLabel(Kakugo? kakugo) => kakugo == null
     ? '覚悟なし'
     : '${kakugo.ratePerMinute} コイン/分 ・ 最大 ${kakugo.cap}';
 
+/// The first line of the 起床猶予 sub-screen description, shown regardless of
+/// 覚悟.
+const graceDescriptionBase = 'この時間内に起きるとボーナスコインが獲得できます。';
+
+/// The second line, appended only when 覚悟 is armed — the grace window is
+/// also the penalty's fuse in that case, and the description says so.
+const graceDescriptionKakugo = '猶予時間を経過してしまうと覚悟設定のペナルティが発生します。';
+
+/// The 起床猶予 sub-screen description for a given 覚悟 state. Pure.
+String graceDescription(bool kakugo) =>
+    kakugo ? '$graceDescriptionBase\n$graceDescriptionKakugo' : graceDescriptionBase;
+
 /// How a snooze rule reads on a row of the editor. Pure.
 String snoozeLabel(Snooze? snooze) => snooze == null
     ? 'オフ'

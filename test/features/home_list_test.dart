@@ -76,6 +76,17 @@ void main() {
     expect(find.byKey(const ValueKey('alarmKakugoIcons')), findsNothing);
   });
 
+  testWidgets('the 覚悟あり／なし label names the state, never the amount', (
+    tester,
+  ) async {
+    await pumpHome(tester, alarms: const [kakugoAlarm, plainAlarm]);
+    final labels = tester
+        .widgetList<Text>(find.byKey(const ValueKey('alarmKakugoLabel')))
+        .map((t) => t.data)
+        .toList();
+    expect(labels, containsAll(['覚悟あり', '覚悟なし']));
+  });
+
   testWidgets('no number reaches the row — not the rate, not the cap', (
     tester,
   ) async {
@@ -94,12 +105,14 @@ void main() {
     }
   });
 
-  testWidgets('a 覚悟 row and a plain row line up where they can', (
+  testWidgets('a 覚悟 row and a plain row are laid out identically', (
     tester,
   ) async {
-    // The 覚悟 row differs in colour, frame, glow — and now in one line of
-    // icons the plain row has nothing to put. What still may not move is the
-    // time and the left edge of the switch.
+    // The 覚悟 row differs in colour, frame and glow — and in nothing that
+    // moves a pixel. The icon line only exists on a 覚悟 row, but the label
+    // shares that line there and gets a line of its own on a plain row, so
+    // both rows end up the same height. Same time position, same switch,
+    // same row height.
     await pumpHome(tester, alarms: const [plainAlarm]);
     final plainTime = tester.getTopLeft(find.byKey(const ValueKey('alarmTime')));
     final plainSwitch = tester.getRect(find.byType(Switch));
@@ -111,13 +124,8 @@ void main() {
       plainTime,
       reason: 'the time does not move for a pledge',
     );
-    expect(tester.getRect(find.byType(Switch)).left, plainSwitch.left);
-    expect(tester.getRect(find.byType(SwipeToDelete)).left, plainRow.left);
-    expect(
-      tester.getRect(find.byType(SwipeToDelete)).height,
-      greaterThan(plainRow.height),
-      reason: 'the icon line is the only thing that makes it taller',
-    );
+    expect(tester.getRect(find.byType(Switch)), plainSwitch);
+    expect(tester.getRect(find.byType(SwipeToDelete)), plainRow);
   });
 
   testWidgets('the row is the time, the repeat, and a line of icons', (
@@ -144,8 +152,9 @@ void main() {
     expect(find.text('08:15'), findsOneWidget);
     expect(find.text('一回限り'), findsOneWidget);
 
-    // Nothing spelled out any more: no 覚悟あり/なし, no price, no name.
-    expect(find.textContaining('覚悟'), findsNothing);
+    // The あり/なし word is back, but never a number and never a name.
+    expect(find.text('覚悟あり'), findsOneWidget);
+    expect(find.text('覚悟なし'), findsOneWidget);
     expect(find.text('田中太郎'), findsNothing);
     expect(find.textContaining('寝坊で失う最大金額'), findsNothing);
     expect(find.textContaining('ノーマル'), findsNothing);

@@ -339,7 +339,11 @@ void main() {
 
       await inSubScreen(tester, '起床猶予', () async {
         expect(find.text('1〜5分'), findsOneWidget);
-        expect(find.textContaining('鳴り始めからこの時間以内'), findsOneWidget);
+        expect(
+          find.textContaining('この時間内に起きるとボーナスコインが獲得できます'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('覚悟設定のペナルティ'), findsNothing);
         await enterNumber(tester, '5');
       });
 
@@ -354,6 +358,36 @@ void main() {
         isNull,
         reason: 'the grace never needed a pledge to be set',
       );
+    },
+  );
+
+  testWidgets(
+    '起床猶予 warns about the penalty only once 覚悟 is armed',
+    (tester) async {
+      await pumpHome(tester, coins: 5000);
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+
+      await inSubScreen(tester, '起床猶予', () async {
+        expect(
+          find.textContaining('この時間内に起きるとボーナスコインが獲得できます'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('覚悟設定のペナルティ'), findsNothing);
+      });
+
+      await toggleKakugoWithCoins(tester);
+
+      await inSubScreen(tester, '起床猶予', () async {
+        expect(
+          find.textContaining('この時間内に起きるとボーナスコインが獲得できます'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('猶予時間を経過してしまうと覚悟設定のペナルティが発生します'),
+          findsOneWidget,
+        );
+      });
     },
   );
 

@@ -334,18 +334,44 @@ class _AlarmRow extends ConsumerWidget {
                   : kakugoOnDanger.withValues(alpha: 0.75),
             ),
           ),
-          // 覚悟 only, and icons only — no numbers on the row. What it says is
-          // *which* consequences are armed: who is told, where it is
-          // announced, and what is held hostage. The amounts live in the
+          // Just the あり/なし word, never a number: the amounts live in the
           // editor, where they can be read next to the rules that spend them.
-          if (kakugo != null)
-            _KakugoIcons(
-              contact: contact,
-              discord: shareCount > 0,
-              x: alarm.willShare && (alarm.share?.xEnabled ?? false),
-              hostage: kakugo.hostage,
-              color: kakugoDanger,
-            ),
+          // A 覚悟 row keeps the label on the icon line so the icons still say
+          // *which* consequences are armed without pushing the row taller
+          // than it needs to be; a plain row has no icon line to share, so
+          // the label gets one of its own — which is also what keeps the two
+          // kinds of row the same height.
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: kakugo != null
+                ? Row(
+                    children: [
+                      Text(
+                        '覚悟あり',
+                        key: const ValueKey('alarmKakugoLabel'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: kakugoDanger,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _KakugoIcons(
+                        contact: contact,
+                        discord: shareCount > 0,
+                        x: alarm.willShare && (alarm.share?.xEnabled ?? false),
+                        hostage: kakugo.hostage,
+                        color: kakugoDanger,
+                      ),
+                    ],
+                  )
+                : Text(
+                    '覚悟なし',
+                    key: const ValueKey('alarmKakugoLabel'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+          ),
           if (snoozed != null)
             _SnoozingRow(
               until: snoozed!.until,
@@ -460,10 +486,15 @@ class _KakugoIcons extends StatelessWidget {
     ];
     if (icons.isEmpty) return const SizedBox.shrink();
 
-    return Padding(
+    // No padding of its own any more: it now sits beside the 覚悟あり label in
+    // one Row, and that Row carries the top gap for both of them — an
+    // internal offset here would only push the icons out of line with the
+    // label they sit next to.
+    return Wrap(
       key: const ValueKey('alarmKakugoIcons'),
-      padding: const EdgeInsets.only(top: 2),
-      child: Wrap(spacing: 8, runSpacing: 4, children: icons),
+      spacing: 8,
+      runSpacing: 4,
+      children: icons,
     );
   }
 

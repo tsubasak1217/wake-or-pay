@@ -35,6 +35,15 @@ void main() {
     );
   });
 
+  test('graceDescription adds the penalty line only once 覚悟 is armed', () {
+    expect(graceDescription(false), graceDescriptionBase);
+    expect(graceDescription(false).contains(graceDescriptionKakugo), isFalse);
+    expect(
+      graceDescription(true),
+      '$graceDescriptionBase\n$graceDescriptionKakugo',
+    );
+  });
+
   test('kakugoMinutesToCap is the ratio, and 0/分 never gets there', () {
     expect(kakugoMinutesToCap(100, 1000), 10);
     expect(kakugoMinutesToCap(500, 1000), 2);

@@ -782,9 +782,7 @@ class _GraceRow extends ConsumerWidget {
           min: minGraceMinutes,
           max: maxGraceMinutes,
           suffix: '分',
-          description:
-              '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
-              '過ぎるとその瞬間から寝坊で、ペナルティと連絡・共有が動き始めます。',
+          description: graceDescription(ref.read(draft).isKakugo),
           onCommit: (v) => ref
               .read(draft.notifier)
               .update((a) => a.copyWith(graceMinutes: v)),
