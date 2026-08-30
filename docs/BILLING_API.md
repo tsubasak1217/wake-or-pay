@@ -141,4 +141,11 @@ CREATE TABLE cards (
 - `charges` 台帳：`session_id` を UNIQUE にして二重請求を構造的に防ぐ（端末側の
   `pending_charges` と同じ鍵）。
 - 月末バッチ：Cron Trigger で端末ごとに合算 → `PaymentIntent(off_session=true, confirm=true)`。
+- **最低請求額 50 円（`minimumChargeableYen`）。** その月の合算が 50 円未満の端末は
+  **請求しない**（Stripe の JPY 最低決済額が 50 円で、それ未満の `PaymentIntent` は
+  そもそも作れない）。繰り越しもしない——数十円のために翌月の請求額を狂わせるより、
+  その月は無かったことにするほうが説明が要らない。該当分の `pending_charges` は
+  `paid` ではなく **`skipped` 相当**として閉じる（Phase 3 で状態を足す）。
+  アプリ側はこの規則を アクティビティ の「今月の寝坊ペナルティ」の脚注
+  「※総額50円未満の場合は請求されません」として先に出している。
 - 失敗（`requires_payment_method`）→ アプリへ「カードの再認証が必要」を通知。

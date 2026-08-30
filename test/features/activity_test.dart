@@ -4,11 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/features/activity/activity_screen.dart';
+import 'package:wake_or_pay/features/activity/contact_log_archive_screen.dart';
+import 'package:wake_or_pay/features/activity/penalty_history_screen.dart';
+import 'package:wake_or_pay/features/activity/wake_time_history_screen.dart';
 import 'package:wake_or_pay/main.dart';
 
 import '../helpers.dart';
 
 /// アクティビティ — the tab that shows what the mornings actually did.
+/// See `docs/design/activity_spec_2026-08-30.png`.
 
 Future<ProviderContainer> pumpApp(
   WidgetTester tester, {
@@ -43,6 +47,12 @@ Future<void> scrollTo(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> tapLink(WidgetTester tester, String key) async {
+  await scrollTo(tester, find.byKey(ValueKey(key)));
+  await tester.tap(find.byKey(ValueKey(key)));
+  await tester.pumpAndSettle();
+}
+
 Future<void> openRecordings(WidgetTester tester) async {
   await openActivity(tester);
   await scrollTo(tester, find.byKey(const ValueKey('activityRecordings')));
@@ -52,12 +62,13 @@ AlarmSession failed({
   required String id,
   required DateTime firedAt,
   int loss = 300,
+  Duration slept = const Duration(minutes: 5),
   HostageType hostage = HostageType.coin,
 }) => AlarmSession(
   id: id,
   alarmId: 'a1',
   firedAt: firedAt,
-  dismissedAt: firedAt.add(const Duration(minutes: 5)),
+  dismissedAt: firedAt.add(slept),
   status: SessionStatus.failed,
   loss: loss,
   kakugoSnapshot: Kakugo(hostage: hostage, ratePerMinute: 100, cap: 2000),
@@ -72,8 +83,20 @@ AlarmSession woke({required String id, required DateTime firedAt}) =>
       status: SessionStatus.success,
     );
 
+ContactEvent contact({
+  required String id,
+  required DateTime firedAt,
+  String name = '田中太郎さん',
+}) => ContactEvent(
+  id: id,
+  sessionId: 's1',
+  firedAt: firedAt,
+  contactName: name,
+  channel: ContactChannel.sms,
+);
+
 void main() {
-  testWidgets('every section is on the tab, with a history behind it', (
+  testWidgets('the four cards of the sketch are all on the tab', (
     tester,
   ) async {
     final container = await pumpApp(
@@ -89,113 +112,326 @@ void main() {
     await sessions.save(failed(id: 's2', firedAt: DateTime(2026, 8, 27, 7)));
     await container
         .read(contactEventRepositoryProvider)
-        .save(
-          ContactEvent(
-            id: 'e1',
-            sessionId: 's2',
-            firedAt: DateTime(2026, 8, 27, 7, 5),
-            contactName: '田中太郎さん',
-            channel: ContactChannel.sms,
-          ),
-        );
+        .save(contact(id: 'e1', firedAt: DateTime(2026, 8, 27, 7, 5)));
 
     await openActivity(tester);
 
-    for (final key in const [
-      'activityWakeChart',
-      'activityPenaltyList',
-      'activityContactLog',
-      'activityRecordings',
+    for (final card in const [
+      ('activityMonthCard', '今月の寝坊ペナルティ'),
+      ('activityWakeChart', '起床時間の遷移(30日間)'),
+      ('activityContactLog', '寝坊連絡・共有履歴'),
+      ('activityRecordings', '寝言の録音'),
     ]) {
-      await scrollTo(tester, find.byKey(ValueKey(key)));
-      expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+      await scrollTo(tester, find.byKey(ValueKey(card.$1)));
+      expect(find.byKey(ValueKey(card.$1)), findsOneWidget, reason: card.$1);
+      expect(find.text(card.$2), findsOneWidget, reason: card.$2);
     }
-    expect(find.text('寝言の録音'), findsOneWidget);
+
+    // The two strips the sketch drops are gone from the tab itself.
+    expect(find.text('起床・寝坊の記録'), findsNothing);
+    expect(find.byKey(const ValueKey('activityPenaltyList')), findsNothing);
   });
 
-  testWidgets('the chart counts days, not rings', (tester) async {
-    final container = await pumpApp(tester);
-    final sessions = container.read(alarmSessionRepositoryProvider);
-    // Two rings on one morning, both fine; one overslept the day before.
-    await sessions.save(woke(id: 's1', firedAt: DateTime(2026, 8, 29, 6)));
-    await sessions.save(woke(id: 's2', firedAt: DateTime(2026, 8, 29, 7)));
-    await sessions.save(failed(id: 's3', firedAt: DateTime(2026, 8, 28, 7)));
+  group('今月の寝坊ペナルティ', () {
+    testWidgets('counts the month, in both units, with the ¥50 footnote', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      // Coins: two oversleeps this month.
+      await sessions.save(
+        failed(
+          id: 's1',
+          firedAt: DateTime(2026, 8, 20, 7),
+          loss: 200,
+          slept: const Duration(minutes: 15),
+        ),
+      );
+      await sessions.save(
+        failed(
+          id: 's2',
+          firedAt: DateTime(2026, 8, 25, 7),
+          loss: 500,
+          slept: const Duration(minutes: 10),
+        ),
+      );
+      // Card: a third, on the ledger instead of the coin balance.
+      await sessions.save(
+        failed(
+          id: 's3',
+          firedAt: DateTime(2026, 8, 26, 7),
+          loss: 1024,
+          slept: Duration.zero,
+          hostage: HostageType.card,
+        ),
+      );
+      await container
+          .read(pendingChargeRepositoryProvider)
+          .insertIfAbsent(
+            PendingCharge(
+              sessionId: 's3',
+              alarmId: 'a1',
+              amount: 1024,
+              createdAt: DateTime(2026, 8, 26, 7, 10),
+            ),
+          );
+      // Last month: not this card's business.
+      await sessions.save(
+        failed(id: 'old', firedAt: DateTime(2026, 7, 20, 7), loss: 9000),
+      );
 
-    await openActivity(tester);
+      await openActivity(tester);
 
-    expect(find.text('成功 1 ／ 寝坊 1（直近30日）'), findsOneWidget);
+      expect(find.text('寝坊回数 3回　総寝坊時間 25分'), findsOneWidget);
+      expect(find.text('1,024円'), findsOneWidget);
+      expect(find.text('700コイン'), findsOneWidget);
+      expect(find.text('※総額50円未満の場合は請求されません'), findsOneWidget);
+    });
+
+    testWidgets('an empty month reads 0円 / 0コイン rather than nothing', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await openActivity(tester);
+
+      expect(find.text('寝坊回数 0回　総寝坊時間 0分'), findsOneWidget);
+      expect(find.text('0円'), findsOneWidget);
+      expect(find.text('0コイン'), findsOneWidget);
+    });
+
+    testWidgets('ペナルティ履歴 opens the whole history, on the latest day', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      await sessions.save(
+        failed(id: 'old', firedAt: DateTime(2026, 6, 10, 7), loss: 200),
+      );
+      await sessions.save(
+        failed(id: 'new', firedAt: DateTime(2026, 8, 25, 7, 30), loss: 1300),
+      );
+
+      await openActivity(tester);
+      await tapLink(tester, 'activityPenaltyHistoryLink');
+
+      expect(find.byType(PenaltyHistoryScreen), findsOneWidget);
+      expect(find.text('コイン'), findsOneWidget);
+      expect(find.text('カード'), findsOneWidget);
+      // Defaults to the latest day that cost something.
+      expect(find.text('2026/8/25 の記録'), findsOneWidget);
+      expect(find.byKey(const ValueKey('penaltyDayRow-new')), findsOneWidget);
+      expect(find.text('1300 コイン'), findsOneWidget);
+      expect(find.byKey(const ValueKey('penaltyDayRow-old')), findsNothing);
+    });
+
+    testWidgets('tapping a day on the chart moves the log to it', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      // Two days, so the chart is two columns wide and the left half is the
+      // older one.
+      await sessions.save(
+        failed(id: 'first', firedAt: DateTime(2026, 8, 20, 7), loss: 200),
+      );
+      await sessions.save(
+        failed(id: 'second', firedAt: DateTime(2026, 8, 21, 7), loss: 300),
+      );
+
+      await openActivity(tester);
+      await tapLink(tester, 'activityPenaltyHistoryLink');
+      expect(find.text('2026/8/21 の記録'), findsOneWidget);
+
+      final chart = tester.getRect(find.byKey(const ValueKey('penaltyHistoryChart')));
+      await tester.tapAt(Offset(chart.left + chart.width * 0.1, chart.center.dy));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2026/8/20 の記録'), findsOneWidget);
+      expect(find.byKey(const ValueKey('penaltyDayRow-first')), findsOneWidget);
+    });
+
+    testWidgets('a card loss says it will be billed, not spent', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      await container
+          .read(alarmSessionRepositoryProvider)
+          .save(
+            failed(
+              id: 's1',
+              firedAt: DateTime(2026, 8, 25, 7),
+              loss: 1300,
+              hostage: HostageType.card,
+            ),
+          );
+      await container
+          .read(pendingChargeRepositoryProvider)
+          .insertIfAbsent(
+            PendingCharge(
+              sessionId: 's1',
+              alarmId: 'a1',
+              amount: 1300,
+              createdAt: DateTime(2026, 8, 25, 7, 10),
+            ),
+          );
+
+      await openActivity(tester);
+      await tapLink(tester, 'activityPenaltyHistoryLink');
+
+      expect(find.text('1,300 円をカードに請求予定'), findsOneWidget);
+    });
+
+    testWidgets('nothing ever lost is an empty history, not a crash', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await openActivity(tester);
+      await tapLink(tester, 'activityPenaltyHistoryLink');
+
+      expect(find.byKey(const ValueKey('penaltyHistoryEmpty')), findsOneWidget);
+    });
   });
 
-  testWidgets('ペナルティ履歴 lists the losses, newest first, with the total', (
-    tester,
-  ) async {
-    final container = await pumpApp(tester);
-    final sessions = container.read(alarmSessionRepositoryProvider);
-    await sessions.save(
-      failed(id: 's1', firedAt: DateTime(2026, 8, 20, 7), loss: 200),
-    );
-    await sessions.save(
-      failed(id: 's2', firedAt: DateTime(2026, 8, 25, 7, 30), loss: 1300),
-    );
-    // Woke up: on the tab's history, but not in this list.
-    await sessions.save(woke(id: 's3', firedAt: DateTime(2026, 8, 26, 7)));
+  group('起床時間の遷移', () {
+    testWidgets('もっと見る opens the whole history with its average', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      await sessions.save(woke(id: 's1', firedAt: DateTime(2026, 8, 27, 6)));
+      await sessions.save(woke(id: 's2', firedAt: DateTime(2026, 8, 28, 8)));
+      // Older than the tab's 30-day window, but part of the whole history.
+      await sessions.save(woke(id: 's3', firedAt: DateTime(2026, 5, 1, 7)));
 
-    await openActivity(tester);
+      await openActivity(tester);
+      await tapLink(tester, 'activityWakeMoreLink');
 
-    expect(find.text('総支払額 1,500 コイン'), findsOneWidget);
-    expect(find.text('8/25 07:30'), findsOneWidget);
-    expect(find.text('−1300 コイン'), findsOneWidget);
-    expect(find.text('8/20 07:00'), findsOneWidget);
-    expect(find.text('−200 コイン'), findsOneWidget);
+      expect(find.byType(WakeTimeHistoryScreen), findsOneWidget);
+      expect(find.byKey(const ValueKey('wakeHistoryChart')), findsOneWidget);
+      expect(find.text('記録 3日 ・ 平均 7:00'), findsOneWidget);
+    });
 
-    // Newest first.
-    final rows = tester.getTopLeft(find.byKey(const ValueKey('penalty-s2')));
-    final older = tester.getTopLeft(find.byKey(const ValueKey('penalty-s1')));
-    expect(rows.dy, lessThan(older.dy));
+    testWidgets('no morning on record is an empty chart, not a flat line', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await openActivity(tester);
+
+      expect(find.text('まだ記録はありません'), findsWidgets);
+      await tapLink(tester, 'activityWakeMoreLink');
+      expect(find.byKey(const ValueKey('wakeHistoryEmpty')), findsOneWidget);
+    });
   });
 
-  testWidgets('a card pledge says it will be billed, and shows 請求予定', (
-    tester,
-  ) async {
-    final container = await pumpApp(tester);
-    await container
-        .read(alarmSessionRepositoryProvider)
-        .save(
-          failed(
-            id: 's1',
-            firedAt: DateTime(2026, 8, 25, 7),
-            loss: 1300,
-            hostage: HostageType.card,
-          ),
+  group('寝坊連絡・共有履歴', () {
+    testWidgets('the card carries the five most recent, and no more', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final events = container.read(contactEventRepositoryProvider);
+      for (var i = 1; i <= 7; i++) {
+        await events.save(
+          contact(id: 'e$i', firedAt: DateTime(2026, 8, 20 + i, 7)),
         );
-    await container
-        .read(pendingChargeRepositoryProvider)
-        .insertIfAbsent(
-          PendingCharge(
-            sessionId: 's1',
-            alarmId: 'a1',
-            amount: 1300,
-            createdAt: DateTime(2026, 8, 25, 7, 10),
-          ),
+      }
+
+      await openActivity(tester);
+      await scrollTo(tester, find.byKey(const ValueKey('activityContactLog')));
+
+      // Newest five: e7 … e3.
+      for (final id in const ['e7', 'e6', 'e5', 'e4', 'e3']) {
+        expect(
+          find.byKey(ValueKey('contactEvent-$id')),
+          findsOneWidget,
+          reason: id,
         );
+      }
+      for (final id in const ['e2', 'e1']) {
+        expect(find.byKey(ValueKey('contactEvent-$id')), findsNothing, reason: id);
+      }
+    });
 
-    await openActivity(tester);
+    testWidgets('an empty log is a card that says so', (tester) async {
+      await pumpApp(tester);
+      await openActivity(tester);
+      await scrollTo(tester, find.byKey(const ValueKey('activityContactLog')));
 
-    expect(find.text('1,300 円をカードに請求予定'), findsOneWidget);
-    expect(find.text('請求予定 1,300 円'), findsOneWidget);
-  });
+      expect(find.byKey(const ValueKey('activityContactLog')), findsOneWidget);
+      expect(find.text('まだ記録はありません'), findsWidgets);
+    });
 
-  testWidgets('an empty history is an empty tab, not a crash', (tester) async {
-    await pumpApp(tester);
-    await openActivity(tester);
+    testWidgets('the archive shows only years with data and greys empty months', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final events = container.read(contactEventRepositoryProvider);
+      await events.save(contact(id: 'e1', firedAt: DateTime(2026, 8, 20, 7)));
+      await events.save(contact(id: 'e2', firedAt: DateTime(2026, 3, 2, 7)));
+      await events.save(contact(id: 'e3', firedAt: DateTime(2024, 5, 4, 7)));
 
-    expect(find.byKey(const ValueKey('activityWakeChart')), findsOneWidget);
-    expect(find.text('まだ記録はありません'), findsOneWidget);
-    expect(find.text('まだペナルティはありません'), findsOneWidget);
-    await scrollTo(tester, find.byKey(const ValueKey('activityRecordings')));
-    expect(find.text('まだ録音はありません'), findsOneWidget);
-    // The contact log stays away entirely until something has been sent.
-    expect(find.byKey(const ValueKey('activityContactLog')), findsNothing);
+      await openActivity(tester);
+      await tapLink(tester, 'activityContactMoreLink');
+
+      expect(find.byType(ContactLogArchiveScreen), findsOneWidget);
+      expect(find.byKey(const ValueKey('archiveYear-2026')), findsOneWidget);
+      expect(find.byKey(const ValueKey('archiveYear-2024')), findsOneWidget);
+      // 2025 had nothing at all: no header, no grid.
+      expect(find.byKey(const ValueKey('archiveYear-2025')), findsNothing);
+      // This year stops at this month.
+      expect(find.byKey(const ValueKey('archiveMonth-2026-08')), findsOneWidget);
+      expect(find.byKey(const ValueKey('archiveMonth-2026-09')), findsNothing);
+
+      // An empty month is drawn, but does not answer a tap.
+      final empty = tester.widget<Material>(
+        find.byKey(const ValueKey('archiveMonth-2026-01')),
+      );
+      expect(
+        tester
+            .widget<InkWell>(
+              find.descendant(
+                of: find.byKey(const ValueKey('archiveMonth-2026-01')),
+                matching: find.byType(InkWell),
+              ),
+            )
+            .onTap,
+        isNull,
+      );
+      expect(empty, isNotNull);
+    });
+
+    testWidgets('tapping a month lists that month under the grid', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final events = container.read(contactEventRepositoryProvider);
+      await events.save(
+        contact(id: 'aug', firedAt: DateTime(2026, 8, 20, 7), name: '母さん'),
+      );
+      await events.save(
+        contact(id: 'mar', firedAt: DateTime(2026, 3, 2, 7), name: '部長'),
+      );
+
+      await openActivity(tester);
+      await tapLink(tester, 'activityContactMoreLink');
+
+      // Nothing is listed until a month is chosen.
+      expect(find.byKey(const ValueKey('contactEvent-aug')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('archiveMonth-2026-03')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2026年3月'), findsOneWidget);
+      expect(find.byKey(const ValueKey('contactEvent-mar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('contactEvent-aug')), findsNothing);
+    });
+
+    testWidgets('an archive with nothing in it says so', (tester) async {
+      await pumpApp(tester);
+      await openActivity(tester);
+      await tapLink(tester, 'activityContactMoreLink');
+
+      expect(find.byKey(const ValueKey('archiveEmpty')), findsOneWidget);
+    });
   });
 
   group('寝言の録音', () {

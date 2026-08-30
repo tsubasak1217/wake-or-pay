@@ -149,6 +149,12 @@ final contactEventsProvider = StreamProvider<List<ContactEvent>>(
   (ref) => ref.watch(contactEventRepositoryProvider).watchRecent(),
 );
 
+/// The whole oversleep contact log, newest first and uncapped. The 連絡ログの
+/// アーカイブ reads this; the tab's card stays on [contactEventsProvider].
+final allContactEventsProvider = StreamProvider<List<ContactEvent>>(
+  (ref) => ref.watch(contactEventRepositoryProvider).watchAll(),
+);
+
 /// The oversleep log for one ring, live. The ringing screen reads it to say
 /// which routes actually went out — 「田中太郎 に電話をかけました」.
 final sessionContactEventsProvider =

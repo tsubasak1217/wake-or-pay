@@ -12,10 +12,15 @@ import '../../services/recording_library.dart';
 import '../../services/voice_recorder.dart';
 import '../alarms/widgets/settings_island.dart';
 import '../profile/app_header.dart';
-import 'day_bars_painter.dart';
+import 'contact_event_tile.dart';
+import 'contact_log_archive_screen.dart';
+import 'penalty_history_screen.dart';
+import 'wake_time_history_screen.dart';
+import 'wake_time_painter.dart';
 
 /// アクティビティ — everything the app has recorded about the user's mornings:
-/// how they went, what they cost, who was told, and what was said out loud.
+/// what this month cost, when they got up, who was told, and what was said out
+/// loud. See `docs/design/activity_spec_2026-08-30.png`.
 ///
 /// Read-only by design, apart from deleting a recording: nothing here changes
 /// how an alarm behaves, so a tap can never make tomorrow more expensive.
@@ -28,17 +33,14 @@ class ActivityScreen extends ConsumerWidget {
     body: ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: const [
+        _MonthPenaltySection(),
         _WakeChartSection(),
-        _PenaltySection(),
         _ContactEventSection(),
         _RecordingsSection(),
       ],
     ),
   );
 }
-
-/// How tall every strip in this screen is drawn.
-const _stripHeight = 64.0;
 
 /// 「まだ記録はありません」 and friends, in the one place the padding is decided.
 class _EmptyNote extends StatelessWidget {
@@ -55,57 +57,102 @@ class _EmptyNote extends StatelessWidget {
   );
 }
 
+/// The 「もっと見る >」 in the bottom-right corner of a card. The chevron is the
+/// promise that tapping goes somewhere.
+class _MoreLink extends StatelessWidget {
+  const _MoreLink({
+    required this.linkKey,
+    required this.label,
+    required this.onTap,
+  });
+
+  /// Sits on the **InkWell**, not on the widget: the row is stretched across
+  /// the card, so a key on the outside would point a test's tap at the empty
+  /// half of it.
+  final Key linkKey;
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.centerRight,
+      child: InkWell(
+        key: linkKey,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: theme.textTheme.bodyMedium),
+              const Icon(Icons.chevron_right, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
-// 起床・寝坊の記録
+// 今月の寝坊ペナルティ
 // ---------------------------------------------------------------------------
 
-class _WakeChartSection extends ConsumerWidget {
-  const _WakeChartSection();
+/// What this calendar month has already cost, in both units at once.
+///
+/// Two headline figures rather than one total, because they are not the same
+/// money: コイン is already gone, 円 is a promise the card has not been asked
+/// about yet.
+class _MonthPenaltySection extends ConsumerWidget {
+  const _MonthPenaltySection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final sessions =
         ref.watch(allSessionsProvider).valueOrNull ?? const <AlarmSession>[];
-    final outcomes = dailyOutcomes(sessions, ref.watch(clockProvider)());
-    final success = successDays(outcomes);
-    final overslept = oversleptDays(outcomes);
+    final charges =
+        ref.watch(pendingChargesProvider).valueOrNull ?? const <PendingCharge>[];
+    final month = monthlyPenalty(sessions, charges, ref.watch(clockProvider)());
 
     return SettingsIsland(
-      key: const ValueKey('activityWakeChart'),
-      title: '起床・寝坊の記録',
+      key: const ValueKey('activityMonthCard'),
+      title: '今月の寝坊ペナルティ',
+      footer: Text(
+        '※総額$minimumChargeableYen円未満の場合は請求されません',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(
-                height: _stripHeight,
-                child: CustomPaint(
-                  painter: DayBarsPainter(
-                    bars: [
-                      for (final outcome in outcomes)
-                        DayBar(
-                          color: switch (outcome.result) {
-                            DayResult.success => theme.colorScheme.primary,
-                            DayResult.failed => theme.colorScheme.error,
-                            DayResult.none => theme.colorScheme.outlineVariant,
-                          },
-                          // A day with no ring is a floor tick, not a column:
-                          // an empty month must not look like a good one.
-                          fill: outcome.result == DayResult.none ? 0 : 1,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
               Text(
-                success == 0 && overslept == 0
-                    ? 'まだ記録はありません'
-                    : '成功 $success ／ 寝坊 $overslept（直近30日）',
+                '寝坊回数 ${month.oversleepCount}回'
+                '　総寝坊時間 ${journeyDurationLabel(month.oversleep)}',
                 style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${thousands(month.yen)}円',
+                style: theme.textTheme.displaySmall,
+              ),
+              Text(
+                '${month.coins}コイン',
+                style: theme.textTheme.displaySmall,
+              ),
+              const SizedBox(height: 4),
+              _MoreLink(
+                linkKey: const ValueKey('activityPenaltyHistoryLink'),
+                label: 'ペナルティ履歴',
+                onTap: () => pushPenaltyHistoryScreen(context),
               ),
             ],
           ),
@@ -116,150 +163,87 @@ class _WakeChartSection extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// ペナルティ履歴
+// 起床時間の遷移
 // ---------------------------------------------------------------------------
 
-class _PenaltySection extends ConsumerWidget {
-  const _PenaltySection();
+class _WakeChartSection extends ConsumerWidget {
+  const _WakeChartSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final sessions =
         ref.watch(allSessionsProvider).valueOrNull ?? const <AlarmSession>[];
-    final charges =
-        ref.watch(pendingChargesProvider).valueOrNull ?? const <PendingCharge>[];
-
-    final rows = penaltySessions(sessions);
-    final outcomes = dailyOutcomes(sessions, ref.watch(clockProvider)());
-    final worst = outcomes.fold(0, (max, o) => o.penalty > max ? o.penalty : max);
-    final pending = charges
-        .where((c) => c.status == PendingChargeStatus.pending)
-        .fold(0, (sum, c) => sum + c.amount);
+    final today = dayOf(ref.watch(clockProvider)());
+    final points = wakeTimes(sessions, today);
 
     return SettingsIsland(
-      key: const ValueKey('activityPenaltyList'),
-      title: 'ペナルティ履歴',
-      header: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '総支払額 ${journeyPenaltyLabel(totalPenalty(sessions))}',
-              style: theme.textTheme.titleMedium,
-            ),
-            if (pending > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  '請求予定 ${thousands(pending)} 円',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: _stripHeight,
-              child: CustomPaint(
-                painter: DayBarsPainter(
-                  bars: [
-                    for (final outcome in outcomes)
-                      DayBar(
-                        color: outcome.penalty > 0
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.outlineVariant,
-                        // Against the worst day of the window, so the tallest
-                        // column is always the day that hurt most.
-                        fill: worst == 0 ? 0 : outcome.penalty / worst,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      key: const ValueKey('activityWakeChart'),
+      title: '起床時間の遷移(30日間)',
       children: [
-        if (rows.isEmpty)
-          const _EmptyNote('まだペナルティはありません')
-        else
-          for (final session in rows)
-            ListTile(
-              key: ValueKey('penalty-${session.id}'),
-              title: Text(formatDateTime(session.firedAt)),
-              trailing: Text(
-                isCardHostage(session)
-                    ? '${thousands(session.loss)} 円をカードに請求予定'
-                    : '−${session.loss} コイン',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.error,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (points.isEmpty)
+                const _EmptyNote('まだ記録はありません')
+              else
+                WakeTimeChart(
+                  points: points,
+                  firstDay: today.subtract(const Duration(days: 29)),
+                  lastDay: today,
                 ),
+              const SizedBox(height: 4),
+              _MoreLink(
+                linkKey: const ValueKey('activityWakeMoreLink'),
+                label: 'もっと見る',
+                onTap: () => pushWakeTimeHistoryScreen(context),
               ),
-            ),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// 連絡・共有の記録
+// 寝坊連絡・共有履歴
 // ---------------------------------------------------------------------------
 
-/// The oversleep contact log. Absent entirely until something has fired, so
-/// nobody is shown an empty section about a feature they never set up.
+/// The five most recent contacts, with the whole archive a tap behind them.
 class _ContactEventSection extends ConsumerWidget {
   const _ContactEventSection();
 
+  /// How many rows the card carries. Any more and the tab becomes the archive.
+  static const _shown = 5;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final events = ref.watch(contactEventsProvider).valueOrNull;
-    if (events == null || events.isEmpty) return const SizedBox.shrink();
+    final events =
+        ref.watch(contactEventsProvider).valueOrNull ?? const <ContactEvent>[];
 
     return SettingsIsland(
       key: const ValueKey('activityContactLog'),
-      title: '連絡・共有の記録',
-      header: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-        child: Text(
-          'Discord への共有・SMS・メールは、発火したときに実際に送信されます。',
-          style: theme.textTheme.bodySmall,
-        ),
-      ),
+      title: '寝坊連絡・共有履歴',
       children: [
-        for (final event in events)
-          ListTile(
-            key: ValueKey('contactEvent-${event.id}'),
-            leading: Icon(
-              contactChannelIcon(event.channel),
-              color: theme.colorScheme.error,
-            ),
-            // The name already carries its honorific — or is 「Discord 2件」,
-            // which takes none — because it is the same phrase the countdown
-            // said out loud.
-            title: Text('${event.contactName}へ'),
-            subtitle: Text(
-              [
-                formatDateTime(event.firedAt),
-                contactChannelLabel(event.channel),
-                ?event.detail,
-              ].join(' ・ '),
-            ),
+        if (events.isEmpty)
+          const _EmptyNote('まだ記録はありません')
+        else
+          for (final event in events.take(_shown))
+            ContactEventTile(event: event),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+          child: _MoreLink(
+            linkKey: const ValueKey('activityContactMoreLink'),
+            label: 'もっと見る',
+            onTap: () => pushContactLogArchiveScreen(context),
           ),
+        ),
       ],
     );
   }
 }
-
-IconData contactChannelIcon(ContactChannel channel) => switch (channel) {
-  ContactChannel.phone => Icons.phone_outlined,
-  ContactChannel.sms => Icons.sms_outlined,
-  ContactChannel.email => Icons.mail_outline,
-  ContactChannel.discord => Icons.forum_outlined,
-  ContactChannel.log => Icons.receipt_long_outlined,
-};
 
 // ---------------------------------------------------------------------------
 // 寝言の録音

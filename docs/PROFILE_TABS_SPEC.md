@@ -1,7 +1,8 @@
 # プロフィール画面とタブ構成の仕様（2026-08-30 共有版）
 
 スケッチ：`docs/design/profile_spec_2026-08-30.png`、`docs/design/tabs_spec_2026-08-30.png`、
-`docs/design/profile_edit_spec_2026-08-30.png`（プロフィール編集画面）。
+`docs/design/profile_edit_spec_2026-08-30.png`（プロフィール編集画面）、
+`docs/design/activity_spec_2026-08-30.png`（アクティビティ タブ）。
 この文書は**仕様の固定**であり、実装状況は末尾の「現状との差分」を参照。
 
 ## 1. プロフィール画面（上からのオーバーレイ）
@@ -69,9 +70,52 @@
 | タブ | 中身（想定） |
 |---|---|
 | **アラーム** | 現在のホーム（アラーム一覧・追加・編集） |
-| **アクティビティ** | 起床・寝坊の記録グラフ／睡眠記録・寝言の録音の一覧化／連絡・共有の記録／ペナルティ履歴・グラフ・総支払額 |
+| **アクティビティ** | 今月の寝坊ペナルティ／起床時間の遷移／寝坊連絡・共有履歴／寝言の録音（下記 2-b） |
 | **庭** | 現在の庭 |
 | **ショップ** | **純粋な購入画面**（コインの入手など。機能を売る画面にはしない） |
+
+### 2-b. アクティビティ タブ（`docs/design/activity_spec_2026-08-30.png`）
+
+上から 4 枚の島。いずれも読むだけ——録音の削除以外、ここでの操作が明日の請求を
+変えることはない。
+
+1. **今月の寝坊ペナルティ**（`activityMonthCard`）
+   - 小さい 1 行：「寝坊回数 N回　総寝坊時間 Xm」。当月（暦月）の **失敗** セッション数と、
+     その `dismissedAt − firedAt` の合計（表記は `journeyDurationLabel`）。
+   - 大きい数字 2 段：**カード人質の請求予定額**「N円」と **コイン人質の減少分**「Nコイン」。
+     0 でも「0円」「0コイン」と出す。どちらの財布から出たかは**台帳（`pending_charges`）が
+     決める**——カード人質でもカード未登録なら実際にはコインが減っているので、
+     人質の設定ではなく charge 行の有無で振り分ける。
+   - 右下のリンク「ペナルティ履歴 >」（`activityPenaltyHistoryLink`）→ `PenaltyHistoryScreen`。
+   - 島の外・下に小さく脚注「※総額50円未満の場合は請求されません」（`docs/BILLING_API.md`
+     の最低請求額 50 円）。
+2. **起床時間の遷移(30日間)**（`activityWakeChart`）
+   - 直近 30 日、1 日 1 点の折れ線。その日に**最初に解除されたセッションの `dismissedAt`**
+     の時刻（成功・失敗を問わない）。記録の無い日は点を打たず、**線は前後を繋ぐ**
+     （切ると「起きなかった」に見えるが、実際は「記録が無い」だけなので）。
+   - 平均線（`平均 7:12`）を薄い色で横に引く。
+   - 自前の `CustomPainter`（`wake_time_painter.dart`）。チャート依存は入れない。
+   - 右下「もっと見る >」（`activityWakeMoreLink`）→ `WakeTimeHistoryScreen`：
+     **全期間**の同じグラフを `InteractiveViewer`（横スクロール＋ピンチ、`minScale 1` /
+     `maxScale 6`）に入れたもの。
+3. **寝坊連絡・共有履歴**（`activityContactLog`）
+   - 直近 **5 件**のみ。1 件も無ければ「まだ記録はありません」。
+   - 右下「もっと見る >」（`activityContactMoreLink`）→ `ContactLogArchiveScreen`：
+     データのある年だけを新しい順に並べ、各年に 3×4 の月の島「1月」…「12月」
+     （`archiveMonth-YYYY-MM`）。**データの無い月は灰色で非アクティブ**、
+     **今月より先の月とデータの無い年は表示しない**。月を選ぶと、グリッドの下に
+     その月の一覧が出る（島は選択中として強調）。
+4. **寝言の録音**（`activityRecordings`）：従来どおり。
+
+旧「起床・寝坊の記録」ストリップと、タブ上の旧「ペナルティ履歴」一覧・棒グラフは
+**廃止**（後者は `PenaltyHistoryScreen` に移った）。
+
+`PenaltyHistoryScreen`（`activityPenaltyHistoryLink` の行き先）は、全期間の日別
+ペナルティ額を**コイン／カードの 2 色の積み上げ棒**（凡例つき）で `InteractiveViewer`
+に入れ、その下に**選択中の日のログ**（時刻・成功／寝坊・失った額と単位・スヌーズ回数）を
+出す。棒をタップすると選択が移る（`GestureDetector` は `InteractiveViewer` の**中**に
+置くので、座標はグラフ自身のもので、行列を手で逆変換しない）。既定は**最後に何か
+失った日**。
 
 ## 3. 現状との差分（2026-08-30 時点）
 
@@ -112,13 +156,20 @@
 - 下タブは **アラーム／アクティビティ／庭／ショップ** の 4 つ（`shell_scaffold.dart`、
   ルートは `/`・`/activity`・`/garden`・`/shop`）。ウォレット タブは廃止し、
   `AppRoute.wallet` は `/shop` の別名として残した（ヘッダーの「＋」の行き先）。
-- **アクティビティ**（`features/activity/activity_screen.dart`）は 4 つの島：
-  「起床・寝坊の記録」（直近30日の日別ストリップ。`domain/activity_stats.dart` の
-  `dailyOutcomes` を `day_bars_painter.dart` で自前描画。チャート依存は入れていない）、
-  「ペナルティ履歴」（総支払額・請求予定・日別の棒・1件ずつの行）、
-  「連絡・共有の記録」（ウォレットから移設。1件も無いうちはセクションごと出ない）、
-  「寝言の録音」（`services/recording_library.dart` 越しに `contact_recordings/` を一覧。
-  再生・停止・確認つき削除）。
+- **アクティビティ**（`features/activity/activity_screen.dart`）は §2-b のスケッチ
+  どおりの 4 つの島：「今月の寝坊ペナルティ」「起床時間の遷移(30日間)」
+  「寝坊連絡・共有履歴」「寝言の録音」。計算はすべて `domain/activity_stats.dart` の
+  純関数（`monthlyPenalty` / `wakeTimes` / `averageTimeOfDay` / `penaltyByDay` /
+  `sessionsOn` / `monthsWithEvents` / `eventsInMonth`）で、単体テスト済み。
+  描画は自前の `CustomPainter` 2 枚（`wake_time_painter.dart` の折れ線＋平均線、
+  `day_bars_painter.dart` の `PenaltyBarsPainter` の積み上げ棒）で、
+  チャート依存は入れていない。
+  行き先は `penalty_history_screen.dart` / `wake_time_history_screen.dart` /
+  `contact_log_archive_screen.dart`。連絡ログの 1 行は `contact_event_tile.dart` に
+  切り出して、タブとアーカイブで同じ見た目にしてある。
+  アーカイブは上限なしの `allContactEventsProvider`
+  （`ContactEventRepository.watchAll`）を読む——タブの島だけが `contactEventsProvider`
+  （直近 100 件）のまま。
 - **ショップ**（`features/shop/shop_screen.dart`）は「純粋な購入画面」：残高と
   「コインを手に入れる」（開発用チャージ）と「コインの入手方法は準備中です。」だけ。
   履歴・連絡ログ・設定への行はここから外した。

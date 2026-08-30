@@ -10,6 +10,7 @@ class SettingsIsland extends StatelessWidget {
     required this.title,
     required this.children,
     this.header,
+    this.footer,
     this.background,
     this.borderColor,
     this.titleColor,
@@ -21,6 +22,10 @@ class SettingsIsland extends StatelessWidget {
   /// Sits inside the card, above the rows. The kakugo island puts its running
   /// total here.
   final Widget? header;
+
+  /// Sits **under** the card, outside it. The 今月の寝坊ペナルティ island puts its
+  /// 「※総額50円未満…」 footnote here: a caveat about the card, not a row of it.
+  final Widget? footer;
 
   final Color? background;
   final Color? borderColor;
@@ -65,6 +70,11 @@ class SettingsIsland extends StatelessWidget {
               ],
             ),
           ),
+          if (footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
+              child: footer,
+            ),
         ],
       ),
     );
