@@ -16,7 +16,7 @@ import 'contact_event_tile.dart';
 import 'contact_log_archive_screen.dart';
 import 'penalty_history_screen.dart';
 import 'wake_time_history_screen.dart';
-import 'wake_time_painter.dart';
+import 'wake_time_chart.dart';
 
 /// アクティビティ — everything the app has recorded about the user's mornings:
 /// what this month cost, when they got up, who was told, and what was said out

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +8,7 @@ import 'package:wake_or_pay/data/providers.dart';
 import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/features/activity/activity_screen.dart';
 import 'package:wake_or_pay/features/activity/contact_log_archive_screen.dart';
+import 'package:wake_or_pay/features/activity/penalty_bar_chart.dart';
 import 'package:wake_or_pay/features/activity/penalty_history_screen.dart';
 import 'package:wake_or_pay/features/activity/wake_time_history_screen.dart';
 import 'package:wake_or_pay/main.dart';
@@ -501,6 +505,158 @@ void main() {
       expect(library.deleted, ['/rec/a1-1756080000000.m4a']);
       expect(library.paths, isEmpty);
       expect(find.text('まだ録音はありません'), findsOneWidget);
+    });
+  });
+
+  group('グラフ (fl_chart)', () {
+    testWidgets('the tab draws a LineChart of the mornings it was given', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      // 06:00, 08:00 and 07:00 → three spots, average 07:00 = 420 minutes.
+      await sessions.save(woke(id: 's1', firedAt: DateTime(2026, 8, 26, 6)));
+      await sessions.save(woke(id: 's2', firedAt: DateTime(2026, 8, 27, 8)));
+      await sessions.save(woke(id: 's3', firedAt: DateTime(2026, 8, 28, 7)));
+
+      await openActivity(tester);
+      await scrollTo(tester, find.byKey(const ValueKey('activityWakeChart')));
+
+      final chart = tester.widget<LineChart>(find.byType(LineChart));
+      expect(chart.data.lineBarsData.first.spots.length, 3);
+      expect(
+        chart.data.lineBarsData.first.spots.map((s) => s.y),
+        containsAll(<double>[6 * 60, 8 * 60, 7 * 60]),
+      );
+      expect(chart.data.extraLinesData.horizontalLines.single.y, 7 * 60);
+      // The 30-day card does not pan; the whole history does.
+      expect(chart.transformationConfig.scaleAxis, FlScaleAxis.none);
+    });
+
+    testWidgets('the whole-history line chart pans and zooms horizontally', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      await sessions.save(woke(id: 's1', firedAt: DateTime(2026, 5, 1, 6)));
+      await sessions.save(woke(id: 's2', firedAt: DateTime(2026, 8, 28, 8)));
+
+      await openActivity(tester);
+      await tapLink(tester, 'activityWakeMoreLink');
+
+      final chart = tester.widget<LineChart>(find.byType(LineChart));
+      expect(chart.data.lineBarsData.first.spots.length, 2);
+      expect(chart.transformationConfig.scaleAxis, FlScaleAxis.horizontal);
+      expect(chart.transformationConfig.minScale, 1);
+      expect(chart.transformationConfig.maxScale, 6);
+    });
+
+    testWidgets('ペナルティ履歴 is a BarChart, one stacked group per day', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      // 8/20 costs coins, 8/22 costs the card, 8/21 costs nothing — and is
+      // still a column, so the quiet day is drawn rather than skipped.
+      await sessions.save(
+        failed(id: 'coin', firedAt: DateTime(2026, 8, 20, 7), loss: 200),
+      );
+      await sessions.save(
+        failed(
+          id: 'card',
+          firedAt: DateTime(2026, 8, 22, 7),
+          loss: 1300,
+          hostage: HostageType.card,
+        ),
+      );
+      await container
+          .read(pendingChargeRepositoryProvider)
+          .insertIfAbsent(
+            PendingCharge(
+              sessionId: 'card',
+              alarmId: 'a1',
+              amount: 1300,
+              createdAt: DateTime(2026, 8, 22, 7, 10),
+            ),
+          );
+
+      await openActivity(tester);
+      await tapLink(tester, 'activityPenaltyHistoryLink');
+
+      final chart = tester.widget<BarChart>(find.byType(BarChart));
+      expect(chart.data.barGroups.length, 3);
+      expect(chart.data.barGroups.first.barRods.single.toY, 200);
+      expect(chart.data.barGroups.last.barRods.single.toY, 1300);
+      // The quiet middle day is a floor tick, not a full column.
+      expect(chart.data.barGroups[1].barRods.single.toY, lessThan(200));
+      expect(chart.transformationConfig.scaleAxis, FlScaleAxis.horizontal);
+    });
+
+    testWidgets('the chart hands its day up, and the log follows', (
+      tester,
+    ) async {
+      final container = await pumpApp(tester);
+      final sessions = container.read(alarmSessionRepositoryProvider);
+      await sessions.save(
+        failed(id: 'first', firedAt: DateTime(2026, 8, 20, 7), loss: 200),
+      );
+      await sessions.save(
+        failed(id: 'second', firedAt: DateTime(2026, 8, 21, 7), loss: 300),
+      );
+
+      await openActivity(tester);
+      await tapLink(tester, 'activityPenaltyHistoryLink');
+      expect(find.text('2026/8/21 の記録'), findsOneWidget);
+
+      // The selection is a callback, so it can be exercised without aiming a
+      // tap at a rod.
+      final chart = tester.widget<PenaltyBarChart>(
+        find.byKey(const ValueKey('penaltyHistoryChart')),
+      );
+      expect(chart.bars.length, 2);
+      expect(chart.selected, DateTime(2026, 8, 21));
+      chart.onDaySelected(DateTime(2026, 8, 20));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2026/8/20 の記録'), findsOneWidget);
+      expect(find.byKey(const ValueKey('penaltyDayRow-first')), findsOneWidget);
+    });
+
+    test('no hand-painted chart is left in the activity feature', () {
+      final sources = Directory('lib/features/activity')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'));
+      expect(sources, isNotEmpty);
+
+      for (final file in sources) {
+        final source = file.readAsStringSync();
+        expect(
+          source.contains('extends CustomPainter'),
+          isFalse,
+          reason: file.path,
+        );
+      }
+
+      for (final gone in const [
+        'wake_time_painter.dart',
+        'day_bars_painter.dart',
+      ]) {
+        expect(
+          File('lib/features/activity/$gone').existsSync(),
+          isFalse,
+          reason: gone,
+        );
+      }
+
+      final all = sources.map((f) => f.readAsStringSync()).join('\n');
+      for (final name in const [
+        'WakeTimePainter',
+        'DayBarsPainter',
+        'PenaltyBarsPainter',
+      ]) {
+        expect(all.contains(name), isFalse, reason: name);
+      }
     });
   });
 

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,7 +5,7 @@ import '../../data/providers.dart';
 import '../../domain/activity_stats.dart';
 import '../../domain/format.dart';
 import '../../domain/models.dart';
-import 'day_bars_painter.dart';
+import 'penalty_bar_chart.dart';
 
 /// ペナルティ履歴 — every day the mornings ever cost anything, and the log of
 /// the one the user is pointing at.
@@ -34,7 +32,6 @@ class _PenaltyHistoryScreenState extends ConsumerState<PenaltyHistoryScreen> {
   DateTime? _selected;
 
   static const _chartHeight = 180.0;
-  static const _minPitch = 10.0;
 
   @override
   Widget build(BuildContext context) {
@@ -60,52 +57,12 @@ class _PenaltyHistoryScreenState extends ConsumerState<PenaltyHistoryScreen> {
               children: [
                 _Legend(),
                 const SizedBox(height: 8),
-                SizedBox(
+                PenaltyBarChart(
+                  key: const ValueKey('penaltyHistoryChart'),
+                  bars: bars,
+                  selected: selected,
                   height: _chartHeight,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final width = math.max(
-                        constraints.maxWidth,
-                        bars.length * _minPitch,
-                      );
-                      return InteractiveViewer(
-                        key: const ValueKey('penaltyHistoryChart'),
-                        constrained: false,
-                        minScale: 1,
-                        maxScale: 6,
-                        child: SizedBox(
-                          width: width,
-                          height: _chartHeight,
-                          child: GestureDetector(
-                            // Inside the viewer, so the coordinates handed here
-                            // are already the chart's own — the pan and the
-                            // zoom are undone by the same widget that applied
-                            // them, and nothing has to invert a matrix by hand.
-                            behavior: HitTestBehavior.opaque,
-                            onTapDown: (details) => _pick(
-                              details.localPosition.dx,
-                              width,
-                              bars,
-                            ),
-                            child: CustomPaint(
-                              size: Size(width, _chartHeight),
-                              painter: PenaltyBarsPainter(
-                                bars: bars,
-                                coinColor: theme.colorScheme.primary,
-                                cardColor: theme.colorScheme.error,
-                                emptyColor: theme.colorScheme.outlineVariant,
-                                selectedColor: theme.colorScheme.primary
-                                    .withValues(alpha: 0.12),
-                                selected: selected == null
-                                    ? null
-                                    : bars.indexWhere((b) => b.day == selected),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                  onDaySelected: (day) => setState(() => _selected = day),
                 ),
                 const SizedBox(height: 16),
                 if (selected != null) ...[
@@ -120,12 +77,6 @@ class _PenaltyHistoryScreenState extends ConsumerState<PenaltyHistoryScreen> {
               ],
             ),
     );
-  }
-
-  void _pick(double dx, double width, List<PenaltyBar> bars) {
-    final index = PenaltyBarsPainter.indexAt(dx, width, bars.length);
-    if (index == null) return;
-    setState(() => _selected = bars[index].day);
   }
 
   /// Every day from the first penalty to the last, so a quiet fortnight is a

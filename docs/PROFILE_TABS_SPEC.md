@@ -94,10 +94,15 @@
      の時刻（成功・失敗を問わない）。記録の無い日は点を打たず、**線は前後を繋ぐ**
      （切ると「起きなかった」に見えるが、実際は「記録が無い」だけなので）。
    - 平均線（`平均 7:12`）を薄い色で横に引く。
-   - 自前の `CustomPainter`（`wake_time_painter.dart`）。チャート依存は入れない。
+   - 描画は **`fl_chart` の `LineChart`**（`wake_time_chart.dart`）。x は起点日からの
+     日数、y は 0 時からの分。左軸は `HH:mm`（上下 ±30 分の余白つき、最小幅 2 時間）、
+     下軸は `M/d` を間引いて出す。平均線は `extraLinesData` の `HorizontalLine`
+     （ラベル「平均 7:12」）で、点をタップすると `M/d HH:mm` のツールチップが出る。
+     自前の `CustomPainter`（旧 `wake_time_painter.dart`）は**廃止**。
    - 右下「もっと見る >」（`activityWakeMoreLink`）→ `WakeTimeHistoryScreen`：
-     **全期間**の同じグラフを `InteractiveViewer`（横スクロール＋ピンチ、`minScale 1` /
-     `maxScale 6`）に入れたもの。
+     **全期間**の同じグラフ。横スクロール＋ピンチは `InteractiveViewer` ではなく
+     `fl_chart` 自身の `transformationConfig`
+     （`FlScaleAxis.horizontal` / `minScale 1` / `maxScale 6`）で行う。
 3. **寝坊連絡・共有履歴**（`activityContactLog`）
    - 直近 **5 件**のみ。1 件も無ければ「まだ記録はありません」。
    - 右下「もっと見る >」（`activityContactMoreLink`）→ `ContactLogArchiveScreen`：
@@ -111,11 +116,12 @@
 **廃止**（後者は `PenaltyHistoryScreen` に移った）。
 
 `PenaltyHistoryScreen`（`activityPenaltyHistoryLink` の行き先）は、全期間の日別
-ペナルティ額を**コイン／カードの 2 色の積み上げ棒**（凡例つき）で `InteractiveViewer`
-に入れ、その下に**選択中の日のログ**（時刻・成功／寝坊・失った額と単位・スヌーズ回数）を
-出す。棒をタップすると選択が移る（`GestureDetector` は `InteractiveViewer` の**中**に
-置くので、座標はグラフ自身のもので、行列を手で逆変換しない）。既定は**最後に何か
-失った日**。
+ペナルティ額を**コイン／カードの 2 色の積み上げ棒**（`BarChartRodStackItem`、凡例つき）
+で描き、その下に**選択中の日のログ**（時刻・成功／寝坊・失った額と単位・スヌーズ回数）を
+出す。横スクロール＋ピンチは `transformationConfig`。棒をタップすると選択が移る
+（`BarTouchData.touchCallback` → `PenaltyBarChart.onDaySelected`。座標変換は
+`fl_chart` の中で完結するので、行列を手で逆変換しない）。列は空の高さまで
+当たり判定を持つので、50 円の日でも狙って押せる。既定は**最後に何か失った日**。
 
 ## 3. 現状との差分（2026-08-30 時点）
 
@@ -161,9 +167,12 @@
   「寝坊連絡・共有履歴」「寝言の録音」。計算はすべて `domain/activity_stats.dart` の
   純関数（`monthlyPenalty` / `wakeTimes` / `averageTimeOfDay` / `penaltyByDay` /
   `sessionsOn` / `monthsWithEvents` / `eventsInMonth`）で、単体テスト済み。
-  描画は自前の `CustomPainter` 2 枚（`wake_time_painter.dart` の折れ線＋平均線、
-  `day_bars_painter.dart` の `PenaltyBarsPainter` の積み上げ棒）で、
-  チャート依存は入れていない。
+  描画は **`fl_chart`**（`wake_time_chart.dart` の `LineChart`、
+  `penalty_bar_chart.dart` の `BarChart`）。横スクロール＋ピンチは
+  `transformationConfig` で内蔵、タップは `LineTouchData` / `BarTouchData` の
+  コールバックで受ける。自前の `CustomPainter` 2 枚（`wake_time_painter.dart` /
+  `day_bars_painter.dart`）は**削除済み**で、`lib/features/activity/` に
+  チャートを描く `CustomPainter` はもう無い。
   行き先は `penalty_history_screen.dart` / `wake_time_history_screen.dart` /
   `contact_log_archive_screen.dart`。連絡ログの 1 行は `contact_event_tile.dart` に
   切り出して、タブとアーカイブで同じ見た目にしてある。

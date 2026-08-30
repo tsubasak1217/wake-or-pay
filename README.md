@@ -1274,7 +1274,7 @@ lib/
     legacy_recording_cleanup.dart 旧「電話設定」の録音を起動時に1回だけ掃除する
     recording_library.dart       寝言の録音の一覧・削除（インタフェース越し。実体は contact_recordings/）
   features/              alarms / activity / ringing / result / shop / settings / profile
-    activity/            activity_screen（4つの島）, day_bars_painter（30日ストリップの自前描画）
+    activity/            activity_screen（4つの島）, wake_time_chart / penalty_bar_chart（fl_chart）
     shop/                shop_screen（残高と「コインを手に入れる」だけ）
     profile/             app_header（3タブ共通のヘッダー）,
                          profile_overlay（上から被さるプロフィール）,
