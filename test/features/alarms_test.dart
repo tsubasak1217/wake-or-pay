@@ -139,11 +139,12 @@ void main() {
     // Back on Home, showing the new alarm.
     expect(find.text('13:45'), findsOneWidget);
     expect(find.text('月・金'), findsOneWidget);
-    // The 覚悟 row is the same row in different colours: the badge beside the
-    // time, and one line saying there is a pledge and what it costs. The wake
-    // check and the worst case stay in the editor.
-    expect(find.text('💀'), findsOneWidget, reason: '1000 ÷ 500 = 2分');
-    expect(find.text('覚悟あり ・ 500 コイン/分'), findsOneWidget);
+    // The 覚悟 row is the same row in different colours, with one line of
+    // icons under it saying what is armed — the coins here, nothing else.
+    // Every number, the wake check and the worst case stay in the editor.
+    expect(find.byKey(const ValueKey('alarmKakugoIcons')), findsOneWidget);
+    expect(find.byTooltip('コイン'), findsOneWidget);
+    expect(find.textContaining('コイン/分'), findsNothing);
     expect(find.textContaining('寝坊で失う最大金額'), findsNothing);
     expect(find.textContaining('計算（3問）'), findsNothing);
 
@@ -225,14 +226,16 @@ void main() {
       findsNothing,
       reason: 'kakugo is off on a new alarm',
     );
-    for (final row in ['曜日', '起床確認方法', 'サウンド', 'スヌーズ', '覚悟']) {
+    for (final row in [
+      '曜日',
+      '起床確認方法',
+      'サウンド',
+      '起床猶予',
+      'スヌーズ',
+      '覚悟',
+    ]) {
       expect(find.text(row), findsOneWidget, reason: row);
     }
-    expect(
-      find.text('起床猶予'),
-      findsNothing,
-      reason: 'it is a row of 覚悟の設定, which is off here, not of 基本設定',
-    );
 
     // Snooze is the opposite of kakugo: on by default, at the default interval
     // and count, so the island is already below 基本設定.
@@ -316,16 +319,15 @@ void main() {
   });
 
   testWidgets(
-    'the grace window defaults to one minute and is its own row of 覚悟の設定',
+    'the grace window defaults to one minute and is its own row of 基本設定',
     (tester) async {
       final container = await pumpHome(tester, coins: 5000);
       await tester.tap(find.byType(FloatingActionButton));
       await tester.pumpAndSettle();
 
-      await toggleKakugoWithCoins(tester);
-
-      // Its own row now, not a section inside 寝坊ペナルティ: one number, one
-      // place to set it, reachable whatever the 人質 is.
+      // Its own row of 基本設定 now, not a section inside 寝坊ペナルティ and not a
+      // row of 覚悟の設定: one number, one place to set it, on every alarm —
+      // with or without a pledge behind it.
       await scrollToInEditor(tester, find.byKey(const ValueKey('graceRow')));
       expect(
         tester
@@ -348,9 +350,9 @@ void main() {
           (await container.read(alarmRepositoryProvider).getAll()).single;
       expect(saved.graceMinutes, 5);
       expect(
-        saved.kakugo!.ratePerMinute,
-        defaultKakugo.ratePerMinute,
-        reason: 'editing the grace left the rate alone',
+        saved.kakugo,
+        isNull,
+        reason: 'the grace never needed a pledge to be set',
       );
     },
   );

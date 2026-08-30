@@ -157,6 +157,8 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
       navigator.pop();
       return;
     }
+    // `true` = 破棄して戻る, `false` = 保存. Dismissing the dialog (barrier or
+    // system back) answers neither, and the editor simply stays open.
     final discard = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -173,16 +175,23 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
             child: const Text('破棄して戻る'),
           ),
           FilledButton(
-            key: const ValueKey('unsavedKeep'),
+            key: const ValueKey('unsavedSave'),
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('編集を続ける'),
+            child: const Text('保存'),
           ),
         ],
       ),
     );
-    if (discard == true && mounted) {
+    if (!mounted) return;
+    if (discard == true) {
       _leaving = true;
       navigator.pop();
+      return;
+    }
+    if (discard == false) {
+      // The same save the FAB runs: it pops on success, and on a time clash it
+      // refuses and scrolls back to the wheel — the editor then stays open.
+      await _save();
     }
   }
 
@@ -387,6 +396,7 @@ class _BasicIsland extends StatelessWidget {
       _DaysRow(seed: seed),
       _WakeCheckRow(seed: seed),
       _SoundRow(seed: seed),
+      _GraceRow(seed: seed),
       _SnoozeToggleRow(seed: seed),
       _KakugoToggleRow(seed: seed),
     ],
@@ -644,15 +654,6 @@ class _KakugoIsland extends ConsumerWidget {
     final burns = ref.watch(
       alarmDraftProvider(seed).select((a) => a.kakugo?.hostage.burns ?? false),
     );
-    // The same bool [_ContactShareRow] draws 「設定済み」 from, read here for the
-    // same reason the two above are: a row that returned an empty box would
-    // leave its divider behind.
-    final notifies = ref.watch(
-      alarmDraftProvider(seed).select(
-        (a) => (a.contact?.isUsable ?? false) || (a.share?.isUsable ?? false),
-      ),
-    );
-
     final theme = Theme.of(context);
     // ListTile paints from the ambient colour scheme, so the whole island gets
     // a dark scheme of its own — otherwise the light themes would draw black
@@ -679,12 +680,6 @@ class _KakugoIsland extends ConsumerWidget {
           // and whether there are any numbers below at all.
           _HostageRow(seed: seed),
           _ContactShareRow(seed: seed),
-          // 起床猶予 is the moment two things happen: the burn begins, and the
-          // 連絡・共有 goes out. Shown whenever either of those exists — and
-          // only then, because a pledge with 人質なし and nobody to tell has
-          // neither, so the number would decide nothing, and a row that
-          // decides nothing is a question the user should not be asked.
-          if (burns || notifies) _GraceRow(seed: seed),
           if (burns) _RateRow(seed: seed),
           // Only means anything when the alarm can be snoozed at all, so it
           // follows the スヌーズ toggle in the island above. Neither 「スヌーズ中
@@ -759,13 +754,13 @@ class _HostageRow extends ConsumerWidget {
 
 /// 起床猶予: how long the alarm may ring before the morning counts as overslept.
 ///
-/// A row of the island, and the **only** place this number is edited. It used
+/// A row of 基本設定, and the **only** place this number is edited. It used
 /// to sit inside the 寝坊ペナルティ sub-screen, next to the rate it qualifies;
 /// that put it out of reach of a pledge with no rate at all, and one number
 /// with two editors is one number with two places to disagree.
 ///
-/// Hidden only when the window would decide nothing — see the rule in
-/// [_KakugoIsland]'s children.
+/// Always shown: the window decides when the morning counts as overslept,
+/// which every alarm has — with or without a pledge behind it.
 class _GraceRow extends ConsumerWidget {
   const _GraceRow({required this.seed});
 

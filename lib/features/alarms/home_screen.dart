@@ -13,6 +13,7 @@ import '../../domain/oversleep_contact_rules.dart';
 import '../../domain/snooze_rules.dart';
 import '../profile/app_header.dart';
 import '../update/update_banner.dart';
+import '../widgets/discord_icon.dart';
 import 'alarm_controller.dart';
 import 'widgets/swipe_to_delete.dart';
 
@@ -306,12 +307,6 @@ class _AlarmRow extends ConsumerWidget {
           )
         : 0;
 
-    // 人質なし puts nothing at stake, so it wears no danger badge: the gauge
-    // reads a price, and there is no price.
-    final badge = kakugo == null || !kakugo.hostage.burns
-        ? ''
-        : kakugoBadge(kakugo.ratePerMinute, kakugo.cap);
-
     final tile = ListTile(
       onTap: () => context.push(AppRoute.alarmEdit(alarm.id)),
       onLongPress: () => _showActions(context, ref),
@@ -325,17 +320,6 @@ class _AlarmRow extends ConsumerWidget {
               color: _timeColor(theme, kakugo != null, on),
             ),
           ),
-          // Right beside the time, on the same line, and smaller than it — so
-          // it cannot make the line taller than the row without one.
-          if (badge.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Text(
-                badge,
-                key: const ValueKey('kakugoBadge'),
-                style: const TextStyle(fontSize: 24),
-              ),
-            ),
         ],
       ),
       subtitle: Column(
@@ -350,15 +334,18 @@ class _AlarmRow extends ConsumerWidget {
                   : kakugoOnDanger.withValues(alpha: 0.75),
             ),
           ),
-          Text(
-            _summary(kakugo, contact, shareCount),
-            key: const ValueKey('alarmSummary'),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: kakugo == null
-                  ? theme.colorScheme.onSurfaceVariant
-                  : kakugoDanger,
+          // 覚悟 only, and icons only — no numbers on the row. What it says is
+          // *which* consequences are armed: who is told, where it is
+          // announced, and what is held hostage. The amounts live in the
+          // editor, where they can be read next to the rules that spend them.
+          if (kakugo != null)
+            _KakugoIcons(
+              contact: contact,
+              discord: shareCount > 0,
+              x: alarm.willShare && (alarm.share?.xEnabled ?? false),
+              hostage: kakugo.hostage,
+              color: kakugoDanger,
             ),
-          ),
           if (snoozed != null)
             _SnoozingRow(
               until: snoozed!.until,
@@ -420,33 +407,98 @@ class _AlarmRow extends ConsumerWidget {
     }
     return on ? null : theme.disabledColor;
   }
+}
 
-  /// 「覚悟あり ・ 100 コイン/分 ・ 💬 田中太郎」 — the pledge, the price and who
-  /// hears about it, in that order and only when there is one.
-  ///
-  /// A share-only alarm reads 「覚悟あり ・ … ・ Discord 2件」, and an alarm doing
-  /// both names both. The route icons stay on the person: they say *how* that
-  /// one person is reached, which a count of Discord rooms has no equivalent
-  /// of.
-  ///
-  /// The per-minute price is dropped at 0: a 連絡だけ pledge burns nothing by
-  /// the minute, and 「0 コイン/分」 on a row is noise.
-  static String _summary(
-    Kakugo? kakugo,
-    OversleepContact? contact,
-    int shareCount,
-  ) => [
-    kakugo == null ? '覚悟なし' : '覚悟あり',
-    if (kakugo != null && kakugo.hostage.burns && kakugo.ratePerMinute > 0)
-      kakugoRateLabel(kakugo.ratePerMinute, kakugo.hostage),
-    if (contact != null)
-      [
-        if (contact.willSms) '💬',
-        if (contact.willEmail) '✉',
-        contact.name,
-      ].join(' '),
-    if (shareCount > 0) 'Discord $shareCount件',
-  ].join(' ・ ');
+/// What a 覚悟 alarm has armed, as icons and nothing else.
+///
+/// 連絡 → 共有 → ペナルティ, and only what is actually on: a row of icons the
+/// user can read at a glance beats a sentence they have to parse, and every
+/// amount behind these icons already has a place in the editor. No numbers
+/// here on purpose — a price on the list is a number with no rules next to it.
+///
+/// Every icon carries a tooltip *and* a semantics label with the same word, so
+/// the row reads the same to a screen reader as it does to a long press.
+class _KakugoIcons extends StatelessWidget {
+  const _KakugoIcons({
+    required this.contact,
+    required this.discord,
+    required this.x,
+    required this.hostage,
+    required this.color,
+  });
+
+  /// The contact as the 連絡帳 has it now, or null when nobody is called.
+  final OversleepContact? contact;
+
+  /// Whether the share still has at least one usable Discord 共有先.
+  final bool discord;
+
+  /// X 共有. Never true today — spec 11.1 puts X behind a row that cannot be
+  /// pressed — but the branch is here so turning it on is only a row.
+  final bool x;
+
+  final HostageType hostage;
+
+  final Color color;
+
+  static const double _size = 16;
+
+  @override
+  Widget build(BuildContext context) {
+    final icons = <Widget>[
+      if (contact?.willSms ?? false) _icon(Icons.sms_outlined, 'SMS'),
+      if (contact?.willEmail ?? false) _icon(Icons.mail_outline, 'メール'),
+      if (discord)
+        const Tooltip(
+          message: 'Discord',
+          child: DiscordIcon(size: _size),
+        ),
+      if (x) _xIcon(),
+      if (hostage == HostageType.coin)
+        _icon(Icons.monetization_on_outlined, 'コイン'),
+      if (hostage == HostageType.card) _icon(Icons.credit_card, 'カード'),
+    ];
+    if (icons.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      key: const ValueKey('alarmKakugoIcons'),
+      padding: const EdgeInsets.only(top: 2),
+      child: Wrap(spacing: 8, runSpacing: 4, children: icons),
+    );
+  }
+
+  Widget _icon(IconData icon, String label) => Tooltip(
+    message: label,
+    child: Icon(icon, size: _size, color: color, semanticLabel: label),
+  );
+
+  /// X has no icon in the Material set, so it is drawn: the letter in a
+  /// rounded box, at the same size as everything beside it.
+  Widget _xIcon() => Tooltip(
+    message: 'X',
+    child: Semantics(
+      label: 'X',
+      child: Container(
+        key: const ValueKey('alarmIconX'),
+        width: _size,
+        height: _size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border.all(color: color),
+          borderRadius: BorderRadius.circular(_size * 0.22),
+        ),
+        child: Text(
+          'X',
+          style: TextStyle(
+            color: color,
+            fontSize: _size * 0.7,
+            height: 1,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// 「スヌーズ中 7:05」 and the way out of it — spec 12.1, the 一覧経由 path. The

@@ -173,13 +173,71 @@ void main() {
       'abcd efgh ijkl mnop',
     );
 
-    // The field goes back to empty, and the screen says a password is held.
-    expect(
-      (await field(tester, 'mailPasswordField')).controller!.text,
-      isEmpty,
-    );
+    // The field is gone entirely, and the screen says a password is held.
+    expect(find.byKey(const ValueKey('mailPasswordField')), findsNothing);
     await show(tester, 'mailPasswordSavedNote');
     expect(find.byKey(const ValueKey('mailPasswordSavedNote')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mailPasswordUpdate')), findsOneWidget);
+  });
+
+  testWidgets('a saved password hides the field behind アプリパスワードを更新', (
+    tester,
+  ) async {
+    await openScreen(
+      tester,
+      // Gmail, so the 「アプリパスワードを取得」 button has a page to offer:
+      // it must be hidden with the field and come back with it.
+      prefs: configuredMailPrefs(from: 'me@gmail.com', host: 'smtp.gmail.com'),
+      extra: [seededSecretStoreOverride()],
+    );
+
+    // Nothing to type and nothing to fetch: the account is set up.
+    expect(find.byKey(const ValueKey('mailPasswordField')), findsNothing);
+    expect(find.byKey(const ValueKey('mailAppPasswordButton')), findsNothing);
+    await show(tester, 'mailPasswordSavedNote');
+    await show(tester, 'mailPasswordUpdate');
+    // And 削除 is still right there, next to the note.
+    expect(find.byKey(const ValueKey('mailPasswordClear')), findsOneWidget);
+
+    await tap(tester, 'mailPasswordUpdate');
+
+    // The field is back — empty, focused, with the 取得 button beside it.
+    final revealed = await field(tester, 'mailPasswordField');
+    expect(revealed.controller!.text, isEmpty);
+    expect(revealed.focusNode!.hasFocus, isTrue);
+    expect(find.byKey(const ValueKey('mailAppPasswordButton')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mailPasswordUpdate')), findsNothing);
+  });
+
+  testWidgets('アプリパスワードを更新 → 入力 → 保存 stores the new password', (
+    tester,
+  ) async {
+    final r = await openScreen(
+      tester,
+      prefs: configuredMailPrefs(),
+      extra: [seededSecretStoreOverride()],
+    );
+
+    await tap(tester, 'mailPasswordUpdate');
+    await enter(tester, 'mailPasswordField', 'brand new secret');
+    await tap(tester, 'mailSaveButton');
+
+    expect(
+      await r.container.read(mailSettingsRepositoryProvider).password(),
+      'brand new secret',
+    );
+    // And the field folds away again: what was typed is in the keystore.
+    expect(find.byKey(const ValueKey('mailPasswordField')), findsNothing);
+    await show(tester, 'mailPasswordUpdate');
+  });
+
+  testWidgets('with nothing stored the field is on screen from the start', (
+    tester,
+  ) async {
+    await openScreen(tester);
+    await show(tester, 'mailPasswordField');
+    expect(find.byKey(const ValueKey('mailPasswordUpdate')), findsNothing);
+    expect(find.byKey(const ValueKey('mailPasswordSavedNote')), findsNothing);
   });
 
   testWidgets('an unknown domain saves the hand-entered server', (tester) async {
@@ -288,6 +346,9 @@ void main() {
       (r.container.read(secretStoreProvider) as InMemorySecretStore).values,
       isEmpty,
     );
+    // Nothing saved any more, so the field comes back on its own.
+    await show(tester, 'mailPasswordField');
+    expect(find.byKey(const ValueKey('mailPasswordUpdate')), findsNothing);
   });
 
   testWidgets('the provider note is on the screen', (tester) async {

@@ -279,8 +279,8 @@ void main() {
     await pumpEditor(tester);
     await toggle(tester, '覚悟');
 
-    // Nothing at stake and nobody to tell: even 起床猶予 has nothing to be the
-    // start of, so the island is down to the two rows that decide those.
+    // Nothing at stake: the island is down to the two rows that decide what
+    // there would be. 起床猶予 is not one of them — it belongs to 基本設定 now.
     expect(islandRows(tester, '覚悟の設定'), ['人質', '寝坊時連絡・共有']);
     expect(find.text('寝坊で失う最大金額'), findsNothing);
 
@@ -292,7 +292,6 @@ void main() {
     expect(islandRows(tester, '覚悟の設定'), [
       '人質',
       '寝坊時連絡・共有',
-      '起床猶予',
       '寝坊ペナルティ',
       'スヌーズペナルティ',
       '上限金額',
@@ -300,20 +299,20 @@ void main() {
     expect(find.text('寝坊で失う最大金額'), findsOneWidget);
   });
 
-  testWidgets('人質なし・連絡なし では起床猶予の行も出ない', (tester) async {
+  testWidgets('起床猶予 は覚悟が無くても基本設定にある', (tester) async {
     await pumpEditor(tester);
-    await toggle(tester, '覚悟');
 
-    // The window is the moment the burn starts and the 連絡・共有 goes out.
-    // With neither, it decides nothing, and is not asked about.
-    expect(find.byKey(const ValueKey('graceRow')), findsNothing);
-    expect(find.text('起床猶予'), findsNothing);
+    // No pledge, nobody to tell — and the row is still there: the window is
+    // what decides whether the morning counts as overslept at all, which
+    // every alarm has.
+    expect(islandRows(tester, '基本設定'), contains('起床猶予'));
+    await scrollTo(tester, find.byKey(const ValueKey('graceRow')));
+    expect(rowOf(tester, 'graceRow').value, '1分');
   });
 
-  testWidgets('人質なし でも連絡先があれば起床猶予は設定できる', (tester) async {
+  testWidgets('人質なし でも起床猶予は設定できる', (tester) async {
     final container = await pumpEditor(tester);
     await toggle(tester, '覚悟');
-    await setContact(tester, '田中太郎');
 
     await scrollTo(tester, find.byKey(const ValueKey('graceRow')));
     expect(rowOf(tester, 'graceRow').label, '起床猶予');
@@ -342,7 +341,7 @@ void main() {
     expect(saved.kakugo!.hostage, HostageType.none);
   });
 
-  testWidgets('起床猶予 の編集口は島の行だけ', (tester) async {
+  testWidgets('起床猶予 の編集口は基本設定の行だけ', (tester) async {
     await pumpEditor(tester);
     await toggle(tester, '覚悟');
     await inHostageScreen(tester, () async {
@@ -350,7 +349,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    // A burning pledge has one too, in the same place.
+    // A burning pledge reads it in the same place as every other alarm.
     await scrollTo(tester, find.byKey(const ValueKey('graceRow')));
     expect(rowOf(tester, 'graceRow').value, '1分');
 

@@ -12,6 +12,7 @@ import '../../domain/models.dart';
 import '../../domain/ojisan.dart';
 import '../../domain/oversleep_contact_rules.dart';
 import '../../domain/snooze_rules.dart';
+import '../../services/lock_screen.dart';
 import '../../services/oversleep_notifier.dart';
 import '../../services/speaker.dart';
 import 'ringing_controller.dart';
@@ -56,6 +57,11 @@ class _RingingScreenState extends ConsumerState<RingingScreen> {
     super.initState();
     _speaker = ref.read(speakerProvider);
     _setWakelock(true);
+    // Whatever route brought this screen up — a full-screen intent, the live
+    // ring stream, a cold launch — it is now the thing that must be visible
+    // over the lock screen. Idempotent, and lowered again on the way out by
+    // [RingingController]'s dismiss and snooze.
+    unawaited(ref.read(lockScreenVisibilityProvider).setShowWhenLocked(true));
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final now = DateTime.now();

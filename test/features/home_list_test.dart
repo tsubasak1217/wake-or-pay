@@ -66,50 +66,40 @@ void main() {
     });
   });
 
-  testWidgets('a 覚悟 row wears the badge and a plain one does not', (
+  testWidgets('a 覚悟 row wears the icon row and a plain one does not', (
     tester,
   ) async {
     await pumpHome(tester, alarms: const [kakugoAlarm]);
-    expect(find.byKey(const ValueKey('kakugoBadge')), findsOneWidget);
-    expect(
-      find.text('⚠️'),
-      findsOneWidget,
-      reason: '500/分 against a 3000 cap is 6 minutes',
-    );
+    expect(find.byKey(const ValueKey('alarmKakugoIcons')), findsOneWidget);
 
     await pumpHome(tester, alarms: const [plainAlarm]);
-    expect(find.byKey(const ValueKey('kakugoBadge')), findsNothing);
-    expect(textOf(tester, 'alarmSummary'), '覚悟なし');
+    expect(find.byKey(const ValueKey('alarmKakugoIcons')), findsNothing);
   });
 
-  testWidgets('the badge follows the gauge — minutes to the cap', (
+  testWidgets('no number reaches the row — not the rate, not the cap', (
     tester,
   ) async {
-    // cap 3000: how many minutes of oversleeping burn the lot.
-    for (final (rate, badge) in const [
-      (3000, '💀'),
-      (1500, '💀'),
-      (600, '🔥'),
-      (300, '⚠️'),
-      (100, '💦'),
-      (50, '💸'),
-    ]) {
+    // The gauge, the price and the badge all lived here once. The row now
+    // says *which* consequences are armed and nothing about how much.
+    for (final rate in const [3000, 1500, 600, 300, 100, 50]) {
       await pumpHome(
         tester,
         alarms: [
           kakugoAlarm.copyWith(kakugo: Kakugo(ratePerMinute: rate, cap: 3000)),
         ],
       );
-      expect(find.text(badge), findsOneWidget, reason: '$rate コイン/分');
+      expect(find.textContaining('コイン/分'), findsNothing, reason: '$rate');
+      expect(find.textContaining('$rate'), findsNothing);
+      expect(find.text(kakugoBadge(rate, 3000)), findsNothing);
     }
-    expect(kakugoBadge(1500, 3000), '💀', reason: 'the pure function agrees');
   });
 
-  testWidgets('a 覚悟 row and a plain row are laid out identically', (
+  testWidgets('a 覚悟 row and a plain row line up where they can', (
     tester,
   ) async {
-    // The 覚悟 row differs in colour, frame and glow — and in nothing that
-    // moves a pixel. Same time position, same switch, same row height.
+    // The 覚悟 row differs in colour, frame, glow — and now in one line of
+    // icons the plain row has nothing to put. What still may not move is the
+    // time and the left edge of the switch.
     await pumpHome(tester, alarms: const [plainAlarm]);
     final plainTime = tester.getTopLeft(find.byKey(const ValueKey('alarmTime')));
     final plainSwitch = tester.getRect(find.byType(Switch));
@@ -121,11 +111,16 @@ void main() {
       plainTime,
       reason: 'the time does not move for a pledge',
     );
-    expect(tester.getRect(find.byType(Switch)), plainSwitch);
-    expect(tester.getRect(find.byType(SwipeToDelete)), plainRow);
+    expect(tester.getRect(find.byType(Switch)).left, plainSwitch.left);
+    expect(tester.getRect(find.byType(SwipeToDelete)).left, plainRow.left);
+    expect(
+      tester.getRect(find.byType(SwipeToDelete)).height,
+      greaterThan(plainRow.height),
+      reason: 'the icon line is the only thing that makes it taller',
+    );
   });
 
-  testWidgets('three lines: the time, the repeat, and what is at stake', (
+  testWidgets('the row is the time, the repeat, and a line of icons', (
     tester,
   ) async {
     await pumpHome(
@@ -138,41 +133,96 @@ void main() {
 
     expect(find.text('06:30'), findsOneWidget);
     expect(find.text('平日'), findsOneWidget);
-    expect(find.text('覚悟あり ・ 500 コイン/分 ・ 💬 ✉ 田中太郎'), findsOneWidget);
+    // SMS, メール — and コイン, because the default 人質 is the coins.
+    expect(find.byTooltip('SMS'), findsOneWidget);
+    expect(find.byTooltip('メール'), findsOneWidget);
+    expect(find.byTooltip('コイン'), findsOneWidget);
+    expect(find.byTooltip('カード'), findsNothing);
+    expect(find.byTooltip('Discord'), findsNothing);
+    expect(find.byKey(const ValueKey('alarmIconX')), findsNothing);
 
     expect(find.text('08:15'), findsOneWidget);
     expect(find.text('一回限り'), findsOneWidget);
-    expect(find.text('覚悟なし'), findsOneWidget);
 
-    // The wake check and the worst case live in the editor now: the list says
-    // when it rings, whether it can hurt, and who hears about it.
+    // Nothing spelled out any more: no 覚悟あり/なし, no price, no name.
+    expect(find.textContaining('覚悟'), findsNothing);
+    expect(find.text('田中太郎'), findsNothing);
     expect(find.textContaining('寝坊で失う最大金額'), findsNothing);
     expect(find.textContaining('ノーマル'), findsNothing);
     expect(find.textContaining('計算'), findsNothing);
   });
 
-  testWidgets('a 0 コイン/分 pledge is a badge-less, price-less 覚悟あり row', (
+  testWidgets('人質なし drops the money icon and keeps the 連絡 ones', (
     tester,
   ) async {
     await pumpHome(
       tester,
       alarms: [
         kakugoAlarm.copyWith(
-          kakugo: const Kakugo(ratePerMinute: 0, cap: 3000),
+          kakugo: const Kakugo(
+            hostage: HostageType.none,
+            ratePerMinute: 0,
+            cap: 3000,
+          ),
         ),
       ],
     );
 
-    expect(find.byKey(const ValueKey('kakugoBadge')), findsNothing);
-    expect(find.textContaining('コイン/分'), findsNothing);
-    expect(
-      textOf(tester, 'alarmSummary'),
-      '覚悟あり ・ 💬 ✉ 田中太郎',
-      reason: 'the pledge is the SMS and mail',
-    );
+    expect(find.byKey(const ValueKey('alarmKakugoIcons')), findsOneWidget);
+    expect(find.byTooltip('SMS'), findsOneWidget);
+    expect(find.byTooltip('メール'), findsOneWidget);
+    expect(find.byTooltip('コイン'), findsNothing);
+    expect(find.byTooltip('カード'), findsNothing);
   });
 
-  testWidgets('the contact name is the one the 連絡帳 has now', (tester) async {
+  testWidgets('カード人質 wears the card icon instead of the coin', (tester) async {
+    await pumpHome(
+      tester,
+      alarms: [
+        kakugoAlarm.copyWith(
+          kakugo: const Kakugo(
+            hostage: HostageType.card,
+            ratePerMinute: 500,
+            cap: 3000,
+          ),
+        ),
+      ],
+    );
+    expect(find.byTooltip('カード'), findsOneWidget);
+    expect(find.byTooltip('コイン'), findsNothing);
+  });
+
+  testWidgets('a live Discord 共有先 puts the Discord mark on the row', (
+    tester,
+  ) async {
+    final container = await pumpHome(
+      tester,
+      alarms: [
+        kakugoAlarm.copyWith(
+          clearContact: true,
+          share: const OversleepShare(webhookIds: {'w1'}),
+        ),
+      ],
+    );
+    await container
+        .read(discordWebhookRepositoryProvider)
+        .save(
+          DiscordWebhook(
+            id: 'w1',
+            displayName: 'てすと',
+            url: 'https://discord.com/api/webhooks/1/abc',
+            createdAt: DateTime(2026),
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Discord'), findsOneWidget);
+    expect(find.byTooltip('SMS'), findsNothing);
+    // Still the coins, because the pledge still burns them.
+    expect(find.byTooltip('コイン'), findsOneWidget);
+  });
+
+  testWidgets('the icons follow the 連絡帳 as it stands now', (tester) async {
     await pumpHome(
       tester,
       alarms: const [kakugoAlarm],
@@ -185,15 +235,19 @@ void main() {
         ),
       ],
     );
-    // Renamed, and the address was dropped, so the mail route goes with it.
-    expect(textOf(tester, 'alarmSummary'), endsWith('・ 💬 田中太郎（部長）'));
-    expect(find.textContaining('✉'), findsNothing);
+    // The address was dropped from the entry, so the mail route goes with it.
+    expect(find.byTooltip('SMS'), findsOneWidget);
+    expect(find.byTooltip('メール'), findsNothing);
   });
 
-  testWidgets('no contact, no name on the row', (tester) async {
+  testWidgets('no contact, no 連絡 icons — only what is still armed', (
+    tester,
+  ) async {
     await pumpHome(tester, alarms: [kakugoAlarm.copyWith(clearContact: true)]);
-    expect(textOf(tester, 'alarmSummary'), '覚悟あり ・ 500 コイン/分');
-    expect(find.byKey(const ValueKey('kakugoBadge')), findsOneWidget);
+    expect(find.byKey(const ValueKey('alarmKakugoIcons')), findsOneWidget);
+    expect(find.byTooltip('SMS'), findsNothing);
+    expect(find.byTooltip('メール'), findsNothing);
+    expect(find.byTooltip('コイン'), findsOneWidget);
   });
 
   testWidgets('スヌーズ中 still shows on a 覚悟 row', (tester) async {
@@ -302,8 +356,8 @@ void main() {
     final saved =
         (await container.read(alarmRepositoryProvider).getAll()).single;
     expect(saved.enabled, isFalse);
-    // Still a 覚悟 row, still saying what it would cost — just not armed.
-    expect(find.byKey(const ValueKey('kakugoBadge')), findsOneWidget);
-    expect(textOf(tester, 'alarmSummary'), startsWith('覚悟あり ・ 500 コイン/分'));
+    // Still a 覚悟 row, still saying what it has armed — just not armed tonight.
+    expect(find.byKey(const ValueKey('alarmKakugoIcons')), findsOneWidget);
+    expect(find.byTooltip('コイン'), findsOneWidget);
   });
 }

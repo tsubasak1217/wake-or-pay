@@ -62,6 +62,22 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
   bool _obscure = true;
   bool _busy = false;
 
+  /// Whether the password field is on screen while a password is already
+  /// stored. Off by default: an account that is set up has nothing to type,
+  /// and an empty 「アプリパスワード」 box under a 「保存済み」 note only invites the
+  /// user to wonder whether it really is saved. 「アプリパスワードを更新」 brings
+  /// it back. Meaningless before the first password: with nothing stored the
+  /// field is always shown.
+  bool _editingPassword = false;
+
+  /// Whether the password field — and the 「アプリパスワードを取得」 button beside
+  /// it — belong on screen at all.
+  bool get _showPasswordField => !_settings.passwordSaved || _editingPassword;
+
+  /// Focused the moment 「アプリパスワードを更新」 reveals the field, so the
+  /// reveal and the keyboard are one tap and not two.
+  final _passwordFocus = FocusNode();
+
   /// The last 「テスト送信」 outcome, kept on screen rather than in a SnackBar
   /// that vanishes while the user is still reading it.
   SendResult? _testResult;
@@ -78,6 +94,7 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
     _host.dispose();
     _port.dispose();
     _password.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -149,6 +166,9 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
       setState(() {
         _settings = stored;
         _password.clear();
+        // A stored password puts the field away again: what was typed is now
+        // in the keystore, and leaving the box open would only show it empty.
+        _editingPassword = false;
       });
     }
     return stored;
@@ -162,6 +182,7 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
     setState(() {
       _settings = ref.read(mailSettingsProvider);
       _password.clear();
+      _editingPassword = false;
       _testResult = null;
     });
   }
@@ -238,36 +259,40 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
                       )
                     : const SizedBox.shrink(),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: TextField(
-                  key: const ValueKey('mailPasswordField'),
-                  controller: _password,
-                  obscureText: _obscure,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  // The 保存 hint and the テスト送信 button both count this field
-                  // as one of the things that must be filled in, so typing in
-                  // it has to redraw them.
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'アプリパスワード',
-                    hintText: _settings.passwordSaved ? '保存済み（変更するときだけ入力）' : '',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      key: const ValueKey('mailPasswordReveal'),
-                      icon: Icon(
-                        _obscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+              if (_showPasswordField)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: TextField(
+                    key: const ValueKey('mailPasswordField'),
+                    controller: _password,
+                    focusNode: _passwordFocus,
+                    obscureText: _obscure,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    // The 保存 hint and the テスト送信 button both count this
+                    // field as one of the things that must be filled in, so
+                    // typing in it has to redraw them.
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: 'アプリパスワード',
+                      hintText: _settings.passwordSaved
+                          ? '新しいアプリパスワードを入力'
+                          : '',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        key: const ValueKey('mailPasswordReveal'),
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                        tooltip: _obscure ? '表示する' : '隠す',
+                        onPressed: () => setState(() => _obscure = !_obscure),
                       ),
-                      tooltip: _obscure ? '表示する' : '隠す',
-                      onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
                 ),
-              ),
-              if (provider?.appPasswordUrl != null)
+              if (_showPasswordField && provider?.appPasswordUrl != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                   child: Align(
@@ -309,6 +334,26 @@ class _MailSettingsScreenState extends ConsumerState<MailSettingsScreen> {
                         child: const Text('削除'),
                       ),
                     ],
+                  ),
+                ),
+              // The way back to the field, and the only one: with a password
+              // stored there is nothing to type until the user says there is.
+              if (_settings.passwordSaved && !_editingPassword)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('mailPasswordUpdate'),
+                      onPressed: _busy
+                          ? null
+                          : () {
+                              setState(() => _editingPassword = true);
+                              _passwordFocus.requestFocus();
+                            },
+                      icon: const Icon(Icons.key_outlined),
+                      label: const Text('アプリパスワードを更新'),
+                    ),
                   ),
                 ),
             ],

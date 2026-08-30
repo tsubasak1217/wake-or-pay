@@ -42,29 +42,39 @@ class MainActivity : FlutterFragmentActivity() {
      * sleeping phone the alarm sounds with the screen still dark — exactly the
      * bug reported against build 106.
      *
-     * **Set here in code as well as in the manifest, on purpose.** The manifest
+     * **Set here in code and *not* in the manifest, on purpose.** The manifest
      * attributes (`android:showWhenLocked` / `android:turnScreenOn`) are the
-     * documented setup for the alarm package (its help/INSTALL-ANDROID.md), and
-     * they are easy to lose to a merge or a manifest rewrite. Doing it in
-     * [onCreate] too means the behaviour survives that, and survives an
-     * activity migration like the FlutterActivity → FlutterFragmentActivity
-     * one Stripe's PaymentSheet forced. Both paths are idempotent.
+     * alarm package's documented setup (its help/INSTALL-ANDROID.md), but they
+     * are static: declared there, the activity shows over the keyguard for
+     * ever, so putting the phone to sleep with the app open and pressing power
+     * again brings up the alarm list instead of the lock screen. Here it is a
+     * switch instead — raised for the cold launch, and lowered again by Dart
+     * over `wake_or_pay/lock_screen` as soon as the first frame finds that
+     * nothing is ringing.
+     *
+     * [onCreate] still raises it because a full-screen intent launch needs the
+     * flags *before* the first frame, and Dart is not running yet to ask.
      *
      * Note what this does *not* do: it never dismisses the keyguard. The
      * ringing screen shows on top of the lock screen; the phone stays locked
      * and nothing behind the ring screen is reachable without unlocking.
      */
-    private fun showOverLockScreen() {
+    private fun showOverLockScreen() = setShowOverLockScreen(true)
+
+    /**
+     * [showOverLockScreen]'s switch, both ways. Idempotent, and safe to call
+     * from the method channel at any point in the activity's life.
+     */
+    private fun setShowOverLockScreen(show: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
+            setShowWhenLocked(show)
+            setTurnScreenOn(show)
         } else {
             // minSdk is 26, one below the API that replaced these.
+            val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
+            if (show) window.addFlags(flags) else window.clearFlags(flags)
         }
     }
 
@@ -150,6 +160,22 @@ class MainActivity : FlutterFragmentActivity() {
                     "isGranted" -> result.success(canUseFullScreenIntent())
                     "openSettings" -> {
                         openFullScreenIntentSettings()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Whether the app may draw over the keyguard — raised while an alarm
+        // is ringing, and lowered the moment it is not. See
+        // [showOverLockScreen] for why this is a switch and not a manifest
+        // attribute. Window work, so it runs on the main thread.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "wake_or_pay/lock_screen")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setShowWhenLocked" -> {
+                        val show = call.argument<Boolean>("show") ?: false
+                        runOnUiThread { setShowOverLockScreen(show) }
                         result.success(null)
                     }
                     else -> result.notImplemented()

@@ -18,6 +18,7 @@ import 'services/legacy_recording_cleanup.dart';
 import 'services/app_notifier.dart';
 import 'services/background_dispatch.dart';
 import 'services/full_screen_intent.dart';
+import 'services/lock_screen.dart';
 import 'services/route_permissions.dart';
 import 'services/secret_store.dart';
 import 'services/sms_sender.dart';
@@ -52,6 +53,8 @@ Future<void> main() async {
       // Only the real app can ask Android whether a full-screen intent is
       // still allowed to take over the screen (Android 14+).
       platformFullScreenIntentOverride(),
+      // …or lower the showWhenLocked flag MainActivity.onCreate raised.
+      platformLockScreenOverride(),
       ttsSpeakerOverride(),
       // The SMTP app password. Only the real app reaches the platform
       // keystore; every test keeps the in-memory store.
@@ -162,6 +165,23 @@ class _WakeOrPayAppState extends ConsumerState<WakeOrPayApp> {
     unawaited(
       ref.read(usageProvider.notifier).recordOpen().catchError((Object _) {}),
     );
+
+    // MainActivity.onCreate raises `showWhenLocked` before the first frame,
+    // because a cold launch from a full-screen intent needs it *then*. On an
+    // ordinary launch nobody ever lowered it again, and the flag is a property
+    // of the activity, not of the screen — so the phone slept with the app
+    // open and woke showing the app instead of the keyguard.
+    //
+    // Lowered here, once, and only when the app did not open onto a ring:
+    // [RingingScreen] raises it for itself, and this widget's initState runs
+    // before that screen is built.
+    //
+    // Here rather than in `main()` so a widget test pumping this widget goes
+    // through the same path the app does. Never throws — see
+    // [PlatformLockScreenVisibility].
+    if (!ref.read(initialLocationProvider).startsWith(AppRoute.ringing(''))) {
+      unawaited(ref.read(lockScreenVisibilityProvider).setShowWhenLocked(false));
+    }
   }
 
   @override

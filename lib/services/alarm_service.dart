@@ -17,6 +17,7 @@ import 'alarm_settings_builder.dart';
 import 'background_dispatch.dart';
 import 'card_hostage.dart';
 import 'full_screen_intent.dart';
+import 'lock_screen.dart';
 import 'oversleep_notifier.dart';
 import 'session_service.dart';
 import 'snooze_service.dart';
@@ -305,7 +306,12 @@ class AlarmService {
 
   Future<void> _handleRing(pkg.AlarmSettings settings) async {
     final session = await _sessionForRing(settings);
-    if (session != null) _goRinging(session.id);
+    if (session == null) return;
+    // A ring on a sleeping, locked phone has to be allowed over the keyguard.
+    // Raised here rather than only on the ring screen so the flag is up before
+    // the navigation, and lowered again by [RingingController].
+    await _ref.read(lockScreenVisibilityProvider).setShowWhenLocked(true);
+    _goRinging(session.id);
   }
 
   /// Everything a ring needs *except* putting it on screen: find or open the
