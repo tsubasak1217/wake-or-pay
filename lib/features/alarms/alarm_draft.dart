@@ -45,6 +45,33 @@ bool hasTimeClash(List<Alarm> all, Alarm draft) => all.any(
   (a) => a.id != draft.id && a.hour == draft.hour && a.minute == draft.minute,
 );
 
+/// [alarm] with スヌーズ switched to [enabled]. Pure.
+///
+/// Switching it **off** moves the live [Alarm.snooze] into
+/// [Alarm.rememberedSnooze]; switching it **on** takes it back out — or falls
+/// back to the defaults when there is nothing remembered — and clears the
+/// memory. That is what makes off-then-on restore the interval and the count,
+/// across a save and a reopen as well as within one sitting.
+///
+/// [Alarm.canSnooze] is untouched by this: it still reads the live field alone,
+/// so a remembered snooze never lets an alarm be snoozed.
+Alarm alarmWithSnoozeEnabled(Alarm alarm, bool enabled) => enabled
+    ? alarm.copyWith(
+        snooze: alarm.rememberedSnooze ?? alarm.snooze ?? const Snooze(),
+        clearRememberedSnooze: true,
+      )
+    : alarm.copyWith(clearSnooze: true, rememberedSnooze: alarm.snooze);
+
+/// The same for 覚悟, on the same terms — and with the same fallback order the
+/// toggle always had: whatever is remembered, else whatever is already there,
+/// else [defaultKakugo].
+Alarm alarmWithKakugoEnabled(Alarm alarm, bool enabled) => enabled
+    ? alarm.copyWith(
+        kakugo: alarm.rememberedKakugo ?? alarm.kakugo ?? defaultKakugo,
+        clearRememberedKakugo: true,
+      )
+    : alarm.copyWith(clearKakugo: true, rememberedKakugo: alarm.kakugo);
+
 /// How many times the editor's body has been rebuilt. Test-only: the spec
 /// requires that spinning the time wheel does not rebuild the editor around it,
 /// and a counter is the only way to see a rebuild that produces identical

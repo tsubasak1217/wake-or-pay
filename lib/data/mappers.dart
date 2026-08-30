@@ -85,6 +85,27 @@ OversleepShare? _parseShare(String? json) {
   }
 }
 
+/// A remembered スヌーズ / 覚悟 blob. Unreadable JSON reads as "nothing
+/// remembered" rather than crashing the read: the worst it costs is a toggle
+/// that comes back at its defaults.
+Snooze? _parseRememberedSnooze(String? json) {
+  if (json == null || json.isEmpty) return null;
+  try {
+    return Snooze.fromJson((jsonDecode(json) as Map).cast<String, dynamic>());
+  } on Object {
+    return null;
+  }
+}
+
+Kakugo? _parseRememberedKakugo(String? json) {
+  if (json == null || json.isEmpty) return null;
+  try {
+    return Kakugo.fromJson((jsonDecode(json) as Map).cast<String, dynamic>());
+  } on Object {
+    return null;
+  }
+}
+
 /// The delay a **v6** row kept inside its contact blob. Pure.
 ///
 /// Until v7 the trigger delay belonged to the contact; now it belongs to the
@@ -141,6 +162,8 @@ extension AlarmRowMapper on AlarmRow {
           _legacyTriggerMinutes(oversleepContact) ??
           defaultContactTriggerMinutes,
     ),
+    rememberedSnooze: _parseRememberedSnooze(rememberedSnooze),
+    rememberedKakugo: _parseRememberedKakugo(rememberedKakugo),
   );
 }
 
@@ -178,6 +201,12 @@ extension AlarmMapper on Alarm {
     // Always written, never left null: that is what retires the v6 read-through
     // above after one save.
     oversleepTriggerMinutes: Value(triggerMinutes),
+    rememberedSnooze: Value(
+      rememberedSnooze == null ? null : jsonEncode(rememberedSnooze!.toJson()),
+    ),
+    rememberedKakugo: Value(
+      rememberedKakugo == null ? null : jsonEncode(rememberedKakugo!.toJson()),
+    ),
   );
 }
 

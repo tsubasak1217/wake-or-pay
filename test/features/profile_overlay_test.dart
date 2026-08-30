@@ -9,6 +9,7 @@ import 'package:wake_or_pay/domain/models.dart';
 import 'package:wake_or_pay/domain/profile_catalog.dart';
 import 'package:wake_or_pay/domain/title_catalog.dart';
 import 'package:wake_or_pay/features/profile/profile_edit_screen.dart';
+import 'package:wake_or_pay/features/profile/profile_head.dart';
 import 'package:wake_or_pay/main.dart';
 
 import '../helpers.dart';
@@ -142,9 +143,7 @@ void main() {
     );
   });
 
-  testWidgets('the avatar opens the overlay and 閉じる closes it', (
-    tester,
-  ) async {
+  testWidgets('the avatar opens the overlay and 閉じる closes it', (tester) async {
     await openOverlay(tester);
 
     expect(find.byKey(const ValueKey('profileOverlay')), findsOneWidget);
@@ -205,14 +204,64 @@ void main() {
     final gauge = find.byKey(const ValueKey('profileGauge'));
     expect(
       find.descendant(of: gauge, matching: find.text('Lv 2')),
-      findsOneWidget,
+      findsNWidgets(2),
+      reason: 'the label is drawn twice: the dark outline, then the fill',
     );
     expect(
-      find.descendant(of: gauge, matching: find.byType(LinearProgressIndicator)),
+      find.descendant(
+        of: gauge,
+        matching: find.byType(LinearProgressIndicator),
+      ),
       findsOneWidget,
     );
     expect(find.text('経験値 60 / 次のLvまで 90'), findsOneWidget);
   });
+
+  testWidgets(
+    'the gauge is orange and its label is white, shadowed, outlined',
+    (tester) async {
+      final container = await pumpApp(tester);
+      await container.read(profileProvider.notifier).addXp(60);
+      await tester.tap(find.byKey(const ValueKey('appHeaderAvatar')));
+      await tester.pumpAndSettle();
+
+      final gauge = find.byKey(const ValueKey('profileGauge'));
+
+      // Orange whatever the theme is: the head sits on a 背景 the user picks,
+      // and the purple-ish ones swallowed a primary-coloured bar whole.
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.descendant(
+          of: gauge,
+          matching: find.byType(LinearProgressIndicator),
+        ),
+      );
+      expect(bar.color, gaugeColor);
+      expect(gaugeColor, const Color(0xFFFF9800));
+      expect(bar.backgroundColor, gaugeTrackColor);
+
+      final labels = tester
+          .widgetList<Text>(
+            find.descendant(of: gauge, matching: find.text('Lv 2')),
+          )
+          .toList();
+      expect(labels, hasLength(2));
+
+      // The outline underneath: a stroked paint, no fill colour of its own.
+      final outline = labels.first.style!;
+      expect(outline.foreground?.style, PaintingStyle.stroke);
+      expect(outline.foreground?.strokeWidth, OutlinedText.strokeWidth);
+      expect(outline.color, isNull, reason: 'a foreground replaces the colour');
+
+      // The filled label on top: white, bold, and shadowed.
+      final fill = labels.last.style!;
+      expect(fill.color, Colors.white);
+      expect(fill.fontWeight, FontWeight.w700);
+      expect(fill.shadows, isNotNull);
+      expect(fill.shadows!.single.color, Colors.black54);
+      expect(fill.shadows!.single.blurRadius, 3);
+      expect(fill.shadows!.single.offset, const Offset(0, 1));
+    },
+  );
 
   testWidgets('これまでの歩み counts the whole history', (tester) async {
     final container = await pumpApp(tester);
@@ -282,9 +331,7 @@ void main() {
     await expectJourney(tester, 'journeyCollections', '$total / $total');
   });
 
-  testWidgets('これまでの歩み says 「—」 before anything has happened', (
-    tester,
-  ) async {
+  testWidgets('これまでの歩み says 「—」 before anything has happened', (tester) async {
     await openOverlay(tester);
 
     // A rate over no rings is 「—」, not 0%.
@@ -317,10 +364,16 @@ void main() {
 
     final row = find.byKey(const ValueKey('profileMailRow'));
     await scrollTo(tester, row);
-    expect(find.descendant(of: row, matching: find.text('メール')), findsOneWidget);
+    expect(
+      find.descendant(of: row, matching: find.text('メール')),
+      findsOneWidget,
+    );
     // Nothing has been entered, and a half-filled account is 未連携 to every
     // other screen — this row must not be the one place that calls it done.
-    expect(find.descendant(of: row, matching: find.text('未連携')), findsOneWidget);
+    expect(
+      find.descendant(of: row, matching: find.text('未連携')),
+      findsOneWidget,
+    );
 
     await tester.tap(row);
     await tester.pumpAndSettle();
@@ -359,12 +412,14 @@ void main() {
       'profileMailRow',
     ]) {
       expect(
-        tester.widget<ListTile>(
-          find.descendant(
-            of: find.byKey(ValueKey(key)),
-            matching: find.byType(ListTile),
-          ),
-        ).subtitle,
+        tester
+            .widget<ListTile>(
+              find.descendant(
+                of: find.byKey(ValueKey(key)),
+                matching: find.byType(ListTile),
+              ),
+            )
+            .subtitle,
         isNull,
         reason: key,
       );

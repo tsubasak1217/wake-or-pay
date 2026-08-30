@@ -606,6 +606,21 @@ INSERT INTO wallet_rows (id, coins, tokens) VALUES (0, 4300, 120);
 PRAGMA user_version = 7;
 ''';
 
+/// The v8 schema: v7 plus the local 請求台帳, and nothing else changed. Built
+/// from [_v7] rather than copied out again, so the two can never drift apart.
+final _v8 = _v7.replaceFirst('PRAGMA user_version = 7;', """
+CREATE TABLE pending_charge_rows (
+  session_id TEXT NOT NULL,
+  alarm_id TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'jpy',
+  created_at_ms INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  PRIMARY KEY (session_id)
+);
+PRAGMA user_version = 8;
+""");
+
 void main() {
   test(
     'v1 databases upgrade to v2 with grace 1, changing nothing else',
@@ -869,7 +884,11 @@ void main() {
     final contact = alarm!.contact!;
     expect(contact.name, '母');
     expect(contact.contactId, isNull, reason: 'the book did not exist yet');
-    expect(contact.phone, '090-0000-0000', reason: 'the number is kept for SMS');
+    expect(
+      contact.phone,
+      '090-0000-0000',
+      reason: 'the number is kept for SMS',
+    );
     expect(contact.emailEnabled, isFalse, reason: 'no address to mail');
     expect(contact.smsEnabled, isFalse, reason: 'nobody asked for a text');
     expect(contact.messageMode, MessageMode.custom);
@@ -925,123 +944,116 @@ void main() {
     expect(orphaned.contact!.phone, '090-0000-0000');
   });
 
-  test(
-    'v6 databases upgrade to v7 with the delay kept and no 共有先',
-    () async {
-      final container = await testContainer(
-        extra: [
-          appDatabaseProvider.overrideWith((ref) {
-            final db = AppDatabase(
-              NativeDatabase.memory(setup: (raw) => raw.execute(_v6)),
-            );
-            ref.onDispose(db.close);
-            return db;
-          }),
-        ],
-      );
-
-      // The v6 contact reads back under the rule it was written under: the
-      // words the user typed survive, and the retired 電話設定 does not — the
-      // phone-call route is gone, so an old blob's phone toggle and its
-      // recording are read and discarded; the number is kept for SMS.
-      final alarm = await container.read(alarmRepositoryProvider).getById('a1');
-      final contact = alarm!.contact!;
-      expect(contact.name, '母');
-      expect(contact.phone, '090-0000-0000', reason: 'kept for SMS');
-      expect(contact.emailEnabled, isFalse);
-      expect(contact.smsEnabled, isFalse, reason: 'nobody asked for a text');
-      expect(contact.messageMode, MessageMode.custom);
-      expect(contact.message, '起きて');
-      for (final gone in const [
-        'recordingPath',
-        'recordingWaveform',
-        'phoneMode',
-        'phoneEnabled',
-      ]) {
-        expect(contact.toJson().containsKey(gone), isFalse, reason: gone);
-      }
-
-      // The delay moved from inside the blob to a column of its own, and a
-      // row that has no column yet is read out of the blob that owned it.
-      expect(
-        alarm.oversleepTriggerMinutes,
-        7,
-        reason: 'an alarm set to 猶予後7分 still fires at seven minutes',
-      );
-      expect(alarm.triggerMinutes, 7);
-      expect(
-        alarm.share,
-        isNull,
-        reason: 'a v6 alarm announced itself nowhere',
-      );
-      expect(alarm.willShare, isFalse);
-
-      // Nothing else the upgrade touched moved.
-      expect(alarm.snooze, const Snooze(intervalMinutes: 9, maxCount: 4));
-      expect(alarm.soundId, 'siren');
-      expect(alarm.graceMinutes, 3);
-      expect(alarm.kakugo!.snoozePenalty, 50);
-      expect(alarm.kakugo!.snoozeResetsClock, isFalse);
-      final session = await container
-          .read(alarmSessionRepositoryProvider)
-          .getById('s1');
-      expect(session!.loss, 700, reason: 'a settled loss is never recomputed');
-      expect(session.status, SessionStatus.failed);
-      expect(session.graceMinutes, 3);
-      expect(
-        await container.read(walletRepositoryProvider).read(),
-        const Wallet(coins: 4300, tokens: 120),
-      );
-      expect(
-        await container.read(contactBookRepositoryProvider).getAll(),
-        isEmpty,
-      );
-
-      // The new 共有先 table exists and is writable, and an alarm can point at
-      // a row in it and read the whole share back.
-      final webhooks = container.read(discordWebhookRepositoryProvider);
-      expect(await webhooks.getAll(), isEmpty, reason: 'it starts empty');
-      await webhooks.save(
-        DiscordWebhook(
-          id: 'w1',
-          url: 'https://discord.com/api/webhooks/123456789/abcTOKEN',
-          displayName: 'みんなのサーバー/#一般',
-          createdAt: DateTime(2026, 8, 27),
-        ),
-      );
-      expect((await webhooks.getAll()).single.displayName, 'みんなのサーバー/#一般');
-
-      await container
-          .read(alarmRepositoryProvider)
-          .save(
-            alarm.copyWith(
-              share: const OversleepShare(
-                webhookIds: {'w1'},
-                messageMode: MessageMode.custom,
-                message: '起きろ',
-              ),
-              oversleepTriggerMinutes: 0,
-            ),
+  test('v6 databases upgrade to v7 with the delay kept and no 共有先', () async {
+    final container = await testContainer(
+      extra: [
+        appDatabaseProvider.overrideWith((ref) {
+          final db = AppDatabase(
+            NativeDatabase.memory(setup: (raw) => raw.execute(_v6)),
           );
-      final reread = (await container
-          .read(alarmRepositoryProvider)
-          .getById('a1'))!;
-      expect(reread.share!.webhookIds, {'w1'});
-      expect(reread.share!.message, '起きろ');
-      expect(reread.oversleepTriggerMinutes, 0);
-      expect(reread.willShare, isTrue);
+          ref.onDispose(db.close);
+          return db;
+        }),
+      ],
+    );
 
-      // And deleting the 共有先 leaves the alarm alone: it holds an id, and an
-      // id with no row behind it is simply skipped when the list is read.
-      await webhooks.delete('w1');
-      expect(
-        (await container.read(alarmRepositoryProvider).getById('a1'))!
-            .share!
-            .webhookIds,
-        {'w1'},
-      );
-    },
-  );
+    // The v6 contact reads back under the rule it was written under: the
+    // words the user typed survive, and the retired 電話設定 does not — the
+    // phone-call route is gone, so an old blob's phone toggle and its
+    // recording are read and discarded; the number is kept for SMS.
+    final alarm = await container.read(alarmRepositoryProvider).getById('a1');
+    final contact = alarm!.contact!;
+    expect(contact.name, '母');
+    expect(contact.phone, '090-0000-0000', reason: 'kept for SMS');
+    expect(contact.emailEnabled, isFalse);
+    expect(contact.smsEnabled, isFalse, reason: 'nobody asked for a text');
+    expect(contact.messageMode, MessageMode.custom);
+    expect(contact.message, '起きて');
+    for (final gone in const [
+      'recordingPath',
+      'recordingWaveform',
+      'phoneMode',
+      'phoneEnabled',
+    ]) {
+      expect(contact.toJson().containsKey(gone), isFalse, reason: gone);
+    }
+
+    // The delay moved from inside the blob to a column of its own, and a
+    // row that has no column yet is read out of the blob that owned it.
+    expect(
+      alarm.oversleepTriggerMinutes,
+      7,
+      reason: 'an alarm set to 猶予後7分 still fires at seven minutes',
+    );
+    expect(alarm.triggerMinutes, 7);
+    expect(alarm.share, isNull, reason: 'a v6 alarm announced itself nowhere');
+    expect(alarm.willShare, isFalse);
+
+    // Nothing else the upgrade touched moved.
+    expect(alarm.snooze, const Snooze(intervalMinutes: 9, maxCount: 4));
+    expect(alarm.soundId, 'siren');
+    expect(alarm.graceMinutes, 3);
+    expect(alarm.kakugo!.snoozePenalty, 50);
+    expect(alarm.kakugo!.snoozeResetsClock, isFalse);
+    final session = await container
+        .read(alarmSessionRepositoryProvider)
+        .getById('s1');
+    expect(session!.loss, 700, reason: 'a settled loss is never recomputed');
+    expect(session.status, SessionStatus.failed);
+    expect(session.graceMinutes, 3);
+    expect(
+      await container.read(walletRepositoryProvider).read(),
+      const Wallet(coins: 4300, tokens: 120),
+    );
+    expect(
+      await container.read(contactBookRepositoryProvider).getAll(),
+      isEmpty,
+    );
+
+    // The new 共有先 table exists and is writable, and an alarm can point at
+    // a row in it and read the whole share back.
+    final webhooks = container.read(discordWebhookRepositoryProvider);
+    expect(await webhooks.getAll(), isEmpty, reason: 'it starts empty');
+    await webhooks.save(
+      DiscordWebhook(
+        id: 'w1',
+        url: 'https://discord.com/api/webhooks/123456789/abcTOKEN',
+        displayName: 'みんなのサーバー/#一般',
+        createdAt: DateTime(2026, 8, 27),
+      ),
+    );
+    expect((await webhooks.getAll()).single.displayName, 'みんなのサーバー/#一般');
+
+    await container
+        .read(alarmRepositoryProvider)
+        .save(
+          alarm.copyWith(
+            share: const OversleepShare(
+              webhookIds: {'w1'},
+              messageMode: MessageMode.custom,
+              message: '起きろ',
+            ),
+            oversleepTriggerMinutes: 0,
+          ),
+        );
+    final reread = (await container
+        .read(alarmRepositoryProvider)
+        .getById('a1'))!;
+    expect(reread.share!.webhookIds, {'w1'});
+    expect(reread.share!.message, '起きろ');
+    expect(reread.oversleepTriggerMinutes, 0);
+    expect(reread.willShare, isTrue);
+
+    // And deleting the 共有先 leaves the alarm alone: it holds an id, and an
+    // id with no row behind it is simply skipped when the list is read.
+    await webhooks.delete('w1');
+    expect(
+      (await container.read(alarmRepositoryProvider).getById('a1'))!
+          .share!
+          .webhookIds,
+      {'w1'},
+    );
+  });
 
   test(
     'v7 databases upgrade to v8 with an empty 請求台帳 and their 人質 read back',
@@ -1128,6 +1140,77 @@ void main() {
         HostageType.none,
         reason: 'a stored none is a none, not a coin',
       );
+    },
+  );
+
+  test(
+    'v8 databases upgrade to v9 remembering nothing, and changing nothing',
+    () async {
+      final container = await testContainer(
+        extra: [
+          appDatabaseProvider.overrideWith((ref) {
+            final db = AppDatabase(
+              NativeDatabase.memory(setup: (raw) => raw.execute(_v8)),
+            );
+            ref.onDispose(db.close);
+            return db;
+          }),
+        ],
+      );
+
+      final alarms = container.read(alarmRepositoryProvider);
+      final a1 = (await alarms.getById('a1'))!;
+
+      // The two new columns are null on every row that predates them, which
+      // reads as "nothing to restore" — the rule those rows were written
+      // under, since the editor could not remember anything yet.
+      expect(a1.rememberedSnooze, isNull);
+      expect(a1.rememberedKakugo, isNull);
+
+      // And nothing else moved.
+      expect(a1.snooze, const Snooze(intervalMinutes: 9, maxCount: 4));
+      expect(a1.kakugo!.ratePerMinute, 100);
+      expect(a1.kakugo!.hostage, HostageType.coin);
+      expect(a1.soundId, 'siren');
+      expect(a1.oversleepTriggerMinutes, 7);
+      expect(a1.graceMinutes, 3);
+      expect(
+        await container.read(walletRepositoryProvider).read(),
+        const Wallet(coins: 4300, tokens: 120),
+      );
+      expect(
+        (await container.read(alarmSessionRepositoryProvider).getById('s1'))!
+            .loss,
+        700,
+        reason: 'a settled loss is never recomputed',
+      );
+
+      // The columns are writable, and what goes in comes back out — including
+      // the whole pledge, which is what makes 覚悟 off-then-on a round trip
+      // across a save.
+      const remembered = Kakugo(
+        hostage: HostageType.card,
+        ratePerMinute: 300,
+        cap: 5000,
+        snoozePenalty: 70,
+        snoozeResetsClock: true,
+      );
+      await alarms.save(
+        a1.copyWith(
+          clearSnooze: true,
+          rememberedSnooze: const Snooze(intervalMinutes: 9, maxCount: 4),
+          clearKakugo: true,
+          rememberedKakugo: remembered,
+        ),
+      );
+      final reread = (await alarms.getById('a1'))!;
+      expect(reread.canSnooze, isFalse);
+      expect(reread.isKakugo, isFalse);
+      expect(
+        reread.rememberedSnooze,
+        const Snooze(intervalMinutes: 9, maxCount: 4),
+      );
+      expect(reread.rememberedKakugo, remembered);
     },
   );
 }

@@ -208,6 +208,28 @@ class $AlarmRowsTable extends AlarmRows
         type: DriftSqlType.int,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _rememberedSnoozeMeta = const VerificationMeta(
+    'rememberedSnooze',
+  );
+  @override
+  late final GeneratedColumn<String> rememberedSnooze = GeneratedColumn<String>(
+    'remembered_snooze',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rememberedKakugoMeta = const VerificationMeta(
+    'rememberedKakugo',
+  );
+  @override
+  late final GeneratedColumn<String> rememberedKakugo = GeneratedColumn<String>(
+    'remembered_kakugo',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -228,6 +250,8 @@ class $AlarmRowsTable extends AlarmRows
     oversleepContact,
     oversleepShare,
     oversleepTriggerMinutes,
+    rememberedSnooze,
+    rememberedKakugo,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -384,6 +408,24 @@ class $AlarmRowsTable extends AlarmRows
         ),
       );
     }
+    if (data.containsKey('remembered_snooze')) {
+      context.handle(
+        _rememberedSnoozeMeta,
+        rememberedSnooze.isAcceptableOrUnknown(
+          data['remembered_snooze']!,
+          _rememberedSnoozeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('remembered_kakugo')) {
+      context.handle(
+        _rememberedKakugoMeta,
+        rememberedKakugo.isAcceptableOrUnknown(
+          data['remembered_kakugo']!,
+          _rememberedKakugoMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -465,6 +507,14 @@ class $AlarmRowsTable extends AlarmRows
         DriftSqlType.int,
         data['${effectivePrefix}oversleep_trigger_minutes'],
       ),
+      rememberedSnooze: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remembered_snooze'],
+      ),
+      rememberedKakugo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remembered_kakugo'],
+      ),
     );
   }
 
@@ -522,6 +572,15 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
   /// that blob, or take the default"; the writer always fills the column in,
   /// so a row only ever reads as null once.
   final int? oversleepTriggerMinutes;
+
+  /// What スヌーズ and 覚悟 held the last time the editor switched them **off**,
+  /// each as one JSON blob, so switching one back on after a save restores the
+  /// settings instead of the defaults. Added in v9; null — every row written
+  /// before it — means "nothing to restore", which is the rule those rows were
+  /// written under. Nothing but the editor reads them, so no stored alarm
+  /// rings differently.
+  final String? rememberedSnooze;
+  final String? rememberedKakugo;
   const AlarmRow({
     required this.id,
     required this.hour,
@@ -541,6 +600,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     this.oversleepContact,
     this.oversleepShare,
     this.oversleepTriggerMinutes,
+    this.rememberedSnooze,
+    this.rememberedKakugo,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -585,6 +646,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     if (!nullToAbsent || oversleepTriggerMinutes != null) {
       map['oversleep_trigger_minutes'] = Variable<int>(oversleepTriggerMinutes);
     }
+    if (!nullToAbsent || rememberedSnooze != null) {
+      map['remembered_snooze'] = Variable<String>(rememberedSnooze);
+    }
+    if (!nullToAbsent || rememberedKakugo != null) {
+      map['remembered_kakugo'] = Variable<String>(rememberedKakugo);
+    }
     return map;
   }
 
@@ -628,6 +695,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       oversleepTriggerMinutes: oversleepTriggerMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(oversleepTriggerMinutes),
+      rememberedSnooze: rememberedSnooze == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rememberedSnooze),
+      rememberedKakugo: rememberedKakugo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rememberedKakugo),
     );
   }
 
@@ -665,6 +738,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       oversleepTriggerMinutes: serializer.fromJson<int?>(
         json['oversleepTriggerMinutes'],
       ),
+      rememberedSnooze: serializer.fromJson<String?>(json['rememberedSnooze']),
+      rememberedKakugo: serializer.fromJson<String?>(json['rememberedKakugo']),
     );
   }
   @override
@@ -693,6 +768,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       'oversleepTriggerMinutes': serializer.toJson<int?>(
         oversleepTriggerMinutes,
       ),
+      'rememberedSnooze': serializer.toJson<String?>(rememberedSnooze),
+      'rememberedKakugo': serializer.toJson<String?>(rememberedKakugo),
     };
   }
 
@@ -715,6 +792,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     Value<String?> oversleepContact = const Value.absent(),
     Value<String?> oversleepShare = const Value.absent(),
     Value<int?> oversleepTriggerMinutes = const Value.absent(),
+    Value<String?> rememberedSnooze = const Value.absent(),
+    Value<String?> rememberedKakugo = const Value.absent(),
   }) => AlarmRow(
     id: id ?? this.id,
     hour: hour ?? this.hour,
@@ -752,6 +831,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     oversleepTriggerMinutes: oversleepTriggerMinutes.present
         ? oversleepTriggerMinutes.value
         : this.oversleepTriggerMinutes,
+    rememberedSnooze: rememberedSnooze.present
+        ? rememberedSnooze.value
+        : this.rememberedSnooze,
+    rememberedKakugo: rememberedKakugo.present
+        ? rememberedKakugo.value
+        : this.rememberedKakugo,
   );
   AlarmRow copyWithCompanion(AlarmRowsCompanion data) {
     return AlarmRow(
@@ -795,6 +880,12 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
       oversleepTriggerMinutes: data.oversleepTriggerMinutes.present
           ? data.oversleepTriggerMinutes.value
           : this.oversleepTriggerMinutes,
+      rememberedSnooze: data.rememberedSnooze.present
+          ? data.rememberedSnooze.value
+          : this.rememberedSnooze,
+      rememberedKakugo: data.rememberedKakugo.present
+          ? data.rememberedKakugo.value
+          : this.rememberedKakugo,
     );
   }
 
@@ -818,7 +909,9 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           ..write('kakugoSnoozeResetsClock: $kakugoSnoozeResetsClock, ')
           ..write('oversleepContact: $oversleepContact, ')
           ..write('oversleepShare: $oversleepShare, ')
-          ..write('oversleepTriggerMinutes: $oversleepTriggerMinutes')
+          ..write('oversleepTriggerMinutes: $oversleepTriggerMinutes, ')
+          ..write('rememberedSnooze: $rememberedSnooze, ')
+          ..write('rememberedKakugo: $rememberedKakugo')
           ..write(')'))
         .toString();
   }
@@ -843,6 +936,8 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
     oversleepContact,
     oversleepShare,
     oversleepTriggerMinutes,
+    rememberedSnooze,
+    rememberedKakugo,
   );
   @override
   bool operator ==(Object other) =>
@@ -865,7 +960,9 @@ class AlarmRow extends DataClass implements Insertable<AlarmRow> {
           other.kakugoSnoozeResetsClock == this.kakugoSnoozeResetsClock &&
           other.oversleepContact == this.oversleepContact &&
           other.oversleepShare == this.oversleepShare &&
-          other.oversleepTriggerMinutes == this.oversleepTriggerMinutes);
+          other.oversleepTriggerMinutes == this.oversleepTriggerMinutes &&
+          other.rememberedSnooze == this.rememberedSnooze &&
+          other.rememberedKakugo == this.rememberedKakugo);
 }
 
 class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
@@ -887,6 +984,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
   final Value<String?> oversleepContact;
   final Value<String?> oversleepShare;
   final Value<int?> oversleepTriggerMinutes;
+  final Value<String?> rememberedSnooze;
+  final Value<String?> rememberedKakugo;
   final Value<int> rowid;
   const AlarmRowsCompanion({
     this.id = const Value.absent(),
@@ -907,6 +1006,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.oversleepContact = const Value.absent(),
     this.oversleepShare = const Value.absent(),
     this.oversleepTriggerMinutes = const Value.absent(),
+    this.rememberedSnooze = const Value.absent(),
+    this.rememberedKakugo = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlarmRowsCompanion.insert({
@@ -928,6 +1029,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     this.oversleepContact = const Value.absent(),
     this.oversleepShare = const Value.absent(),
     this.oversleepTriggerMinutes = const Value.absent(),
+    this.rememberedSnooze = const Value.absent(),
+    this.rememberedKakugo = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        hour = Value(hour),
@@ -952,6 +1055,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Expression<String>? oversleepContact,
     Expression<String>? oversleepShare,
     Expression<int>? oversleepTriggerMinutes,
+    Expression<String>? rememberedSnooze,
+    Expression<String>? rememberedKakugo,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -978,6 +1083,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       if (oversleepShare != null) 'oversleep_share': oversleepShare,
       if (oversleepTriggerMinutes != null)
         'oversleep_trigger_minutes': oversleepTriggerMinutes,
+      if (rememberedSnooze != null) 'remembered_snooze': rememberedSnooze,
+      if (rememberedKakugo != null) 'remembered_kakugo': rememberedKakugo,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1001,6 +1108,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
     Value<String?>? oversleepContact,
     Value<String?>? oversleepShare,
     Value<int?>? oversleepTriggerMinutes,
+    Value<String?>? rememberedSnooze,
+    Value<String?>? rememberedKakugo,
     Value<int>? rowid,
   }) {
     return AlarmRowsCompanion(
@@ -1025,6 +1134,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
       oversleepShare: oversleepShare ?? this.oversleepShare,
       oversleepTriggerMinutes:
           oversleepTriggerMinutes ?? this.oversleepTriggerMinutes,
+      rememberedSnooze: rememberedSnooze ?? this.rememberedSnooze,
+      rememberedKakugo: rememberedKakugo ?? this.rememberedKakugo,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1092,6 +1203,12 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
         oversleepTriggerMinutes.value,
       );
     }
+    if (rememberedSnooze.present) {
+      map['remembered_snooze'] = Variable<String>(rememberedSnooze.value);
+    }
+    if (rememberedKakugo.present) {
+      map['remembered_kakugo'] = Variable<String>(rememberedKakugo.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1119,6 +1236,8 @@ class AlarmRowsCompanion extends UpdateCompanion<AlarmRow> {
           ..write('oversleepContact: $oversleepContact, ')
           ..write('oversleepShare: $oversleepShare, ')
           ..write('oversleepTriggerMinutes: $oversleepTriggerMinutes, ')
+          ..write('rememberedSnooze: $rememberedSnooze, ')
+          ..write('rememberedKakugo: $rememberedKakugo, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4861,6 +4980,8 @@ typedef $$AlarmRowsTableCreateCompanionBuilder = AlarmRowsCompanion Function({
   Value<String?> oversleepContact,
   Value<String?> oversleepShare,
   Value<int?> oversleepTriggerMinutes,
+  Value<String?> rememberedSnooze,
+  Value<String?> rememberedKakugo,
   Value<int> rowid,
 });
 typedef $$AlarmRowsTableUpdateCompanionBuilder = AlarmRowsCompanion Function({
@@ -4882,6 +5003,8 @@ typedef $$AlarmRowsTableUpdateCompanionBuilder = AlarmRowsCompanion Function({
   Value<String?> oversleepContact,
   Value<String?> oversleepShare,
   Value<int?> oversleepTriggerMinutes,
+  Value<String?> rememberedSnooze,
+  Value<String?> rememberedKakugo,
   Value<int> rowid,
 });
 
@@ -4981,6 +5104,16 @@ class $$AlarmRowsTableFilterComposer
 
   ColumnFilters<int> get oversleepTriggerMinutes => $composableBuilder(
     column: $table.oversleepTriggerMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rememberedSnooze => $composableBuilder(
+    column: $table.rememberedSnooze,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rememberedKakugo => $composableBuilder(
+    column: $table.rememberedKakugo,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -5083,6 +5216,16 @@ class $$AlarmRowsTableOrderingComposer
     column: $table.oversleepTriggerMinutes,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get rememberedSnooze => $composableBuilder(
+    column: $table.rememberedSnooze,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rememberedKakugo => $composableBuilder(
+    column: $table.rememberedKakugo,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AlarmRowsTableAnnotationComposer
@@ -5169,6 +5312,16 @@ class $$AlarmRowsTableAnnotationComposer
     column: $table.oversleepTriggerMinutes,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get rememberedSnooze => $composableBuilder(
+    column: $table.rememberedSnooze,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get rememberedKakugo => $composableBuilder(
+    column: $table.rememberedKakugo,
+    builder: (column) => column,
+  );
 }
 
 class $$AlarmRowsTableTableManager
@@ -5217,6 +5370,8 @@ class $$AlarmRowsTableTableManager
                 Value<String?> oversleepContact = const Value.absent(),
                 Value<String?> oversleepShare = const Value.absent(),
                 Value<int?> oversleepTriggerMinutes = const Value.absent(),
+                Value<String?> rememberedSnooze = const Value.absent(),
+                Value<String?> rememberedKakugo = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmRowsCompanion(
                 id: id,
@@ -5237,6 +5392,8 @@ class $$AlarmRowsTableTableManager
                 oversleepContact: oversleepContact,
                 oversleepShare: oversleepShare,
                 oversleepTriggerMinutes: oversleepTriggerMinutes,
+                rememberedSnooze: rememberedSnooze,
+                rememberedKakugo: rememberedKakugo,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5259,6 +5416,8 @@ class $$AlarmRowsTableTableManager
                 Value<String?> oversleepContact = const Value.absent(),
                 Value<String?> oversleepShare = const Value.absent(),
                 Value<int?> oversleepTriggerMinutes = const Value.absent(),
+                Value<String?> rememberedSnooze = const Value.absent(),
+                Value<String?> rememberedKakugo = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmRowsCompanion.insert(
                 id: id,
@@ -5279,6 +5438,8 @@ class $$AlarmRowsTableTableManager
                 oversleepContact: oversleepContact,
                 oversleepShare: oversleepShare,
                 oversleepTriggerMinutes: oversleepTriggerMinutes,
+                rememberedSnooze: rememberedSnooze,
+                rememberedKakugo: rememberedKakugo,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

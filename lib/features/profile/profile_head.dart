@@ -144,13 +144,32 @@ class ProfileHead extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: levelProgress(profile.xp),
                 minHeight: 18,
+                // Orange in every theme, never the scheme's primary: the head
+                // is painted over a 背景 the user picks, and the purple-ish
+                // ones left a purple bar on a purple card with nothing to see.
+                // The track is the same orange at a quarter strength, so the
+                // filled part still reads as a fraction of something.
+                color: gaugeColor,
+                backgroundColor: gaugeTrackColor,
               ),
             ),
-            Text(
+            // White, bold, shadowed *and* outlined: the label sits on the bar
+            // itself, so it crosses both the filled orange and the track, and
+            // one colour alone cannot stay legible over both.
+            OutlinedText(
               'Lv $level',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: (theme.textTheme.labelMedium ?? const TextStyle())
+                  .copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black54,
+                        blurRadius: 3,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
+                  ),
             ),
           ],
         ),
@@ -226,4 +245,50 @@ class BackgroundPatternPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(BackgroundPatternPainter old) => old.pattern != pattern;
+}
+
+/// The 経験値ゲージ's two colours, fixed rather than taken from the scheme —
+/// see the note at the bar itself.
+const gaugeColor = Color(0xFFFF9800);
+const gaugeTrackColor = Color(0x40FF9800);
+
+/// [text] drawn twice: a thin dark stroke underneath, the filled glyphs on
+/// top. The outline is what keeps a white label readable where it crosses the
+/// pale part of a gauge, which a shadow alone does not manage.
+///
+/// The two layers are one [Stack] rather than one [Text] with two styles
+/// because a stroke and a fill cannot both be a `foreground` of the same span.
+class OutlinedText extends StatelessWidget {
+  const OutlinedText(this.text, {super.key, required this.style, this.stroke});
+
+  final String text;
+
+  /// The filled style. The outline copies it and swaps the paint.
+  final TextStyle style;
+
+  /// The outline colour. Defaults to black — the point is contrast.
+  final Color? stroke;
+
+  static const strokeWidth = 2.0;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    alignment: Alignment.center,
+    children: [
+      Text(
+        text,
+        style: style.copyWith(
+          // A foreground paint replaces `color`, so the stroke layer must not
+          // carry one; the shadows stay, because they are drawn behind both.
+          color: null,
+          foreground: Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = strokeWidth
+            ..strokeJoin = StrokeJoin.round
+            ..color = stroke ?? Colors.black,
+        ),
+      ),
+      Text(text, style: style),
+    ],
+  );
 }

@@ -137,7 +137,54 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     super.dispose();
   }
 
+  /// Set by the save and the delete, which have already written the change
+  /// and must not be asked whether to discard it.
+  bool _leaving = false;
+
   Alarm get _draft => ref.read(alarmDraftProvider(widget.seed));
+
+  /// Whether anything in the editor has been touched. Read, never watched: the
+  /// wheel writes the draft on every frame of a drag, and a form that rebuilt
+  /// for that would be the one thing this editor is built not to do. That is
+  /// also why [PopScope.canPop] stays `false` and the pop is done by hand —
+  /// flipping `canPop` would need exactly the rebuild being avoided.
+  bool get _dirty => _draft != widget.seed;
+
+  Future<void> _handlePop(bool didPop, Object? result) async {
+    if (didPop) return;
+    final navigator = Navigator.of(context);
+    if (_leaving || !_dirty) {
+      navigator.pop();
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const ValueKey('unsavedDialog'),
+        title: const Text('変更を保存していません'),
+        content: const Text('このまま戻ると変更は失われます。'),
+        actions: [
+          TextButton(
+            key: const ValueKey('unsavedDiscard'),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('破棄して戻る'),
+          ),
+          FilledButton(
+            key: const ValueKey('unsavedKeep'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('編集を続ける'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      _leaving = true;
+      navigator.pop();
+    }
+  }
 
   Future<void> _save() async {
     final alarm = _draft;
@@ -191,14 +238,20 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     }
 
     await ref.read(alarmControllerProvider).save(alarm);
-    if (mounted) context.pop();
+    if (mounted) {
+      _leaving = true;
+      context.pop();
+    }
   }
 
   Future<void> _delete() async {
     final existing = widget.existing;
     if (existing == null) return;
     await ref.read(alarmControllerProvider).delete(existing);
-    if (mounted) context.pop();
+    if (mounted) {
+      _leaving = true;
+      context.pop();
+    }
   }
 
   @override
@@ -210,39 +263,48 @@ class _AlarmEditFormState extends ConsumerState<_AlarmEditForm> {
     // able to write it on every frame of a drag without rebuilding the form
     // around it. The one widget that does depend on it — the warning under the
     // wheel — watches it itself.
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.duplicate
-              ? 'アラームを複製'
-              : widget.existing == null
-              ? 'アラームを追加'
-              : 'アラームを編集',
+    //
+    // The guard covers the app bar's back button and the system back gesture
+    // alike, because both go through [PopScope]. The FAB and the bin do not:
+    // they pop through [Navigator.pop], which the guard never sees, and they
+    // raise `_leaving` anyway.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _handlePop,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.duplicate
+                ? 'アラームを複製'
+                : widget.existing == null
+                ? 'アラームを追加'
+                : 'アラームを編集',
+          ),
+          actions: [
+            if (widget.existing != null)
+              IconButton(
+                tooltip: '削除',
+                onPressed: _delete,
+                icon: const Icon(Icons.delete_outline),
+              ),
+          ],
         ),
-        actions: [
-          if (widget.existing != null)
-            IconButton(
-              tooltip: '削除',
-              onPressed: _delete,
-              icon: const Icon(Icons.delete_outline),
-            ),
-        ],
-      ),
-      body: ListView(
-        controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-        children: [
-          TimeWheel(seed: seed),
-          _TimeClashWarning(seed: seed),
-          const SizedBox(height: 24),
-          _BasicIsland(seed: seed),
-          _SnoozeIsland(seed: seed),
-          _KakugoIsland(seed: seed),
-        ],
-      ),
-      floatingActionButton: _SaveFab(
-        label: widget.duplicate ? '複製' : '保存',
-        onPressed: _save,
+        body: ListView(
+          controller: _scroll,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+          children: [
+            TimeWheel(seed: seed),
+            _TimeClashWarning(seed: seed),
+            const SizedBox(height: 24),
+            _BasicIsland(seed: seed),
+            _SnoozeIsland(seed: seed),
+            _KakugoIsland(seed: seed),
+          ],
+        ),
+        floatingActionButton: _SaveFab(
+          label: widget.duplicate ? '複製' : '保存',
+          onPressed: _save,
+        ),
       ),
     );
   }
@@ -423,13 +485,11 @@ class _SnoozeToggleRow extends ConsumerWidget {
     return SettingSwitchRow(
       label: 'スヌーズ',
       value: on,
+      // Off then on again brings back exactly what was there — see
+      // [alarmWithSnoozeEnabled], which is where the remembering lives.
       onChanged: (v) => ref
           .read(alarmDraftProvider(seed).notifier)
-          .update(
-            (a) => v
-                ? a.copyWith(snooze: const Snooze())
-                : a.copyWith(clearSnooze: true),
-          ),
+          .update((a) => alarmWithSnoozeEnabled(a, v)),
     );
   }
 }
@@ -447,13 +507,11 @@ class _KakugoToggleRow extends ConsumerWidget {
       value: on,
       labelColor: Theme.of(context).colorScheme.error,
       subtitle: '起床に対するあなたの"覚悟"を設定できます',
+      // Same as スヌーズ: switching 覚悟 off puts the whole pledge — rate, cap,
+      // 人質, penalty, clock mode — away rather than throwing it out.
       onChanged: (v) => ref
           .read(alarmDraftProvider(seed).notifier)
-          .update(
-            (a) => v
-                ? a.copyWith(kakugo: a.kakugo ?? defaultKakugo)
-                : a.copyWith(clearKakugo: true),
-          ),
+          .update((a) => alarmWithKakugoEnabled(a, v)),
     );
   }
 }
@@ -584,8 +642,7 @@ class _KakugoIsland extends ConsumerWidget {
     // draws a hairline between children, and an empty child leaves its divider
     // behind.
     final burns = ref.watch(
-      alarmDraftProvider(seed)
-          .select((a) => a.kakugo?.hostage.burns ?? false),
+      alarmDraftProvider(seed).select((a) => a.kakugo?.hostage.burns ?? false),
     );
     // The same bool [_ContactShareRow] draws 「設定済み」 from, read here for the
     // same reason the two above are: a row that returned an empty box would
@@ -676,9 +733,8 @@ class _HostageRow extends ConsumerWidget {
         context,
         HostageSubScreen(
           initial: hostage,
-          onCommit: (type) => ref
-              .read(alarmDraftProvider(seed).notifier)
-              .update((a) {
+          onCommit: (type) =>
+              ref.read(alarmDraftProvider(seed).notifier).update((a) {
                 final kakugo = a.kakugo ?? defaultKakugo;
                 return a.copyWith(
                   kakugo: kakugo.copyWith(
@@ -731,7 +787,8 @@ class _GraceRow extends ConsumerWidget {
           min: minGraceMinutes,
           max: maxGraceMinutes,
           suffix: '分',
-          description: '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
+          description:
+              '鳴り始めからこの時間以内に起床確認をクリアできれば起床成功。'
               '過ぎるとその瞬間から寝坊で、ペナルティと連絡・共有が動き始めます。',
           onCommit: (v) => ref
               .read(draft.notifier)
@@ -1068,8 +1125,7 @@ class _RateRow extends ConsumerWidget {
             // none never reaches here: the row is not built for it, which is
             // also why neither sentence offers 0 any more — 連絡だけの覚悟 is
             // said by choosing 人質「なし」, one row up.
-            HostageType.none || HostageType.coin =>
-              '猶予を過ぎたあと、1分ごとに燃えるコインです。',
+            HostageType.none || HostageType.coin => '猶予を過ぎたあと、1分ごとに燃えるコインです。',
             HostageType.card => '猶予を過ぎたあと、1分ごとに積み上がる金額です。',
           },
           footer: (context, value) => Column(

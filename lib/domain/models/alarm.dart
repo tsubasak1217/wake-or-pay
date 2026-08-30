@@ -78,6 +78,8 @@ class Alarm {
     this.contact,
     this.share,
     this.oversleepTriggerMinutes,
+    this.rememberedSnooze,
+    this.rememberedKakugo,
   });
 
   final String id;
@@ -115,6 +117,19 @@ class Alarm {
   /// through [triggerMinutes], and the mapper fills the column in on the way
   /// out, so a row only reads as null once.
   final int? oversleepTriggerMinutes;
+
+  /// What [snooze] held the last time the editor switched スヌーズ **off**, so
+  /// switching it back on — in this sitting or after a save and a reopen —
+  /// restores the interval and the count instead of the defaults.
+  ///
+  /// Nothing but the editor reads it: [canSnooze] and everything downstream
+  /// still key off the live [snooze] alone, so a remembered value has no effect
+  /// on how an alarm rings.
+  final Snooze? rememberedSnooze;
+
+  /// The same for 覚悟, on the same terms: [isKakugo] is still [kakugo] != null,
+  /// and nothing at ring time looks at this.
+  final Kakugo? rememberedKakugo;
 
   bool get isKakugo => kakugo != null;
 
@@ -155,6 +170,10 @@ class Alarm {
     OversleepShare? share,
     bool clearShare = false,
     int? oversleepTriggerMinutes,
+    Snooze? rememberedSnooze,
+    bool clearRememberedSnooze = false,
+    Kakugo? rememberedKakugo,
+    bool clearRememberedKakugo = false,
   }) => Alarm(
     id: id ?? this.id,
     hour: hour ?? this.hour,
@@ -170,6 +189,12 @@ class Alarm {
     share: clearShare ? null : (share ?? this.share),
     oversleepTriggerMinutes:
         oversleepTriggerMinutes ?? this.oversleepTriggerMinutes,
+    rememberedSnooze: clearRememberedSnooze
+        ? null
+        : (rememberedSnooze ?? this.rememberedSnooze),
+    rememberedKakugo: clearRememberedKakugo
+        ? null
+        : (rememberedKakugo ?? this.rememberedKakugo),
   );
 
   Map<String, dynamic> toJson() => {
@@ -186,6 +211,8 @@ class Alarm {
     'contact': contact?.toJson(),
     'share': share?.toJson(),
     'oversleepTriggerMinutes': oversleepTriggerMinutes,
+    'rememberedSnooze': rememberedSnooze?.toJson(),
+    'rememberedKakugo': rememberedKakugo?.toJson(),
   };
 
   factory Alarm.fromJson(Map<String, dynamic> json) => Alarm(
@@ -225,6 +252,16 @@ class Alarm {
         (json['contact'] is Map
             ? (json['contact'] as Map)['triggerMinutesAfterGrace'] as int?
             : null),
+    rememberedSnooze: json['rememberedSnooze'] == null
+        ? null
+        : Snooze.fromJson(
+            (json['rememberedSnooze'] as Map).cast<String, dynamic>(),
+          ),
+    rememberedKakugo: json['rememberedKakugo'] == null
+        ? null
+        : Kakugo.fromJson(
+            (json['rememberedKakugo'] as Map).cast<String, dynamic>(),
+          ),
   );
 
   @override
@@ -242,7 +279,9 @@ class Alarm {
       other.kakugo == kakugo &&
       other.contact == contact &&
       other.share == share &&
-      other.oversleepTriggerMinutes == oversleepTriggerMinutes;
+      other.oversleepTriggerMinutes == oversleepTriggerMinutes &&
+      other.rememberedSnooze == rememberedSnooze &&
+      other.rememberedKakugo == rememberedKakugo;
 
   @override
   int get hashCode => Object.hash(
@@ -259,6 +298,8 @@ class Alarm {
     contact,
     share,
     oversleepTriggerMinutes,
+    rememberedSnooze,
+    rememberedKakugo,
   );
 
   @override

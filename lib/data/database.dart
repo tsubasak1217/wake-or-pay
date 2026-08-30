@@ -58,6 +58,15 @@ class AlarmRows extends Table {
   /// so a row only ever reads as null once.
   IntColumn get oversleepTriggerMinutes => integer().nullable()();
 
+  /// What スヌーズ and 覚悟 held the last time the editor switched them **off**,
+  /// each as one JSON blob, so switching one back on after a save restores the
+  /// settings instead of the defaults. Added in v9; null — every row written
+  /// before it — means "nothing to restore", which is the rule those rows were
+  /// written under. Nothing but the editor reads them, so no stored alarm
+  /// rings differently.
+  TextColumn get rememberedSnooze => text().nullable()();
+  TextColumn get rememberedKakugo => text().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -252,7 +261,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(inMemoryExecutor());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   /// v1 → v2 adds the per alarm grace window. Both columns default to 1, which
   /// is the rule every existing row was written under, so no stored session's
@@ -292,6 +301,11 @@ class AppDatabase extends _$AppDatabase {
   /// existed reads back with `hostage == coin`, which is the rule it was
   /// written under. The new table starts empty, so no settled session gains a
   /// charge it never had, and no stored loss or outcome changes.
+  ///
+  /// v8 → v9 adds the two 覚えておく columns to [AlarmRows] and nothing else.
+  /// Both are nullable and read as "nothing remembered", so an alarm written
+  /// before them behaves exactly as it did: the values only ever feed the
+  /// editor's two toggles, never a ring.
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
@@ -336,6 +350,10 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 8) {
         await m.createTable(pendingChargeRows);
+      }
+      if (from < 9) {
+        await m.addColumn(alarmRows, alarmRows.rememberedSnooze);
+        await m.addColumn(alarmRows, alarmRows.rememberedKakugo);
       }
     },
   );
