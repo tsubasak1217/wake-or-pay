@@ -64,7 +64,17 @@ Future<void> main() async {
       // …or books a trigger with Android's own AlarmManager (spec 11.7).
       androidExactAlarmSchedulerOverride(),
   ];
-  container = ProviderContainer(overrides: overrides);
+  // The initial location is overridden from the start with the default, so
+  // that the real answer can be swapped in below. `updateOverrides` can only
+  // replace providers that were overridden when the container was built —
+  // adding a new override there throws before `runApp`, and the app never
+  // leaves the launch screen (build 112 did exactly that).
+  container = ProviderContainer(
+    overrides: [
+      ...overrides,
+      initialLocationProvider.overrideWithValue(initialLocationFor()),
+    ],
+  );
 
   // Must run before anything is booked. Cheap, and idempotent.
   await AndroidAlarmManager.initialize();
