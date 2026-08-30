@@ -51,6 +51,13 @@ class PendingChargeRepository {
     return written != null;
   }
 
+  /// Every charge whose session id starts with [prefix] — the開発用 sample
+  /// data's way back out. See [AlarmSessionRepository.deleteWithIdPrefix].
+  Future<void> deleteWithSessionIdPrefix(String prefix) =>
+      (_db.delete(_db.pendingChargeRows)
+            ..where((c) => c.sessionId.like('$prefix%')))
+          .go();
+
   /// Moves one charge to [status]. Phase 3's half of the ledger; nothing calls
   /// it yet.
   Future<void> mark(String sessionId, PendingChargeStatus status) =>

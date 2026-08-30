@@ -8,6 +8,7 @@ import '../../domain/format.dart';
 import '../../domain/models.dart';
 import '../../services/app_update.dart';
 import '../../services/options.dart';
+import '../../services/sample_data.dart';
 import '../alarms/widgets/settings_island.dart';
 import '../update/update_banner.dart';
 import '../widgets/top_sheet.dart';
@@ -44,6 +45,7 @@ class OptionsOverlay extends ConsumerWidget {
           children: [_SettingsRow(), _UpdateRow()],
         ),
         const _DangerIsland(),
+        const _DevIsland(),
       ],
     );
   }
@@ -114,6 +116,146 @@ class _UpdateRow extends ConsumerWidget {
             },
     );
   }
+}
+
+/// 開発用 — the island that fills the charts with a made-up year so they can be
+/// looked at before anybody has lived through one.
+///
+/// Under 危険な設定 on purpose: nothing in it raises what a morning costs, and
+/// nothing in it belongs above a setting the user actually makes.
+class _DevIsland extends ConsumerWidget {
+  const _DevIsland();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+
+    return SettingsIsland(
+      key: const ValueKey('optionsDevIsland'),
+      title: '開発用',
+      footer: Text(
+        '開発中の確認用です。実際の記録には影響しません。',
+        style: theme.textTheme.bodySmall,
+      ),
+      children: [
+        ListTile(
+          key: const ValueKey('optionsSampleCreate'),
+          leading: const Icon(Icons.science_outlined),
+          title: const Text('サンプルデータを作成（過去12か月）'),
+          onTap: () => _create(context, ref),
+        ),
+        ListTile(
+          key: const ValueKey('optionsSampleDelete'),
+          leading: const Icon(Icons.delete_outline),
+          title: const Text('サンプルデータを削除'),
+          onTap: () => _remove(context, ref),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _create(BuildContext context, WidgetRef ref) async {
+    final ok = await _confirm(
+      context,
+      key: 'optionsSampleCreateConfirm',
+      title: 'サンプルデータを作成しますか？',
+      body: '過去12か月ぶんの記録を作って、アクティビティのグラフを確認できるようにします。'
+          'あなたの実際の記録・コイン・ログイン日数は変わりません。',
+      action: '作成する',
+    );
+    if (!ok || !context.mounted) return;
+
+    // The messenger is resolved before the await: the sheet can be dismissed
+    // while the write is running, and a defunct context has no messenger.
+    final messenger = ScaffoldMessenger.of(context);
+    final progress = _showProgress(context, 'サンプルデータを作成しています…');
+    int written;
+    try {
+      written = await ref.read(sampleDataServiceProvider).generate();
+    } finally {
+      progress();
+    }
+    messenger.showSnackBar(
+      SnackBar(content: Text('サンプルデータを作成しました（$written 件）')),
+    );
+  }
+
+  Future<void> _remove(BuildContext context, WidgetRef ref) async {
+    final ok = await _confirm(
+      context,
+      key: 'optionsSampleDeleteConfirm',
+      title: 'サンプルデータを削除しますか？',
+      body: '作成したサンプルの記録だけを消します。あなたの実際の記録は残ります。',
+      action: '削除する',
+    );
+    if (!ok || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final progress = _showProgress(context, 'サンプルデータを削除しています…');
+    try {
+      await ref.read(sampleDataServiceProvider).delete();
+    } finally {
+      progress();
+    }
+    messenger.showSnackBar(
+      const SnackBar(content: Text('サンプルデータを削除しました')),
+    );
+  }
+
+  /// A blocking spinner, and the callback that takes it away again. Twelve
+  /// months is a few hundred inserts — long enough that a dead-looking sheet
+  /// would read as a broken button.
+  VoidCallback _showProgress(BuildContext context, String label) {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => AlertDialog(
+        key: const ValueKey('optionsSampleProgress'),
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Expanded(child: Text(label)),
+          ],
+        ),
+      ),
+    );
+    var closed = false;
+    return () {
+      if (closed) return;
+      closed = true;
+      navigator.pop();
+    };
+  }
+
+  Future<bool> _confirm(
+    BuildContext context, {
+    required String key,
+    required String title,
+    required String body,
+    required String action,
+  }) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: ValueKey(key),
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('やめる'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(action),
+            ),
+          ],
+        ),
+      ) ??
+      false;
 }
 
 /// 危険な設定 — the island whose title is painted in the error colour, because

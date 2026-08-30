@@ -81,6 +81,13 @@ class ContactEventRepository {
           .watch()
           .map((rows) => rows.map((r) => r.toModel()).toList());
 
+  /// Every event whose id starts with [prefix] — the開発用 sample data's way
+  /// back out. See [AlarmSessionRepository.deleteWithIdPrefix].
+  Future<void> deleteWithIdPrefix(String prefix) =>
+      (_db.delete(_db.contactEventRows)
+            ..where((e) => e.id.like('$prefix%')))
+          .go();
+
   Future<List<ContactEvent>> forSession(String sessionId) async =>
       (await (_db.select(
             _db.contactEventRows,

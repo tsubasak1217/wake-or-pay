@@ -122,4 +122,15 @@ class AlarmSessionRepository {
 
   Future<void> delete(String id) =>
       (_db.delete(_db.alarmSessionRows)..where((s) => s.id.equals(id))).go();
+
+  /// Every session whose id starts with [prefix]. Only the開発用 sample data
+  /// uses this — its rows all carry one id prefix nothing else ever writes, and
+  /// this is how they are taken back out without touching a real morning.
+  ///
+  /// [prefix] goes into a `LIKE` pattern, so it must not itself contain `%` or
+  /// `_`. The only caller passes a compile-time constant that contains neither.
+  Future<void> deleteWithIdPrefix(String prefix) =>
+      (_db.delete(_db.alarmSessionRows)
+            ..where((s) => s.id.like('$prefix%')))
+          .go();
 }
